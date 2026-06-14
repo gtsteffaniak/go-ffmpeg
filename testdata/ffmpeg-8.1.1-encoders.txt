@@ -1,0 +1,9 @@
+ Encoders:
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+ V..... libx265              libx265 H.265 / HEVC (codec hevc)
+ V..... libsvtav1            SVT-AV1(Scalable Video Technology for AV1) encoder (codec av1)
+ V..... libvpx-vp9           libvpx VP9 (codec vp9)
+ V..... h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
+ V..... mjpeg                MJPEG (Motion JPEG) (codec mjpeg)
+ A..... aac                  AAC (Advanced Audio Coding) (codec aac)
+ A..... libmp3lame           libmp3lame MP3 (MPEG audio layer 3) (codec mp3)
