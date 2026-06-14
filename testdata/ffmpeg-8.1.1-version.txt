@@ -1,0 +1,5 @@
+ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 14.2.0 (Alpine 14.2.0)
+configuration: --enable-gpl --enable-version3 --enable-nonfree --enable-libx264 --enable-libsvtav1 --enable-libvpx --enable-libx265 --enable-libvvenc --enable-openssl --enable-libdav1d --enable-libaom --enable-libass --enable-libmp3lame --enable-static --disable-shared
+libavutil      60. 26.101 / 60. 26.101
+libavcodec     62. 28.101 / 62. 28.101
