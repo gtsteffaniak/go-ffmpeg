@@ -16,6 +16,12 @@ func Detect() Info {
 		Details: map[string]string{},
 	}
 	info.WSL = isWSLEnvironment()
+	if info.WSL {
+		info.WSLGPUPartitioning = wslGPUPartitioning()
+		if info.WSLGPUPartitioning {
+			info.Details["wsl_gpu_partitioning"] = "active"
+		}
+	}
 	info.NVIDIA = nvidiaAvailable()
 	info.Intel = intelGPUPresent()
 	info.AMD = amdGPUPresent()
@@ -180,10 +186,45 @@ func driAvailable() bool {
 
 func qsvAvailable(wsl, intel bool) bool {
 	if wsl {
-		return wslIntelGPU() || intel
+		return wslGPUPartitioning() || intel
 	}
 	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
 		return intel
+	}
+	return false
+}
+
+// wslGPUPartitioning detects WSL2 GPU paravirtualization (Intel/AMD/NVIDIA via /dev/dxg).
+func wslGPUPartitioning() bool {
+	if _, err := os.Stat("/dev/dxg"); err == nil {
+		return true
+	}
+	if matches, _ := filepath.Glob("/usr/lib/wsl/lib*"); len(matches) > 0 {
+		return true
+	}
+	for _, path := range []string{"/mnt/wslg", "/mnt/wslg/versions.txt", "/usr/lib/wsl/lib"} {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	if os.Getenv("GALLIUM_DRIVER") == "d3d12" {
+		return true
+	}
+	if commandAvailable("lspci") {
+		out, err := exec.Command("lspci").CombinedOutput()
+		if err == nil {
+			s := string(out)
+			if strings.Contains(s, "Microsoft Corporation Basic Render Driver") {
+				return true
+			}
+		}
+		out, err = exec.Command("lspci", "-nn").CombinedOutput()
+		if err == nil {
+			s := strings.ToLower(string(out))
+			if strings.Contains(s, "microsoft") && strings.Contains(s, "basic render") {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -229,19 +270,7 @@ func oneVPLDispatcherAvailable() (string, bool) {
 }
 
 func wslIntelGPU() bool {
-	if commandAvailable("lspci") {
-		out, err := exec.Command("lspci").CombinedOutput()
-		if err == nil && strings.Contains(string(out), "Microsoft Corporation Basic Render Driver") {
-			return true
-		}
-	}
-	if matches, _ := filepath.Glob("/usr/lib/wsl/lib*"); len(matches) > 0 {
-		return true
-	}
-	if _, err := os.Stat("/dev/dxg"); err == nil {
-		return true
-	}
-	return false
+	return wslGPUPartitioning()
 }
 
 func vaapiAvailableDetailed() (bool, string) {
@@ -299,14 +328,21 @@ func d3d12Available(wsl bool) bool {
 	if runtime.GOOS != "linux" || !wsl {
 		return false
 	}
-	if _, err := os.Stat("/dev/dxg"); err != nil {
+	if !wslGPUPartitioning() {
 		return false
 	}
 	if !wsl2Kernel() {
 		return false
 	}
-	ok, _ := vaapiAvailableDetailed()
-	return ok
+	ok, driver := vaapiAvailableDetailed()
+	if !ok {
+		return false
+	}
+	if strings.Contains(filepath.Base(driver), "d3d12") {
+		return true
+	}
+	// DXGK + WSL2 + any working VAAPI driver (often d3d12 backend in WSL).
+	return true
 }
 
 func detectGPUDescription() string {

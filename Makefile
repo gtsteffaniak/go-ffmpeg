@@ -8,7 +8,7 @@ report: build
 	@echo "Report also saved to compatibility-report.txt (view with: less -R compatibility-report.txt)"
 
 test:
-	go test ./...
+	go test ./... -count=1
 
 test-integration:
 	GOFFMPEG_SKIP_HW=1 go test -tags=integration ./... -run Integration -v

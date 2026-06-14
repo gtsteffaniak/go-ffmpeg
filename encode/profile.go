@@ -55,6 +55,12 @@ type VideoProfile struct {
 	ForceSoftware bool
 }
 
+type encodeOpts struct {
+	quality QualityPreset
+	pixFmt  string
+	gop     int
+}
+
 // Resolver builds encoder arguments from capabilities.
 type Resolver struct {
 	Caps *capabilities.Capabilities
@@ -86,36 +92,85 @@ func (r *Resolver) VideoEncoderArgs(profile VideoProfile) ([]string, error) {
 		return nil, err
 	}
 
+	opts := profileEncodeOpts(profile)
+
 	switch profile.Codec {
 	case "", CodecH264:
-		return h264Args(sel.Accel, sel.Encoder, b), nil
+		return h264Args(sel.Accel, sel.Encoder, b, opts), nil
 	case CodecAV1:
-		return av1Args(sel.Accel, sel.Encoder, b), nil
+		return av1Args(sel.Accel, sel.Encoder, b, opts), nil
 	case CodecVP9:
-		return vp9Args(sel.Accel, sel.Encoder, b), nil
+		return vp9Args(sel.Accel, sel.Encoder, b, opts), nil
 	case CodecHEVC:
-		return hevcArgs(sel.Accel, sel.Encoder, b), nil
+		return hevcArgs(sel.Accel, sel.Encoder, b, opts), nil
 	default:
 		return []string{"-c:v", sel.Encoder, "-b:v", b.Target, "-bufsize", b.BufSize}, nil
 	}
 }
 
-func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig) []string {
+func profileEncodeOpts(p VideoProfile) encodeOpts {
+	q := p.Quality
+	if q == "" {
+		q = defaultQuality(p.Codec)
+	}
+	pix := p.PixelFormat
+	if pix == "" {
+		pix = "yuv420p"
+	}
+	gop := p.GOP
+	if gop <= 0 {
+		gop = defaultGOP(p.Codec)
+	}
+	return encodeOpts{quality: q, pixFmt: pix, gop: gop}
+}
+
+func defaultQuality(codec VideoCodec) QualityPreset {
+	if codec == CodecAV1 {
+		return PresetMedium
+	}
+	return PresetVeryfast
+}
+
+func defaultGOP(codec VideoCodec) int {
+	switch codec {
+	case CodecAV1:
+		return 240
+	case CodecH264:
+		return 60
+	default:
+		return 0
+	}
+}
+
+func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o encodeOpts) []string {
+	gop := strconv.Itoa(o.gop)
 	switch accel {
 	case capabilities.AccelNVENC:
-		return []string{"-c:v", encoder, "-preset", "fast", "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-preset", nvencPreset(o.quality),
+			"-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
+			"-pix_fmt", o.pixFmt, "-g", gop,
+		}
 	case capabilities.AccelAMF:
-		return []string{"-c:v", encoder, "-rc", "vbr_constrained", "-b:v", b.Target, "-maxrate", b.Max, "-quality_preset", "ultrafast", "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-rc", "vbr_constrained",
+			"-b:v", b.Target, "-maxrate", b.Max,
+			"-quality_preset", amfQualityPreset(o.quality, CodecH264),
+			"-pix_fmt", o.pixFmt, "-g", gop,
+		}
 	case capabilities.AccelQSV:
-		return []string{"-c:v", encoder, "-load_plugin", "1", "-preset", "ultrafast", "-b:v", b.Target, "-maxrate", b.Max, "-pix_fmt", "yuv420p"}
+		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max, "-g", gop)
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
+			"-pix_fmt", o.pixFmt, "-g", gop,
+		}
 	default:
 		args := []string{
-			"-c:v", "libx264", "-preset", "veryfast",
+			"-c:v", "libx264", "-preset", x264Preset(o.quality),
 			"-x264-params", "nal-hrd=cbr:force-cfr=1",
 			"-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
-			"-pix_fmt", "yuv420p", "-g", "60", "-tune", "zerolatency",
+			"-pix_fmt", o.pixFmt, "-g", gop, "-tune", "zerolatency",
 		}
 		if b.Min != "" {
 			args = append(args, "-minrate", b.Min)
@@ -127,51 +182,172 @@ func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig) []s
 	}
 }
 
-func av1Args(accel capabilities.AccelType, encoder string, b BitrateConfig) []string {
-	gop := "240"
+func av1Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o encodeOpts) []string {
+	gop := strconv.Itoa(o.gop)
 	switch accel {
 	case capabilities.AccelNVENC:
-		return []string{"-c:v", encoder, "-rc", "vbr", "-b:v", b.Target, "-bufsize", b.BufSize, "-preset", "medium", "-g", gop, "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-rc", "vbr", "-b:v", b.Target, "-bufsize", b.BufSize,
+			"-preset", nvencPreset(o.quality), "-g", gop, "-pix_fmt", o.pixFmt,
+		}
 	case capabilities.AccelAMF:
-		return []string{"-c:v", encoder, "-rc", "vbr_constrained", "-b:v", b.Target, "-quality_preset", "quality", "-g", gop, "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-rc", "vbr_constrained", "-b:v", b.Target,
+			"-quality_preset", amfQualityPreset(o.quality, CodecAV1),
+			"-g", gop, "-pix_fmt", o.pixFmt,
+		}
 	case capabilities.AccelQSV:
-		return []string{"-c:v", encoder, "-load_plugin", "1", "-b:v", b.Target, "-maxrate", b.Max, "-preset", "medium", "-g", gop, "-pix_fmt", "yuv420p"}
+		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max, "-g", gop)
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-g", gop, "-pix_fmt", "yuv420p"}
+		return []string{
+			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
+			"-g", gop, "-pix_fmt", o.pixFmt,
+		}
 	default:
-		return []string{"-c:v", "libsvtav1", "-b:v", b.Target, "-preset", "8", "-g", gop, "-pix_fmt", "yuv420p", "-svtav1-params", "tune=0:fast-decode=1:film-grain=0"}
+		return []string{
+			"-c:v", "libsvtav1", "-b:v", b.Target,
+			"-preset", svtav1Preset(o.quality), "-g", gop, "-pix_fmt", o.pixFmt,
+			"-svtav1-params", "tune=0:fast-decode=1:film-grain=0",
+		}
 	}
 }
 
-func vp9Args(accel capabilities.AccelType, encoder string, b BitrateConfig) []string {
+func vp9Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o encodeOpts) []string {
 	switch accel {
 	case capabilities.AccelNVENC:
-		return []string{"-c:v", encoder, "-rc", "vbr", "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-preset", "ultrafast"}
+		return []string{
+			"-c:v", encoder, "-rc", "vbr", "-b:v", b.Target, "-maxrate", b.Max,
+			"-bufsize", b.BufSize, "-preset", nvencPreset(o.quality),
+		}
 	case capabilities.AccelAMF:
-		return []string{"-c:v", encoder, "-rc", "vbr_constrained", "-b:v", b.Target, "-maxrate", b.Max, "-quality_preset", "ultrafast"}
+		return []string{
+			"-c:v", encoder, "-rc", "vbr_constrained", "-b:v", b.Target, "-maxrate", b.Max,
+			"-quality_preset", amfQualityPreset(o.quality, CodecVP9),
+		}
 	case capabilities.AccelQSV:
-		return []string{"-c:v", encoder, "-load_plugin", "1", "-b:v", b.Target, "-maxrate", b.Max, "-preset", "ultrafast"}
+		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize}
 	default:
-		return []string{"-c:v", "libvpx-vp9", "-b:v", b.Target, "-bufsize", b.BufSize, "-deadline", "realtime"}
+		return []string{"-c:v", "libvpx-vp9", "-b:v", b.Target, "-bufsize", b.BufSize, "-deadline", vp9Deadline(o.quality)}
 	}
 }
 
-func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig) []string {
+func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o encodeOpts) []string {
 	switch accel {
 	case capabilities.AccelNVENC:
-		return []string{"-c:v", encoder, "-preset", "fast", "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", "yuv420p"}
-	case capabilities.AccelQSV:
-		return []string{"-c:v", encoder, "-load_plugin", "1", "-b:v", b.Target, "-maxrate", b.Max, "-pix_fmt", "yuv420p"}
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", "yuv420p"}
-	default:
-		preset := "8"
-		if encoder == "libx265" {
-			preset = "ultrafast"
+		return []string{
+			"-c:v", encoder, "-preset", nvencPreset(o.quality),
+			"-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt,
 		}
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", "yuv420p"}
+	case capabilities.AccelQSV:
+		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
+	default:
+		preset := x265Preset(o.quality)
+		if encoder == "libx265" {
+			return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
+		}
+		return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
+	}
+}
+
+// qsvEncoderArgs builds Intel QSV encoder flags for oneVPL/FFmpeg 8+ (numeric preset, nv12).
+func qsvEncoderArgs(encoder string, preset QualityPreset, tail ...string) []string {
+	args := []string{"-c:v", encoder, "-preset", qsvPreset(preset), "-pix_fmt", "nv12"}
+	return append(args, tail...)
+}
+
+func x264Preset(p QualityPreset) string {
+	switch p {
+	case PresetUltrafast, PresetVeryfast, PresetFast, PresetMedium:
+		return string(p)
+	default:
+		return string(PresetVeryfast)
+	}
+}
+
+func x265Preset(p QualityPreset) string {
+	switch p {
+	case PresetUltrafast, PresetVeryfast:
+		return "ultrafast"
+	case PresetFast:
+		return "fast"
+	case PresetMedium:
+		return "medium"
+	default:
+		return "ultrafast"
+	}
+}
+
+func svtav1Preset(p QualityPreset) string {
+	switch p {
+	case PresetUltrafast:
+		return "12"
+	case PresetVeryfast:
+		return "10"
+	case PresetFast:
+		return "8"
+	case PresetMedium:
+		return "6"
+	default:
+		return "8"
+	}
+}
+
+func vp9Deadline(p QualityPreset) string {
+	if p == PresetUltrafast || p == PresetVeryfast {
+		return "realtime"
+	}
+	return "good"
+}
+
+// nvencPreset maps quality presets to NVENC -preset values.
+func nvencPreset(p QualityPreset) string {
+	switch p {
+	case PresetUltrafast:
+		return "ultrafast"
+	case PresetVeryfast, PresetFast:
+		return "fast"
+	case PresetMedium:
+		return "medium"
+	default:
+		return "fast"
+	}
+}
+
+// amfQualityPreset maps quality presets to AMF -quality_preset values.
+func amfQualityPreset(p QualityPreset, codec VideoCodec) string {
+	if codec == CodecAV1 {
+		switch p {
+		case PresetUltrafast, PresetVeryfast, PresetFast:
+			return "speed"
+		default:
+			return "quality"
+		}
+	}
+	switch p {
+	case PresetUltrafast, PresetVeryfast:
+		return "speed"
+	case PresetFast:
+		return "balanced"
+	default:
+		return "quality"
+	}
+}
+
+// qsvPreset maps x264-style preset names to Intel QSV numeric presets (0=slowest, 7=fastest).
+func qsvPreset(preset QualityPreset) string {
+	switch preset {
+	case PresetUltrafast, PresetVeryfast:
+		return "7"
+	case PresetFast:
+		return "6"
+	case PresetMedium:
+		return "4"
+	default:
+		return "7"
 	}
 }
 
