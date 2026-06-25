@@ -11,6 +11,7 @@ func init() {
 	Register(transcodeOp{})
 	Register(segmentRecordOp{})
 	Register(fmp4StreamCopyOp{})
+	Register(fmp4TranscodeOp{})
 	Register(timelapseCompileOp{})
 	Register(extractSubtitleOp{})
 	Register(convertHEICOp{})
@@ -78,7 +79,14 @@ type fmp4StreamCopyOp struct{}
 
 func (fmp4StreamCopyOp) Name() string { return "FMP4StreamCopy" }
 func (fmp4StreamCopyOp) Requirements() RequirementSet {
-	return RequirementSet{Protocols: []string{"tcp"}}
+	return RequirementSet{Protocols: []string{"file", "tcp"}}
+}
+
+type fmp4TranscodeOp struct{}
+
+func (fmp4TranscodeOp) Name() string { return "FMP4Transcode" }
+func (fmp4TranscodeOp) Requirements() RequirementSet {
+	return RequirementSet{NeedsEncode: true, MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
 }
 
 type timelapseCompileOp struct{}

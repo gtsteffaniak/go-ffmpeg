@@ -221,6 +221,49 @@ type FMP4StreamCopyOptions struct {
 	RTSP  *RTSPInputOptions
 }
 
+// FMP4TranscodeOptions configures live fMP4 transcoding to a writer.
+type FMP4TranscodeOptions struct {
+	Input      InputSource
+	RTSP       *RTSPInputOptions
+	Decode     encode.VideoDecodeProfile
+	Profile    encode.VideoProfile
+	AudioCodec string
+}
+
+// FMP4Transcode re-encodes input to fragmented MP4 on w until ctx cancelled.
+func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, w io.Writer, opts FMP4TranscodeOptions) error {
+	resolver := encode.NewResolver(caps)
+	decodeArgs, err := resolver.VideoDecoderArgs(opts.Decode)
+	if err != nil {
+		return err
+	}
+	vidArgs, err := resolver.VideoEncoderArgs(opts.Profile)
+	if err != nil {
+		return err
+	}
+
+	args := []string{"-hide_banner", "-nostats"}
+	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = append(args, decodeArgs...)
+	args = append(args, "-i", opts.Input.URL)
+	args = append(args, vidArgs...)
+	audio := opts.AudioCodec
+	if audio == "" {
+		audio = "aac"
+	}
+	args = append(args,
+		"-c:a", audio,
+		"-fflags", "+igndts",
+		"-avoid_negative_ts", "make_zero",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-frag_duration", "1000000",
+		"-f", "mp4",
+		"-loglevel", "warning",
+		"-",
+	)
+	return runFMP4ToWriter(ctx, runner, w, args)
+}
+
 // FMP4StreamCopy copies streams to fragmented MP4 on w until ctx cancelled.
 func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts FMP4StreamCopyOptions) error {
 	args := []string{"-hide_banner", "-nostats"}
@@ -237,6 +280,10 @@ func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opt
 		"-loglevel", "warning",
 		"-",
 	)
+	return runFMP4ToWriter(ctx, runner, w, args)
+}
+
+func runFMP4ToWriter(ctx context.Context, runner *ffexec.Runner, w io.Writer, args []string) error {
 	cmd := ffexec.CommandContext(ctx, runner.FFmpegPath, args...)
 	cmd.Stdout = w
 	var stderr strings.Builder
@@ -253,6 +300,9 @@ func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opt
 	case err := <-done:
 		if err != nil && ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if err != nil && stderr.Len() > 0 {
+			return fmt.Errorf("%w: %s", err, stderr.String())
 		}
 		return err
 	}
