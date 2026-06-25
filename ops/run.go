@@ -228,6 +228,7 @@ type FMP4TranscodeOptions struct {
 	Decode     encode.VideoDecodeProfile
 	Profile    encode.VideoProfile
 	AudioCodec string
+	MaxHeight  int // max output height in pixels; 0 disables downscale
 }
 
 // FMP4Transcode re-encodes input to fragmented MP4 on w until ctx cancelled.
@@ -246,7 +247,14 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 	args = appendInputFlags(args, opts.Input, opts.RTSP)
 	args = append(args, decodeArgs...)
 	args = append(args, "-i", opts.Input.URL)
+	if opts.MaxHeight > 0 {
+		args = append(args, "-vf", fmt.Sprintf("scale=-2:min(%d\\,ih)", opts.MaxHeight))
+	}
 	args = append(args, vidArgs...)
+	// Browser MSE expects baseline H.264 (avc1.42E01E); libx264 defaults to High.
+	if opts.Profile.Codec == "" || opts.Profile.Codec == encode.CodecH264 {
+		args = append(args, "-profile:v", "baseline", "-level", "3.1", "-tag:v", "avc1")
+	}
 	audio := opts.AudioCodec
 	if audio == "" {
 		audio = "aac"
