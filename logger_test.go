@@ -97,8 +97,8 @@ func TestServiceReloadUsesInjectedLogger(t *testing.T) {
 	capture := &captureLogger{}
 	ctx := context.Background()
 	svc, err := New(ctx, Config{
-		FFmpegPath:  "/usr/bin",
-		Logger:      capture,
+		FFmpegPath:   "/usr/bin",
+		Logger:       capture,
 		DetectOnInit: boolPtr(false),
 	})
 	if err != nil {
