@@ -233,6 +233,63 @@ svc, err := ffmpeg.New(ctx, ffmpeg.Config{
 })
 ```
 
+## Logging
+
+go-ffmpeg uses **dependency injection** for logging, similar to [go-logger](https://github.com/gtsteffaniak/go-logger). Pass a logger through `Config.Logger`; the library never relies on global log state.
+
+### Recommended: inject go-logger
+
+```go
+import (
+    ffmpeg "github.com/gtsteffaniak/go-ffmpeg"
+    "github.com/gtsteffaniak/go-ffmpeg/gtlogger"
+    "github.com/gtsteffaniak/go-logger/logger"
+)
+
+log, err := logger.NewLogger(logger.JsonConfig{Levels: "INFO,DEBUG"})
+if err != nil {
+    panic(err)
+}
+
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+    FFmpegPath: "/usr/local/bin",
+    Logger:     gtlogger.WithGroup(log), // tags output with group=ffmpeg
+})
+```
+
+Any `logger.Logger` instance works directly — `gtlogger.Adapt(log)` is optional sugar.
+
+### Use slog or silence detection logs
+
+```go
+import "log/slog"
+
+// slog.Default() wrapper
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+    Logger: ffmpeg.FromSlog(slog.Default()),
+})
+
+// CLI-style: no detection chatter (go-ffmpeg binary uses this)
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+    Logger: ffmpeg.NopLogger(),
+})
+```
+
+### Logger interface
+
+Libraries should accept `ffmpeg.Logger` (four structured methods: Debug, Info, Warn, Error). `Service.Logger()` returns the configured instance for downstream use.
+
+```go
+type Logger interface {
+    Debug(msg string, args ...any)
+    Info(msg string, args ...any)
+    Warn(msg string, args ...any)
+    Error(msg string, args ...any)
+}
+```
+
+During capability detection, logs are emitted under the `ffmpeg` group when the underlying logger supports grouping.
+
 ## License
 
 See repository license.

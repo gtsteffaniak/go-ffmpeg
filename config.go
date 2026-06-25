@@ -24,7 +24,9 @@ type Config struct {
 	// MaxConcurrent limits parallel ffmpeg processes. Default 4.
 	MaxConcurrent int
 
-	// Logger receives diagnostic output. Default slog.
+	// Logger receives diagnostic output. Inject any implementation of Logger
+	// (for example github.com/gtsteffaniak/go-logger/logger.Logger or slog via
+	// FromSlog). Defaults to slog.Default() when nil.
 	Logger Logger
 
 	// EncoderHierarchy overrides hardware acceleration preference order.

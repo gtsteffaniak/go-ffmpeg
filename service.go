@@ -62,10 +62,11 @@ func (s *Service) Reload(ctx context.Context) error {
 		return err
 	}
 	ops.EvaluateOps(caps)
-	s.cfg.Logger.Info("capability detection complete", "profile", caps.BuildProfile, "ffmpeg", caps.FFmpegVersion)
+	log := WithGroup(s.cfg.Logger, "ffmpeg")
+	log.Info("capability detection complete", "profile", caps.BuildProfile, "version", caps.FFmpegVersion)
 	report := caps.ReportString()
 	for _, line := range splitLines(report) {
-		s.cfg.Logger.Info(line)
+		log.Info(line)
 	}
 
 	s.mu.Lock()
@@ -140,6 +141,9 @@ func (s *Service) require(opName string) error {
 	}
 	return nil
 }
+
+// Logger returns the configured logger for this service.
+func (s *Service) Logger() Logger { return s.cfg.Logger }
 
 // FFmpegPath returns the resolved ffmpeg binary path.
 func (s *Service) FFmpegPath() string { return s.runner.FFmpegPath }
