@@ -295,6 +295,29 @@ func (s *Service) FMP4StreamCopy(ctx context.Context, w io.Writer, opts FMP4Stre
 	return ops.FMP4StreamCopy(ctx, s.runner, w, opts)
 }
 
+// FMP4TranscodeOptions configures live fMP4 transcoding.
+type FMP4TranscodeOptions = ops.FMP4TranscodeOptions
+
+// FMP4Transcode re-encodes input to fragmented MP4 on w.
+func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4TranscodeOptions) error {
+	if err := s.require("FMP4Transcode"); err != nil {
+		return err
+	}
+	if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+		return err
+	}
+	if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+		return err
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	if err := ops.FMP4Transcode(ctx, s.runner, caps, w, opts); err != nil {
+		return &OperationError{Op: "FMP4Transcode", Err: ErrEncodeFailed, Stderr: err.Error()}
+	}
+	return nil
+}
+
 // TimelapseCompileOptions configures timelapse compilation.
 type TimelapseCompileOptions = ops.TimelapseCompileOptions
 
