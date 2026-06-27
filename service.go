@@ -318,6 +318,91 @@ func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4Trans
 	return nil
 }
 
+// HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
+type HLSSegmentOptions = ops.HLSSegmentOptions
+
+// HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
+func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byte, error) {
+	if err := s.require("HLSSegment"); err != nil {
+		return nil, err
+	}
+	if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+		return nil, err
+	}
+	if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	data, err := ops.HLSSegment(ctx, s.runner, caps, opts)
+	if err != nil {
+		return nil, &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
+	}
+	return data, nil
+}
+
+// HLSInitAndSegment generates init and media bytes for the first HLS segment.
+func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions) (init, media []byte, err error) {
+	if err := s.require("HLSSegment"); err != nil {
+		return nil, nil, err
+	}
+	if !opts.Remux && !opts.VideoCopy {
+		if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+			return nil, nil, err
+		}
+		if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+			return nil, nil, err
+		}
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	init, media, err = ops.HLSInitAndSegment(ctx, s.runner, caps, opts)
+	if err != nil {
+		return nil, nil, &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
+	}
+	return init, media, nil
+}
+
+// HLSSegmentMedia writes a media-only fMP4 fragment for an HLS segment request.
+func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegmentOptions) error {
+	if err := s.require("HLSSegment"); err != nil {
+		return err
+	}
+	if !opts.Remux && !opts.VideoCopy {
+		if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+			return err
+		}
+		if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+			return err
+		}
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	if err := ops.HLSSegmentMedia(ctx, s.runner, caps, w, opts); err != nil {
+		return &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
+	}
+	return nil
+}
+
+// ProbeVideoFPS returns the average frame rate of the first video stream.
+func (s *Service) ProbeVideoFPS(ctx context.Context, path string) (float64, error) {
+	if err := s.require("ProbeStream"); err != nil {
+		return 0, err
+	}
+	return ops.ProbeVideoFPS(ctx, s.runner, path)
+}
+
+// ProbeVideoKeyframeTimes returns keyframe presentation times in seconds.
+func (s *Service) ProbeVideoKeyframeTimes(ctx context.Context, path string) ([]float64, error) {
+	if err := s.require("ProbeStream"); err != nil {
+		return nil, err
+	}
+	return ops.ProbeVideoKeyframeTimes(ctx, s.runner, path)
+}
+
 // TimelapseCompileOptions configures timelapse compilation.
 type TimelapseCompileOptions = ops.TimelapseCompileOptions
 
