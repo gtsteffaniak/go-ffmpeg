@@ -107,11 +107,11 @@ var backendLabels = map[string]string{
 }
 
 var accelLabels = map[AccelType]string{
-	AccelNVENC: "NVIDIA NVENC",
-	AccelAMF:   "AMD AMF",
-	AccelQSV:   "Intel Quick Sync Video",
-	AccelVAAPI: "VAAPI",
-	AccelD3D12: "WSL D3D12 (VAAPI)",
+	AccelNVENC:        "NVIDIA NVENC",
+	AccelAMF:          "AMD AMF",
+	AccelQSV:          "Intel Quick Sync Video",
+	AccelVAAPI:        "VAAPI",
+	AccelD3D12:        "WSL D3D12 (VAAPI)",
 	AccelVideoToolbox: "Apple VideoToolbox",
 	AccelNone:         "Software",
 }
@@ -124,10 +124,10 @@ var codecLabels = map[VideoCodec]string{
 }
 
 var encoderKindLabels = map[string]string{
-	"software": "Software encoder",
-	"native":   "FFmpeg built-in",
-	"nvenc":    "NVIDIA NVENC",
-	"amf":      "AMD AMF",
+	"software":     "Software encoder",
+	"native":       "FFmpeg built-in",
+	"nvenc":        "NVIDIA NVENC",
+	"amf":          "AMD AMF",
 	"qsv":          "Intel Quick Sync Video",
 	"vaapi":        "VAAPI (Intel/AMD GPU)",
 	"videotoolbox": "Apple VideoToolbox",

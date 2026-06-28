@@ -37,21 +37,21 @@ const minHLSTSBytes = 4096
 
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
 type HLSSegmentOptions struct {
-	Input       InputSource
-	StartSec    float64 // input seek position in the source file
+	Input    InputSource
+	StartSec float64 // input seek position in the source file
 	// MediaTimelineSec is the decode timeline position on the HLS playlist (0-based).
 	MediaTimelineSec float64
 	DurationSec      float64
-	Decode      encode.VideoDecodeProfile
-	Profile     encode.VideoProfile
-	MaxHeight   int
-	Remux       bool
+	Decode           encode.VideoDecodeProfile
+	Profile          encode.VideoProfile
+	MaxHeight        int
+	Remux            bool
 	// VideoCopy stream-copies H.264 video and transcodes audio to AAC (e.g. EAC3 in MKV).
-	VideoCopy   bool
+	VideoCopy    bool
 	AccurateSeek bool
-	GOP         int
-	VideoOnly   bool
-	Throttle    encode.ThrottleConfig
+	GOP          int
+	VideoOnly    bool
+	Throttle     encode.ThrottleConfig
 }
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.

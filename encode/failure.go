@@ -8,17 +8,17 @@ import (
 type FailureKind string
 
 const (
-	FailureUnknown        FailureKind = "unknown"
-	FailureInputNotFound  FailureKind = "input_not_found"
-	FailureInputInvalid   FailureKind = "input_invalid"
-	FailurePermission     FailureKind = "permission"
-	FailureEncoder        FailureKind = "encoder"
-	FailureDecoder        FailureKind = "decoder"
-	FailureHardware       FailureKind = "hardware"
-	FailureTimeout        FailureKind = "timeout"
-	FailureOutputEmpty    FailureKind = "output_empty"
-	FailureEncode         FailureKind = "encode"
-	FailureSeek           FailureKind = "seek"
+	FailureUnknown       FailureKind = "unknown"
+	FailureInputNotFound FailureKind = "input_not_found"
+	FailureInputInvalid  FailureKind = "input_invalid"
+	FailurePermission    FailureKind = "permission"
+	FailureEncoder       FailureKind = "encoder"
+	FailureDecoder       FailureKind = "decoder"
+	FailureHardware      FailureKind = "hardware"
+	FailureTimeout       FailureKind = "timeout"
+	FailureOutputEmpty   FailureKind = "output_empty"
+	FailureEncode        FailureKind = "encode"
+	FailureSeek          FailureKind = "seek"
 )
 
 // ClassifiedFailure is the result of parsing ffmpeg stderr.

@@ -243,10 +243,10 @@ type DecodeOption = capabilities.DecodeOption
 type AccelType = capabilities.AccelType
 
 const (
-	AccelNVENC = capabilities.AccelNVENC
-	AccelAMF   = capabilities.AccelAMF
-	AccelQSV   = capabilities.AccelQSV
-	AccelVAAPI = capabilities.AccelVAAPI
+	AccelNVENC        = capabilities.AccelNVENC
+	AccelAMF          = capabilities.AccelAMF
+	AccelQSV          = capabilities.AccelQSV
+	AccelVAAPI        = capabilities.AccelVAAPI
 	AccelD3D12        = capabilities.AccelD3D12
 	AccelVideoToolbox = capabilities.AccelVideoToolbox
 	AccelNone         = capabilities.AccelNone

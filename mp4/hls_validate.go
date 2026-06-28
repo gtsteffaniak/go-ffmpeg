@@ -24,8 +24,8 @@ type SegmentTimeline struct {
 
 // TimelineIssue records one validation failure.
 type TimelineIssue struct {
-	Check   string  `json:"check"`
-	Message string  `json:"message"`
+	Check    string  `json:"check"`
+	Message  string  `json:"message"`
 	DeltaSec float64 `json:"deltaSec,omitempty"`
 }
 
