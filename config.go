@@ -34,6 +34,12 @@ type Config struct {
 
 	// SkipHWTests skips expensive hardware encoder smoke tests.
 	SkipHWTests bool
+
+	// VerboseFFmpeg streams ffmpeg stderr to os.Stderr and uses -loglevel info.
+	VerboseFFmpeg bool
+
+	// MinVersion is the minimum required ffmpeg version. Defaults to 5.0.0.
+	MinVersion capabilities.Version
 }
 
 func (c *Config) withDefaults() Config {
@@ -53,6 +59,9 @@ func (c *Config) withDefaults() Config {
 	}
 	if len(out.EncoderHierarchy) == 0 {
 		out.EncoderHierarchy = capabilities.DefaultHierarchy()
+	}
+	if out.MinVersion == (capabilities.Version{}) {
+		out.MinVersion = capabilities.MinSupportedVersion
 	}
 	return out
 }

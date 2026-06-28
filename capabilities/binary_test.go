@@ -95,14 +95,28 @@ func TestCodecEncoderMapD3D12(t *testing.T) {
 }
 
 func TestHierarchyForPlatform(t *testing.T) {
-	native := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{Intel: true, VAAPI: true})
-	if len(native) < 4 || native[3] != capabilities.AccelVAAPI {
-		t.Fatalf("native hierarchy = %v", native)
+	linux := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "linux", Intel: true, VAAPI: true})
+	if len(linux) != 4 || linux[0] != capabilities.AccelNVENC || linux[1] != capabilities.AccelVAAPI ||
+		linux[2] != capabilities.AccelQSV || linux[3] != capabilities.AccelAMF {
+		t.Fatalf("Linux hierarchy = %v, want NVENC→VAAPI→QSV→AMF", linux)
 	}
-	wsl := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{WSL: true, D3D12: true})
-	last := wsl[len(wsl)-1]
-	if last != capabilities.AccelD3D12 {
-		t.Fatalf("wsl hierarchy last = %v", last)
+	windows := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "windows", Intel: true, QSV: true})
+	if len(windows) != 3 || windows[0] != capabilities.AccelNVENC || windows[1] != capabilities.AccelQSV || windows[2] != capabilities.AccelAMF {
+		t.Fatalf("Windows hierarchy = %v, want NVENC→QSV→AMF", windows)
+	}
+	for _, accel := range windows {
+		if accel == capabilities.AccelVAAPI {
+			t.Fatal("Windows hierarchy must not include VAAPI")
+		}
+	}
+	wsl := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "linux", WSL: true, D3D12: true})
+	if len(wsl) != 4 || wsl[0] != capabilities.AccelNVENC || wsl[1] != capabilities.AccelD3D12 ||
+		wsl[2] != capabilities.AccelVAAPI || wsl[3] != capabilities.AccelQSV {
+		t.Fatalf("WSL hierarchy = %v, want NVENC→D3D12→VAAPI→QSV", wsl)
+	}
+	darwin := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "darwin"})
+	if len(darwin) != 1 || darwin[0] != capabilities.AccelVideoToolbox {
+		t.Fatalf("macOS hierarchy = %v, want VideoToolbox only", darwin)
 	}
 }
 

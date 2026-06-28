@@ -65,6 +65,12 @@ func TestVideoEncoderArgsH264QSV(t *testing.T) {
 	if pixIdx := indexOf(args, "-pix_fmt"); pixIdx < 0 || args[pixIdx+1] != "nv12" {
 		t.Fatalf("expected nv12 pixel format for QSV, got %v", args)
 	}
+	if bfIdx := indexOf(args, "-bf"); bfIdx < 0 || args[bfIdx+1] != "0" {
+		t.Fatalf("expected QSV bf 0 for short segments, got %v", args)
+	}
+	if lpIdx := indexOf(args, "-low_power"); lpIdx < 0 || args[lpIdx+1] != "1" {
+		t.Fatalf("expected QSV low_power 1, got %v", args)
+	}
 	for _, forbidden := range []string{"-load_plugin", "ultrafast"} {
 		if indexOf(args, forbidden) >= 0 {
 			t.Fatalf("unexpected QSV arg %q in %v", forbidden, args)

@@ -86,6 +86,8 @@ func BackendDisplayLabel(name, kind string) string {
 		return "Intel Quick Sync"
 	case "vaapi":
 		return "VAAPI"
+	case "videotoolbox":
+		return "VideoToolbox"
 	default:
 		return kind
 	}
@@ -110,7 +112,8 @@ var accelLabels = map[AccelType]string{
 	AccelQSV:   "Intel Quick Sync Video",
 	AccelVAAPI: "VAAPI",
 	AccelD3D12: "WSL D3D12 (VAAPI)",
-	AccelNone:  "Software",
+	AccelVideoToolbox: "Apple VideoToolbox",
+	AccelNone:         "Software",
 }
 
 var codecLabels = map[VideoCodec]string{
@@ -125,8 +128,9 @@ var encoderKindLabels = map[string]string{
 	"native":   "FFmpeg built-in",
 	"nvenc":    "NVIDIA NVENC",
 	"amf":      "AMD AMF",
-	"qsv":      "Intel Quick Sync Video",
-	"vaapi":    "VAAPI (Intel/AMD GPU)",
+	"qsv":          "Intel Quick Sync Video",
+	"vaapi":        "VAAPI (Intel/AMD GPU)",
+	"videotoolbox": "Apple VideoToolbox",
 }
 
 var platformGateLabels = map[string]string{

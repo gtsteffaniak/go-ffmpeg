@@ -36,8 +36,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	s := &Service{
 		cfg: cfg,
 		runner: &ffexec.Runner{
-			FFmpegPath:  ffmpegPath,
-			FFprobePath: ffprobePath,
+			FFmpegPath:    ffmpegPath,
+			FFprobePath:   ffprobePath,
+			VerboseFFmpeg: cfg.VerboseFFmpeg,
 		},
 		semaphore: make(chan struct{}, cfg.MaxConcurrent),
 	}
@@ -59,6 +60,9 @@ func (s *Service) Reload(ctx context.Context) error {
 		EncoderHierarchy: s.cfg.EncoderHierarchy,
 	})
 	if err != nil {
+		return err
+	}
+	if err := checkMinVersion(caps, s.cfg.MinVersion); err != nil {
 		return err
 	}
 	ops.EvaluateOps(caps)
@@ -243,9 +247,15 @@ const (
 	AccelAMF   = capabilities.AccelAMF
 	AccelQSV   = capabilities.AccelQSV
 	AccelVAAPI = capabilities.AccelVAAPI
-	AccelD3D12 = capabilities.AccelD3D12
-	AccelNone  = capabilities.AccelNone
+	AccelD3D12        = capabilities.AccelD3D12
+	AccelVideoToolbox = capabilities.AccelVideoToolbox
+	AccelNone         = capabilities.AccelNone
 )
+
+// HierarchyForPlatform returns platform-specific encoder preference order.
+func HierarchyForPlatform(plat capabilities.PlatformInfo) []capabilities.AccelType {
+	return capabilities.HierarchyForPlatform(plat)
+}
 
 // TranscodeOptions configures transcoding.
 type TranscodeOptions = ops.TranscodeOptions
@@ -320,6 +330,121 @@ func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4Trans
 
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
 type HLSSegmentOptions = ops.HLSSegmentOptions
+
+// HLSSegmentParams holds resolved encode/remux settings for one HLS session.
+type HLSSegmentParams = ops.HLSSegmentParams
+
+// HLSSegmentBuildInput describes remux/copy/transcode path selection for one file.
+type HLSSegmentBuildInput = ops.HLSSegmentBuildInput
+
+// OnDemandHLSDefaults holds segment timing defaults for on-demand HLS.
+type OnDemandHLSDefaults = ops.OnDemandHLSDefaults
+
+// HLSPipelineOptions configures remux/copy/transcode path selection.
+type HLSPipelineOptions = ops.HLSPipelineOptions
+
+// HLSPreset names HLS transcode quality levels.
+type HLSPreset = encode.HLSPreset
+
+const (
+	DefaultHLSSegmentDurationSec = ops.DefaultHLSSegmentDurationSec
+	HLSPresetQuality             = encode.HLSPresetQuality
+	HLSPresetLowLatency          = encode.HLSPresetLowLatency
+	HLSPresetConstrained         = encode.HLSPresetConstrained
+)
+
+// DefaultOnDemandHLSDefaults returns on-demand segment defaults.
+func DefaultOnDemandHLSDefaults() OnDemandHLSDefaults {
+	return ops.DefaultOnDemandHLSDefaults()
+}
+
+// NormalizeHLSPreset maps aliases to canonical preset names.
+func NormalizeHLSPreset(p HLSPreset) HLSPreset {
+	return encode.NormalizeHLSPreset(p)
+}
+
+// HLSDecodeProfileForOnDemand selects input decode for short on-demand HLS segments.
+func HLSDecodeProfileForOnDemand(info StreamInfo) VideoDecodeProfile {
+	return encode.HLSDecodeProfileForOnDemand(info)
+}
+
+// HLSVideoProfile selects output encode settings for an HLS preset.
+func HLSVideoProfile(info StreamInfo, preset HLSPreset, maxHeight int) VideoProfile {
+	return encode.HLSVideoProfile(info, preset, maxHeight)
+}
+
+// SanitizeHLSKeyframes filters spurious keyframe probes.
+func SanitizeHLSKeyframes(keyframes []float64, durationSec float64) []float64 {
+	return ops.SanitizeHLSKeyframes(keyframes, durationSec)
+}
+
+// BuildHLSSegmentTimeline returns segment start times and durations.
+func BuildHLSSegmentTimeline(durationSec float64, keyframes []float64, segmentDurationSec float64) (starts, durations []float64) {
+	return ops.BuildHLSSegmentTimeline(durationSec, keyframes, segmentDurationSec)
+}
+
+// KeyframeSeekBefore returns the largest keyframe time <= sec.
+func KeyframeSeekBefore(keyframes []float64, sec float64) float64 {
+	return ops.KeyframeSeekBefore(keyframes, sec)
+}
+
+// BuildHLSSegmentOptions builds segment options for segment index n.
+func BuildHLSSegmentOptions(path string, index int, params HLSSegmentParams, starts, durations []float64, keyframeTimeline bool, keyframeSeekTimes []float64, segmentDurationSec float64) HLSSegmentOptions {
+	return ops.BuildHLSSegmentOptions(path, index, params, starts, durations, keyframeTimeline, keyframeSeekTimes, segmentDurationSec)
+}
+
+// BuildHLSSegmentBuildInput derives remux/copy/transcode flags.
+func BuildHLSSegmentBuildInput(info StreamInfo, preset HLSPreset, maxHeight int) HLSSegmentBuildInput {
+	return ops.BuildHLSSegmentBuildInput(info, preset, maxHeight)
+}
+
+// BuildHLSSegmentParamsFast assembles encode params without probing fps.
+func BuildHLSSegmentParamsFast(in HLSSegmentBuildInput, defaults OnDemandHLSDefaults) HLSSegmentParams {
+	return ops.BuildHLSSegmentParamsFast(in, defaults)
+}
+
+// NeedsFullVideoTranscode reports whether video must be re-encoded.
+func NeedsFullVideoTranscode(info StreamInfo, opts HLSPipelineOptions) bool {
+	return ops.NeedsFullVideoTranscode(info, opts)
+}
+
+// UseVideoCopy selects H.264 stream-copy with audio transcode.
+func UseVideoCopy(info StreamInfo, opts HLSPipelineOptions) bool {
+	return ops.UseVideoCopy(info, opts)
+}
+
+// HLSSegmentGOP returns GOP size from fps and on-demand defaults.
+func HLSSegmentGOP(fps float64, defaults OnDemandHLSDefaults) int {
+	return ops.HLSSegmentGOP(fps, defaults)
+}
+
+// CanFMP4StreamCopy reports whether remux to fMP4 is possible.
+func CanFMP4StreamCopy(info StreamInfo) bool {
+	return ops.CanFMP4StreamCopy(info)
+}
+
+// CanH264VideoCopy is true when H.264 can be stream-copied with audio transcode.
+func CanH264VideoCopy(info StreamInfo) bool {
+	return ops.CanH264VideoCopy(info)
+}
+
+// ProbeFile probes a local media file.
+func (s *Service) ProbeFile(ctx context.Context, path string) (StreamInfo, error) {
+	return s.ProbeStream(ctx, ProbeStreamOptions{URL: path, StreamType: probe.StreamFile})
+}
+
+// BuildHLSSegmentParams resolves GOP from fps when probeFPS is true.
+func (s *Service) BuildHLSSegmentParams(ctx context.Context, path string, in HLSSegmentBuildInput, defaults OnDemandHLSDefaults, probeFPS bool) (HLSSegmentParams, error) {
+	return ops.BuildHLSSegmentParams(ctx, s.ProbeVideoFPS, path, in, defaults, probeFPS)
+}
+
+// DescribeHLSSegmentPlan summarizes the encode path for logging.
+func (s *Service) DescribeHLSSegmentPlan(params HLSSegmentParams) string {
+	s.mu.RLock()
+	resolver := s.resolver
+	s.mu.RUnlock()
+	return ops.DescribeHLSSegmentPlan(resolver, params)
+}
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
 func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byte, error) {
@@ -562,6 +687,21 @@ func (s *Service) AvailableDecodeOptions() []capabilities.DecodeOption {
 		return nil
 	}
 	return caps.AvailableDecodeOptions()
+}
+
+func checkMinVersion(caps *capabilities.Capabilities, min capabilities.Version) error {
+	ver := caps.FeatureFlags.Version
+	if ver == (capabilities.Version{}) {
+		parsed, err := capabilities.ParseSemver(caps.FFmpegVersion)
+		if err != nil {
+			return &VersionTooOldError{Version: caps.FFmpegVersion, Minimum: min.String()}
+		}
+		ver = parsed
+	}
+	if capabilities.Compare(ver, min) < 0 {
+		return &VersionTooOldError{Version: ver.String(), Minimum: min.String()}
+	}
+	return nil
 }
 
 // DefaultDetectTimeout is the default capability detection timeout.

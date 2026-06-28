@@ -10,12 +10,13 @@ import (
 type AccelType string
 
 const (
-	AccelNVENC AccelType = "nvenc"
-	AccelAMF   AccelType = "amf"
-	AccelQSV   AccelType = "qsv"
-	AccelVAAPI AccelType = "vaapi"
-	AccelD3D12 AccelType = "d3d12"
-	AccelNone  AccelType = "none"
+	AccelNVENC        AccelType = "nvenc"
+	AccelAMF          AccelType = "amf"
+	AccelQSV          AccelType = "qsv"
+	AccelVAAPI        AccelType = "vaapi"
+	AccelD3D12        AccelType = "d3d12"
+	AccelVideoToolbox AccelType = "videotoolbox"
+	AccelNone         AccelType = "none"
 )
 
 // VideoCodec identifies a logical output video codec family.
@@ -28,17 +29,34 @@ const (
 	CodecHEVC VideoCodec = "hevc"
 )
 
-// DefaultHierarchy returns the default hardware acceleration preference order.
+// DefaultHierarchy returns Linux-standard order when platform is unknown.
 func DefaultHierarchy() []AccelType {
-	return []AccelType{AccelNVENC, AccelAMF, AccelQSV, AccelVAAPI, AccelD3D12}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
+}
+
+// AllEncoderAccelTypes lists every hardware backend the library understands.
+func AllEncoderAccelTypes() []AccelType {
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox}
 }
 
 // HierarchyForPlatform returns encoder preference order for the detected host.
+// Software encoding is chosen automatically when no hardware path is available.
+//
+//   - Windows:     NVENC → QSV → AMF
+//   - Linux:       NVENC → VAAPI → QSV → AMF
+//   - WSL2:        NVENC → D3D12 → VAAPI → QSV
+//   - macOS:       VideoToolbox only
 func HierarchyForPlatform(plat PlatformInfo) []AccelType {
-	if plat.WSL && plat.D3D12 {
-		return []AccelType{AccelNVENC, AccelAMF, AccelQSV, AccelD3D12}
+	switch plat.OS {
+	case "darwin":
+		return []AccelType{AccelVideoToolbox}
+	case "windows":
+		return []AccelType{AccelNVENC, AccelQSV, AccelAMF}
 	}
-	return []AccelType{AccelNVENC, AccelAMF, AccelQSV, AccelVAAPI}
+	if plat.WSL {
+		return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
+	}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
 }
 
 // BuildProfile describes the inferred FFmpeg build type.
@@ -135,6 +153,7 @@ type Capabilities struct {
 	DecodeOptions  []DecodeOption               `json:"decodeOptions"`
 	EnabledOps     []string                     `json:"enabledOps"`
 	DisabledOps    map[string][]string          `json:"disabledOps"`
+	FeatureFlags   FeatureFlags                 `json:"featureFlags"`
 	GeneratedAt    time.Time                    `json:"generatedAt"`
 }
 

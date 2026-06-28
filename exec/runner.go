@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -16,8 +18,28 @@ type Result struct {
 
 // Runner executes ffmpeg/ffprobe commands.
 type Runner struct {
-	FFmpegPath  string
-	FFprobePath string
+	FFmpegPath    string
+	FFprobePath   string
+	VerboseFFmpeg bool
+}
+
+// FFmpegLogLevel returns the -loglevel value for ffmpeg invocations.
+func (r *Runner) FFmpegLogLevel() string {
+	if r != nil && r.VerboseFFmpeg {
+		return "info"
+	}
+	return "warning"
+}
+
+// FFmpegStderrWriter returns stderr sink for ffmpeg: os.Stderr when verbose, else a buffer.
+func (r *Runner) FFmpegStderrWriter(capture *strings.Builder) io.Writer {
+	if r != nil && r.VerboseFFmpeg {
+		return os.Stderr
+	}
+	if capture != nil {
+		return capture
+	}
+	return &strings.Builder{}
 }
 
 // RunFFmpeg executes ffmpeg with args.

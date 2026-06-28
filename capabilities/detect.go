@@ -26,6 +26,9 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		return nil, err
 	}
 	caps.FFmpegVersion, caps.BuildConfig = ParseVersionOutput(verRes.Stdout)
+	if ver, parseErr := ParseSemver(caps.FFmpegVersion); parseErr == nil {
+		caps.FeatureFlags = FeatureFlagsFromVersion(ver)
+	}
 
 	probeVerRes, err := runner.RunFFprobe(ctx, "-version")
 	if err != nil {

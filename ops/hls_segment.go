@@ -15,6 +15,20 @@ import (
 
 const defaultHLSSegmentFPS = 30
 
+// appendHLSTimestampArgs configures output timestamps for independent segment encodes.
+// output_ts_offset places each fragment on a continuous media timeline without
+// #EXT-X-DISCONTINUITY (which causes visible backward skips in hls.js).
+func appendHLSTimestampArgs(args []string, startSec float64) []string {
+	args = append(args,
+		"-avoid_negative_ts", "make_zero",
+		"-fflags", "+genpts",
+	)
+	if startSec > 0 {
+		args = append(args, "-output_ts_offset", fmt.Sprintf("%.6f", startSec))
+	}
+	return args
+}
+
 // minHLSSegmentMediaBytes rejects empty fMP4 fragments (moof+mdat shell only).
 const minHLSSegmentMediaBytes = 8192
 
@@ -24,8 +38,10 @@ const minHLSTSBytes = 4096
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
 type HLSSegmentOptions struct {
 	Input       InputSource
-	StartSec    float64
-	DurationSec float64
+	StartSec    float64 // input seek position in the source file
+	// MediaTimelineSec is the decode timeline position on the HLS playlist (0-based).
+	MediaTimelineSec float64
+	DurationSec      float64
 	Decode      encode.VideoDecodeProfile
 	Profile     encode.VideoProfile
 	MaxHeight   int
@@ -35,6 +51,7 @@ type HLSSegmentOptions struct {
 	AccurateSeek bool
 	GOP         int
 	VideoOnly   bool
+	Throttle    encode.ThrottleConfig
 }
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
@@ -55,9 +72,6 @@ func HLSSegment(ctx context.Context, runner *ffexec.Runner, caps *capabilities.C
 
 // HLSInitAndSegment generates init bytes and media bytes in one encode pass for segment index 0.
 func HLSInitAndSegment(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions) (init, media []byte, err error) {
-	if !hlsUsesVideoCopyPipeline(opts) {
-		return nil, nil, fmt.Errorf("HLSInitAndSegment is for fMP4 copy/remux only; use HLSSegment for full transcode")
-	}
 	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, true)
 	if err != nil {
 		return nil, nil, err
@@ -69,6 +83,10 @@ func HLSInitAndSegment(ctx context.Context, runner *ffexec.Runner, caps *capabil
 	if err = validateHLSSegmentMedia(media, opts); err != nil {
 		return nil, nil, err
 	}
+	media, err = finalizeHLSSegmentMedia(media, opts)
+	if err != nil {
+		return nil, nil, err
+	}
 	return init, media, nil
 }
 
@@ -77,6 +95,18 @@ func validateHLSSegmentMedia(media []byte, opts HLSSegmentOptions) error {
 		return fmt.Errorf("segment media too small (%d bytes) at start %.3fs", len(media), opts.StartSec)
 	}
 	return nil
+}
+
+func finalizeHLSSegmentMedia(media []byte, opts HLSSegmentOptions) ([]byte, error) {
+	timelineSec := opts.MediaTimelineSec
+	if timelineSec <= 0 && opts.StartSec > 0 {
+		timelineSec = opts.StartSec
+	}
+	patched, err := mp4.AlignFragmentToMediaStart(media, timelineSec)
+	if err != nil {
+		return nil, fmt.Errorf("align segment tfdt at %.3fs: %w", timelineSec, err)
+	}
+	return patched, nil
 }
 
 func validateHLSTS(data []byte, opts HLSSegmentOptions) error {
@@ -91,9 +121,6 @@ func validateHLSTS(data []byte, opts HLSSegmentOptions) error {
 
 // HLSSegmentMedia generates a media-only fMP4 fragment (moof+mdat) for later segment requests.
 func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, w io.Writer, opts HLSSegmentOptions) error {
-	if !hlsUsesVideoCopyPipeline(opts) {
-		return fmt.Errorf("HLSSegmentMedia is for fMP4 copy/remux only; use HLSSegment for full transcode")
-	}
 	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, false)
 	if err != nil {
 		return err
@@ -105,6 +132,10 @@ func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilit
 	if len(media) == 0 {
 		media = raw
 	}
+	media, err = finalizeHLSSegmentMedia(media, opts)
+	if err != nil {
+		return err
+	}
 	if err := validateHLSSegmentMedia(media, opts); err != nil {
 		return err
 	}
@@ -113,12 +144,11 @@ func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilit
 }
 
 func runHLSSegmentWithSeekRetry(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool) ([]byte, error) {
-	if opts.Remux || opts.VideoCopy || opts.StartSec <= 0 {
+	if opts.Remux || opts.VideoCopy || opts.StartSec <= 0 || !opts.AccurateSeek {
 		return runHLSSegmentRaw(ctx, runner, caps, opts, includeInit)
 	}
 
-	// Full re-encode: always use input-accurate seek for mid-file segments. Fast input
-	// seek can yield moof fragments that pass size checks but contain no parseable samples.
+	// Full re-encode with keyframe-aligned timeline: input-accurate seek for mid-file segments.
 	accurate := opts
 	accurate.AccurateSeek = true
 	raw, err := runHLSSegmentRaw(ctx, runner, caps, accurate, includeInit)
@@ -126,7 +156,11 @@ func runHLSSegmentWithSeekRetry(ctx context.Context, runner *ffexec.Runner, caps
 		return nil, err
 	}
 	if !hlsUsesVideoCopyPipeline(opts) {
-		if err := validateHLSTS(raw, opts); err != nil {
+		_, media, splitErr := mp4.SplitInitMedia(raw)
+		if splitErr != nil || len(media) == 0 {
+			media = raw
+		}
+		if err := validateHLSSegmentMedia(media, opts); err != nil {
 			return nil, err
 		}
 		return raw, nil
@@ -151,11 +185,11 @@ func hlsUsesVideoCopyPipeline(opts HLSSegmentOptions) bool {
 func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool) ([]byte, error) {
 	dur := opts.DurationSec
 	if dur <= 0 {
-		dur = 4
+		dur = DefaultHLSSegmentDurationSec
 	}
 	gop := opts.GOP
 	if gop <= 0 {
-		gop = int(defaultHLSSegmentFPS * dur)
+		gop = HLSSegmentGOP(defaultHLSSegmentFPS, DefaultOnDemandHLSDefaults())
 	}
 
 	args := []string{"-hide_banner", "-nostats", "-y"}
@@ -165,7 +199,11 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 			args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
 		}
 	}
-	args = appendInputFlags(args, opts.Input, nil)
+	var inputExtra *InputExtraFlags
+	if !videoCopyPipeline && opts.Throttle.Enabled {
+		inputExtra = &InputExtraFlags{Throttle: &opts.Throttle, Features: caps.FeatureFlags}
+	}
+	args = appendInputFlags(args, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
 		decodeArgs, err := resolver.VideoDecoderArgs(opts.Decode)
@@ -199,7 +237,6 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 				"-ac", "2",
 				"-profile:a", "aac_low",
 				"-af", "aresample=async=1:first_pts=0",
-				// Required for AAC in fMP4/MSE; without it browsers play video-only.
 				"-bsf:a", "aac_adtstoasc",
 			)
 		}
@@ -209,14 +246,22 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		if err != nil {
 			return nil, err
 		}
-		if opts.MaxHeight > 0 {
-			args = append(args, "-vf", fmt.Sprintf("scale=-2:min(%d\\,ih)", opts.MaxHeight))
+		filterArgs, err := resolver.VideoFilterArgs(opts.Profile, opts.Decode, opts.MaxHeight)
+		if err != nil {
+			return nil, err
 		}
+		args = append(args, filterArgs...)
 		args = append(args, vidArgs...)
 		if opts.Profile.Codec == "" || opts.Profile.Codec == encode.CodecH264 {
-			args = append(args, "-profile:v", "baseline", "-level", "3.1", "-tag:v", "avc1")
+			encSel, encErr := resolver.ResolveEncoder(opts.Profile)
+			if encErr == nil && encSel.Accel != capabilities.AccelVAAPI && encSel.Accel != capabilities.AccelD3D12 {
+				args = append(args, "-profile:v", "baseline", "-level", "3.1", "-tag:v", "avc1")
+			} else if encErr == nil && encSel.Accel == capabilities.AccelVAAPI {
+				args = append(args, "-tag:v", "avc1")
+			}
 		}
 		args = append(args,
+			"-video_track_timescale", "90000",
 			"-g", fmt.Sprintf("%d", gop),
 			"-keyint_min", fmt.Sprintf("%d", gop),
 			"-sc_threshold", "0",
@@ -233,33 +278,21 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		}
 	}
 
-	args = append(args,
-		"-t", fmt.Sprintf("%.3f", dur),
-		"-avoid_negative_ts", "make_zero",
-		"-fflags", "+genpts",
-		"-reset_timestamps", "1",
-	)
-	// Timeline continuity is handled via #EXT-X-DISCONTINUITY in the playlist; each fragment starts near t=0.
-	if videoCopyPipeline {
-		movFlags := "frag_keyframe+default_base_moof"
-		if includeInit {
-			movFlags = "empty_moov+" + movFlags
-		}
-		args = append(args,
-			"-movflags", movFlags,
-			"-f", "mp4",
-			"-loglevel", "warning",
-			"-",
-		)
-	} else {
-		// MPEG-TS segments are self-contained; hls.js plays them without #EXT-X-MAP.
-		args = append(args,
-			"-f", "mpegts",
-			"-mpegts_flags", "+initial_discontinuity",
-			"-loglevel", "warning",
-			"-",
-		)
+	args = append(args, "-t", fmt.Sprintf("%.3f", dur))
+	timelineSec := opts.MediaTimelineSec
+	if timelineSec <= 0 && opts.StartSec > 0 {
+		timelineSec = opts.StartSec
 	}
+	args = appendHLSTimestampArgs(args, timelineSec)
+	// empty_moov is required even for media-only segments; without it ffmpeg emits
+	// progressive mp4 (moov+mdat) instead of moof+mdat fragments for hls.js MSE.
+	movFlags := "empty_moov+frag_keyframe+default_base_moof"
+	args = append(args,
+		"-movflags", movFlags,
+		"-f", "mp4",
+		"-loglevel", runner.FFmpegLogLevel(),
+		"-",
+	)
 
 	var buf bytes.Buffer
 	if err := runFMP4ToWriter(ctx, runner, &buf, args); err != nil {

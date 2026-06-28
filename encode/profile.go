@@ -165,6 +165,11 @@ func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
 			"-pix_fmt", o.pixFmt, "-g", gop,
 		}
+	case capabilities.AccelVideoToolbox:
+		return []string{
+			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
+			"-pix_fmt", o.pixFmt, "-g", gop,
+		}
 	default:
 		args := []string{
 			"-c:v", "libx264", "-preset", x264Preset(o.quality),
@@ -244,6 +249,8 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
+	case capabilities.AccelVideoToolbox:
+		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
 	default:
 		preset := x265Preset(o.quality)
 		if encoder == "libx265" {
@@ -254,8 +261,17 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 }
 
 // qsvEncoderArgs builds Intel QSV encoder flags for oneVPL/FFmpeg 8+ (numeric preset, nv12).
+// Low-latency settings for on-demand HLS: no lookahead, shallow async queue, no B-frames.
 func qsvEncoderArgs(encoder string, preset QualityPreset, tail ...string) []string {
-	args := []string{"-c:v", encoder, "-preset", qsvPreset(preset), "-pix_fmt", "nv12"}
+	args := []string{
+		"-c:v", encoder,
+		"-preset", qsvPreset(preset),
+		"-pix_fmt", "nv12",
+		"-look_ahead_depth", "0",
+		"-async_depth", "1",
+		"-bf", "0",
+		"-low_power", "1",
+	}
 	return append(args, tail...)
 }
 

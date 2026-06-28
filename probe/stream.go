@@ -86,15 +86,8 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 	}
 
 	var result struct {
-		Streams []struct {
-			CodecType    string `json:"codec_type"`
-			CodecName    string `json:"codec_name"`
-			BitRate      string `json:"bit_rate"`
-			AvgFrameRate string `json:"avg_frame_rate"`
-			Width        int    `json:"width"`
-			Height       int    `json:"height"`
-		} `json:"streams"`
-		Format struct {
+		Streams []probeStreamEntry `json:"streams"`
+		Format  struct {
 			FormatName string `json:"format_name"`
 			BitRate    string `json:"bit_rate"`
 			Duration   string `json:"duration"`
@@ -115,10 +108,35 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 		info.Duration = d
 	}
 
-	hasVideoBitrate := false
-	for _, s := range result.Streams {
+	hasVideoBitrate := applyProbeStreams(&info, result.Streams)
+	if info.HasVideo && !hasVideoBitrate && result.Format.BitRate != "" {
+		if br, err := strconv.Atoi(result.Format.BitRate); err == nil {
+			info.VideoBitrate = br
+		}
+	}
+	if info.IsValid {
+		info.Message = ""
+	}
+	return info, nil
+}
+
+type probeStreamEntry struct {
+	CodecType    string `json:"codec_type"`
+	CodecName    string `json:"codec_name"`
+	BitRate      string `json:"bit_rate"`
+	AvgFrameRate string `json:"avg_frame_rate"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+}
+
+// applyProbeStreams records the first video and first audio stream, matching ffmpeg -map 0:v:0 / 0:a:0.
+func applyProbeStreams(info *StreamInfo, streams []probeStreamEntry) (hasVideoBitrate bool) {
+	for _, s := range streams {
 		switch s.CodecType {
 		case "video":
+			if info.HasVideo {
+				continue
+			}
 			info.HasVideo = true
 			info.VideoCodec = s.CodecName
 			info.Width = s.Width
@@ -131,18 +149,12 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 			}
 		case "audio":
 			info.HasAudio = true
-			info.AudioCodec = s.CodecName
+			if info.AudioCodec == "" {
+				info.AudioCodec = s.CodecName
+			}
 		}
 	}
-	if info.HasVideo && !hasVideoBitrate && result.Format.BitRate != "" {
-		if br, err := strconv.Atoi(result.Format.BitRate); err == nil {
-			info.VideoBitrate = br
-		}
-	}
-	if info.IsValid {
-		info.Message = ""
-	}
-	return info, nil
+	return hasVideoBitrate
 }
 
 // GetMediaDuration returns media duration in seconds.
