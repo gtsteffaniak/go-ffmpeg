@@ -8,8 +8,8 @@ import (
 )
 
 func TestAppendReadrateArgs(t *testing.T) {
-	v5 := capabilities.Version{5, 0, 0}
-	v8 := capabilities.Version{8, 0, 0}
+	v5 := capabilities.Version{Major: 5, Minor: 0, Patch: 0}
+	v8 := capabilities.Version{Major: 8, Minor: 0, Patch: 0}
 
 	disabled := encode.AppendReadrateArgs(nil, v8, encode.ThrottleConfig{Enabled: false})
 	if len(disabled) != 0 {
