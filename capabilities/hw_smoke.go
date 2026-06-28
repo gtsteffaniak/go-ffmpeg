@@ -121,6 +121,9 @@ func encoderKindForName(name string) string {
 	if strings.Contains(name, "vaapi") {
 		return "vaapi"
 	}
+	if strings.Contains(name, "videotoolbox") {
+		return "videotoolbox"
+	}
 	return "unknown"
 }
 

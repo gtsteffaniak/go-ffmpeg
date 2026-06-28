@@ -7,7 +7,7 @@ func EncoderMatchesCodec(encoder string, codec VideoCodec) bool {
 			return true
 		}
 	}
-	for _, accel := range DefaultHierarchy() {
+	for _, accel := range AllEncoderAccelTypes() {
 		if CodecEncoderMap(codec, accel) == encoder {
 			return true
 		}
@@ -22,7 +22,7 @@ func DecoderMatchesCodec(decoder string, codec VideoCodec) bool {
 			return true
 		}
 	}
-	for _, accel := range DefaultHierarchy() {
+	for _, accel := range AllEncoderAccelTypes() {
 		if name := CodecDecoderMap(codec, accel); name == decoder {
 			return true
 		}
@@ -48,6 +48,8 @@ func EncoderAccel(encoder string) AccelType {
 			return AccelQSV
 		case "vaapi":
 			return AccelVAAPI
+		case "videotoolbox":
+			return AccelVideoToolbox
 		default:
 			return AccelNone
 		}
@@ -68,12 +70,17 @@ func DecoderAccel(decoder string) AccelType {
 			return AccelQSV
 		case "vaapi":
 			return AccelVAAPI
+		case "videotoolbox":
+			return AccelVideoToolbox
 		default:
 			return AccelNone
 		}
 	}
 	if decoderKindForName(decoder) == "vaapi" {
 		return AccelVAAPI
+	}
+	if decoderKindForName(decoder) == "videotoolbox" {
+		return AccelVideoToolbox
 	}
 	return AccelNone
 }

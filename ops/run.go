@@ -40,7 +40,7 @@ type ScreenshotOptions struct {
 // Screenshot extracts a single frame to OutputPath.
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
 	args = append(args,
 		"-i", opts.Input.URL,
 		"-frames:v", "1",
@@ -137,7 +137,7 @@ func Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Ca
 		return err
 	}
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
 	args = append(args, "-i", opts.Input.URL)
 	args = append(args, vidArgs...)
 	audio := opts.AudioCodec
@@ -194,7 +194,7 @@ func SegmentRecord(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 	}
 
 	args := []string{"-hide_banner", "-nostats", "-fflags", "+genpts", "-correct_ts_overflow", "1"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
 	args = append(args, opts.ExtraInputArgs...)
 	args = append(args, "-i", opts.Input.URL)
 	args = append(args, vidArgs...)
@@ -244,7 +244,7 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 	}
 
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
 	args = append(args, decodeArgs...)
 	args = append(args, "-i", opts.Input.URL)
 	if opts.MaxHeight > 0 {
@@ -266,7 +266,7 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
 		"-frag_duration", "1000000",
 		"-f", "mp4",
-		"-loglevel", "warning",
+		"-loglevel", runner.FFmpegLogLevel(),
 		"-",
 	)
 	return runFMP4ToWriter(ctx, runner, w, args)
@@ -275,7 +275,7 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 // FMP4StreamCopy copies streams to fragmented MP4 on w until ctx cancelled.
 func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts FMP4StreamCopyOptions) error {
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP)
+	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
 	args = append(args,
 		"-i", opts.Input.URL,
 		"-c:v", "copy",
@@ -285,17 +285,20 @@ func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opt
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
 		"-frag_duration", "1000000",
 		"-f", "mp4",
-		"-loglevel", "warning",
+		"-loglevel", runner.FFmpegLogLevel(),
 		"-",
 	)
 	return runFMP4ToWriter(ctx, runner, w, args)
 }
 
 func runFMP4ToWriter(ctx context.Context, runner *ffexec.Runner, w io.Writer, args []string) error {
+	if runner != nil && runner.VerboseFFmpeg {
+		fmt.Fprintf(os.Stderr, "[ffmpeg] %s %s\n", runner.FFmpegPath, strings.Join(args, " "))
+	}
 	cmd := ffexec.CommandContext(ctx, runner.FFmpegPath, args...)
 	cmd.Stdout = w
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	cmd.Stderr = runner.FFmpegStderrWriter(&stderr)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -388,7 +391,7 @@ func ConvertHEIC(ctx context.Context, runner *ffexec.Runner, opts ConvertHEICOpt
 	return err
 }
 
-func appendInputFlags(args []string, input InputSource, rtsp *RTSPInputOptions) []string {
+func appendInputFlags(args []string, input InputSource, rtsp *RTSPInputOptions, extra *InputExtraFlags) []string {
 	switch strings.ToLower(string(input.StreamType)) {
 	case "rtsp":
 		transport := "tcp"
@@ -407,5 +410,14 @@ func appendInputFlags(args []string, input InputSource, rtsp *RTSPInputOptions) 
 		}
 		args = append(args, "-rtsp_transport", transport, "-analyzeduration", analyze, "-probesize", probeSize)
 	}
+	if extra != nil && extra.Throttle != nil && extra.Throttle.Enabled {
+		args = encode.AppendReadrateArgs(args, extra.Features.Version, *extra.Throttle)
+	}
 	return args
+}
+
+// InputExtraFlags optional pre-input ffmpeg flags (e.g. readrate throttling).
+type InputExtraFlags struct {
+	Throttle *encode.ThrottleConfig
+	Features capabilities.FeatureFlags
 }

@@ -26,6 +26,9 @@ var (
 
 	// ErrProfileUnsupported indicates the requested encode/decode profile is unavailable.
 	ErrProfileUnsupported = errors.New("ffmpeg: profile unsupported")
+
+	// ErrVersionTooOld indicates ffmpeg is below the configured minimum version.
+	ErrVersionTooOld = errors.New("ffmpeg: version too old")
 )
 
 // OperationError wraps an operation failure with context and optional stderr.
@@ -58,6 +61,20 @@ func (e *UnsupportedError) Error() string {
 
 func (e *UnsupportedError) Is(target error) bool {
 	return target == ErrUnsupported
+}
+
+// VersionTooOldError describes a ffmpeg version below the configured minimum.
+type VersionTooOldError struct {
+	Version string
+	Minimum string
+}
+
+func (e *VersionTooOldError) Error() string {
+	return fmt.Sprintf("ffmpeg %s is below minimum %s required for transcoding", e.Version, e.Minimum)
+}
+
+func (e *VersionTooOldError) Is(target error) bool {
+	return target == ErrVersionTooOld
 }
 
 // ProfileError describes why a VideoProfile or VideoDecodeProfile cannot run.

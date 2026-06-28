@@ -12,6 +12,7 @@ func init() {
 	Register(segmentRecordOp{})
 	Register(fmp4StreamCopyOp{})
 	Register(fmp4TranscodeOp{})
+	Register(hlsSegmentOp{})
 	Register(timelapseCompileOp{})
 	Register(extractSubtitleOp{})
 	Register(convertHEICOp{})
@@ -86,6 +87,13 @@ type fmp4TranscodeOp struct{}
 
 func (fmp4TranscodeOp) Name() string { return "FMP4Transcode" }
 func (fmp4TranscodeOp) Requirements() RequirementSet {
+	return RequirementSet{NeedsEncode: true, MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
+}
+
+type hlsSegmentOp struct{}
+
+func (hlsSegmentOp) Name() string { return "HLSSegment" }
+func (hlsSegmentOp) Requirements() RequirementSet {
 	return RequirementSet{NeedsEncode: true, MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
 }
 

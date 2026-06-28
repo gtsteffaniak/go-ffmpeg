@@ -236,6 +236,15 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 			"-hwaccel_device", "va",
 			"-c:v", sw,
 		}, nil
+	case capabilities.AccelVideoToolbox:
+		sw := sel.SWCodec
+		if sw == "" {
+			sw = softwareCodecForDecode(sel.Decoder)
+		}
+		if sw == "" {
+			return nil, unavailableDecodeProfile(profile.Codec, sel.Decoder, sel.Accel, "no software codec for videotoolbox decode path")
+		}
+		return []string{"-hwaccel", "videotoolbox", "-c:v", sw}, nil
 	default:
 		return nil, nil
 	}

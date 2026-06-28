@@ -30,6 +30,9 @@ var KnownDecoders = []struct {
 	{"hwaccel:vaapi:hevc", "vaapi", CodecHEVC, true, "vaapi"},
 	{"hwaccel:vaapi:vp9", "vaapi", CodecVP9, true, "vaapi"},
 	{"hwaccel:vaapi:av1", "vaapi", CodecAV1, true, "vaapi"},
+	// VideoToolbox hwaccel decode (macOS)
+	{"hwaccel:videotoolbox:h264", "videotoolbox", CodecH264, true, "videotoolbox"},
+	{"hwaccel:videotoolbox:hevc", "videotoolbox", CodecHEVC, true, "videotoolbox"},
 }
 
 // DecodeBinding links an encoder row to its decode capability entry.
@@ -75,6 +78,10 @@ func DecodeBindingForEncoder(encoderName string) (DecodeBinding, bool) {
 		return DecodeBinding{Key: "hwaccel:vaapi:av1", Label: "vaapi+av1", HWAccel: "vaapi", SWCodec: "av1"}, true
 	case "vp9_vaapi":
 		return DecodeBinding{Key: "hwaccel:vaapi:vp9", Label: "vaapi+vp9", HWAccel: "vaapi", SWCodec: "vp9"}, true
+	case "h264_videotoolbox":
+		return DecodeBinding{Key: "hwaccel:videotoolbox:h264", Label: "videotoolbox+h264", HWAccel: "videotoolbox", SWCodec: "h264"}, true
+	case "hevc_videotoolbox":
+		return DecodeBinding{Key: "hwaccel:videotoolbox:hevc", Label: "videotoolbox+hevc", HWAccel: "videotoolbox", SWCodec: "hevc"}, true
 	default:
 		return DecodeBinding{}, false
 	}
@@ -134,6 +141,8 @@ func CodecHWAccelDecodeKey(codec VideoCodec, accel AccelType) string {
 		return "hwaccel:vaapi:" + sw
 	case AccelD3D12:
 		return "hwaccel:vaapi:" + sw
+	case AccelVideoToolbox:
+		return "hwaccel:videotoolbox:" + sw
 	default:
 		return ""
 	}
@@ -185,6 +194,9 @@ func DecoderKindForName(name string) string {
 	}
 	if strings.HasPrefix(name, "hwaccel:vaapi:") {
 		return "vaapi"
+	}
+	if strings.HasPrefix(name, "hwaccel:videotoolbox:") {
+		return "videotoolbox"
 	}
 	if strings.Contains(name, "cuvid") {
 		return "nvenc"

@@ -37,6 +37,9 @@ var KnownEncoders = []struct {
 	{"av1_vaapi", "vaapi", true},
 	{"vp9_vaapi", "vaapi", true},
 	{"hevc_vaapi", "vaapi", true},
+	// VideoToolbox (macOS)
+	{"h264_videotoolbox", "videotoolbox", true},
+	{"hevc_videotoolbox", "videotoolbox", true},
 }
 
 // KnownFilters lists filters required by library operations.
@@ -63,6 +66,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "h264_qsv"
 		case AccelVAAPI, AccelD3D12:
 			return "h264_vaapi"
+		case AccelVideoToolbox:
+			return "h264_videotoolbox"
 		}
 	case CodecAV1:
 		switch accel {
@@ -94,6 +99,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "hevc_qsv"
 		case AccelVAAPI, AccelD3D12:
 			return "hevc_vaapi"
+		case AccelVideoToolbox:
+			return "hevc_videotoolbox"
 		}
 	}
 	return ""
