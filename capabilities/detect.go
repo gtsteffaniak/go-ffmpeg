@@ -12,6 +12,7 @@ import (
 type DetectOptions struct {
 	SkipHWTests      bool
 	EncoderHierarchy []AccelType
+	RenderDevice     string
 }
 
 // Detect runs the full capability detection pipeline.
@@ -37,6 +38,12 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.FFprobeVersion = ParseFFprobeVersion(probeVerRes.Stdout)
 
 	caps.Platform = platform.Detect()
+	if opts.RenderDevice != "" {
+		if caps.Platform.Details == nil {
+			caps.Platform.Details = map[string]string{}
+		}
+		caps.Platform.Details["render_device"] = opts.RenderDevice
+	}
 
 	hierarchy := opts.EncoderHierarchy
 	if len(hierarchy) == 0 {

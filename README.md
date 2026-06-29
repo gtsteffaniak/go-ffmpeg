@@ -173,7 +173,15 @@ Unsupported encode/decode profiles return `ffmpeg.ErrProfileUnsupported` (`Profi
 
 ## Encoding and decode selection
 
-On startup, `Service` caches the full capability matrix. By default, operations pick the best hardware path (NVENC → AMF → QSV → VAAPI → software). Callers can override per request:
+On startup, `Service` caches the full capability matrix. By default, operations pick the best hardware path (NVENC → AMF → QSV → VAAPI → software). Configure GPU selection on the service (hardware acceleration is disabled when `gpu` is empty):
+
+```go
+svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
+    GPU: "igpu", // or "dgpu", "/dev/dri/renderD129", "GeForce RTX 4090"
+})
+```
+
+Callers can still override per request:
 
 ```go
 // Automatic — uses detected preferred encoder (e.g. h264_qsv on Intel)
