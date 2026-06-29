@@ -9,6 +9,23 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
+const (
+	reportBackendColWidth  = 26
+	reportEncoderColWidth  = 20
+	reportCompiledColWidth = 13 // "compiled=yes"
+	reportRoleColWidth     = 11 // "encode: yes"
+	reportColGap           = 2
+)
+
+// reportColStyled pads styled text using plain-text width so ANSI codes do not skew columns.
+func reportColStyled(plain, styled string, width int) string {
+	pad := width - len(plain)
+	if pad < 0 {
+		pad = 0
+	}
+	return styled + strings.Repeat(" ", pad) + strings.Repeat(" ", reportColGap)
+}
+
 // ReportString returns a human-readable capability report.
 func (c *Capabilities) ReportString() string {
 	return c.ReportStringWithOptions(ReportOptions{})
@@ -112,21 +129,18 @@ func writeCodecGroups(w io.Writer, st reportStyle, c *Capabilities) {
 			if !ok {
 				continue
 			}
-			backend := BackendDisplayLabel(enc.Name, enc.Kind)
-			encodeAvail, decodeAvail, decodeLabel, decodeErr := c.EncodeDecodeSummary(name)
+			backendLabel := BackendDisplayLabel(enc.Name, enc.Kind)
+			encodeAvail, decodeAvail, _, decodeErr := c.EncodeDecodeSummary(name)
 			_, hasDecode := DecodeBindingForEncoder(name)
 
-			line := fmt.Sprintf("    %-28s %s compiled=%s",
-				st.kindLabel(enc.Kind, backend),
-				st.dim("("+enc.Name+")"),
-				st.compiledLabel(enc.Compiled),
-			)
-			line += "  " + st.roleStatus("encode", encodeAvail)
+			encoderPlain := "(" + enc.Name + ")"
+			line := "    " +
+				reportColStyled(backendLabel, st.kindLabel(enc.Kind, backendLabel), reportBackendColWidth) +
+				reportColStyled(encoderPlain, st.dim(encoderPlain), reportEncoderColWidth) +
+				reportColStyled(st.compiledFieldPlain(enc.Compiled), st.compiledField(enc.Compiled), reportCompiledColWidth) +
+				reportColStyled(st.roleStatusPlain("encode", encodeAvail), st.roleStatus("encode", encodeAvail), reportRoleColWidth)
 			if hasDecode {
-				line += "  " + st.roleStatus("decode", decodeAvail)
-				if decodeLabel != "" {
-					line += " " + st.dim("("+decodeLabel+")")
-				}
+				line += reportColStyled(st.roleStatusPlain("decode", decodeAvail), st.roleStatus("decode", decodeAvail), reportRoleColWidth)
 			}
 			fmt.Fprintln(w, line)
 
@@ -174,6 +188,9 @@ func writeEncoderGroups(w io.Writer, st reportStyle, c *Capabilities) {
 func writePlatformSection(w io.Writer, st reportStyle, c *Capabilities) {
 	p := c.Platform
 	fmt.Fprintf(w, "%s %s/%s\n", st.bold("Platform:"), st.cyan(p.OS), st.cyan(p.Arch))
+	if p.OS == "darwin" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VideoToolbox")+":"), st.boolLabel(c.HWAccels["videotoolbox"].Compiled))
+	}
 	if gpu := p.Details["gpu"]; gpu != "" {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("GPU:"), st.dim(gpu))
 	}

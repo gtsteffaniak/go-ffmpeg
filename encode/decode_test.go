@@ -29,3 +29,24 @@ func TestVideoDecoderArgsVAAPI(t *testing.T) {
 		t.Fatalf("args = %v", args)
 	}
 }
+
+func TestVideoDecoderArgsVideoToolbox(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.CodecMatrix[capabilities.CodecVP9] = capabilities.CodecSupport{
+		DecodePreferred: capabilities.DecoderSelection{
+			Decoder: "hwaccel:videotoolbox:vp9",
+			Accel:   capabilities.AccelVideoToolbox,
+			Kind:    "videotoolbox",
+			SWCodec: "vp9",
+		},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoDecoderArgs(encode.VideoDecodeProfile{Codec: capabilities.CodecVP9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "videotoolbox") || !strings.Contains(joined, "vp9") {
+		t.Fatalf("args = %v", args)
+	}
+}

@@ -85,8 +85,8 @@ func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 			Codec:   known.Codec,
 			HWAccel: known.HWAccel,
 		}
-		if known.HWAccel != "" && strings.HasPrefix(known.Name, "hwaccel:vaapi:") {
-			dec.SWCodec = strings.TrimPrefix(known.Name, "hwaccel:vaapi:")
+		if _, swCodec, ok := ParseHWAccelKey(known.Name); ok {
+			dec.SWCodec = swCodec
 		}
 
 		dec.Compiled = decoderActuallyCompiled(ctx, runner, known.Name, compiledSet[known.Name], known.HWAccel, dec.SWCodec, caps)
