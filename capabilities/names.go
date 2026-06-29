@@ -139,15 +139,15 @@ var encoderKindLabels = map[string]string{
 }
 
 var platformGateLabels = map[string]string{
-	"NVIDIA":     "NVIDIA GPU + driver",
-	"AMD":        "AMD GPU",
-	"Intel":      "Intel GPU",
-	"DRI":        "DRM render nodes",
-	"QSV":        "Intel Quick Sync Video",
-	"QSVRuntime": "oneVPL GPU runtime (libmfx-gen)",
-	"VPL":        "oneVPL dispatcher (libvpl2)",
-	"VAAPI":      "VAAPI driver stack",
-	"D3D12":      "WSL D3D12 / DXGK",
+	"NVIDIA":       "NVIDIA GPU + driver",
+	"AMD":          "AMD GPU",
+	"Intel":        "Intel GPU",
+	"DRI":          "DRM render nodes",
+	"QSV":          "Intel Quick Sync Video",
+	"QSVRuntime":   "oneVPL GPU runtime (libmfx-gen)",
+	"VPL":          "oneVPL dispatcher (libvpl2)",
+	"VAAPI":        "VAAPI driver stack",
+	"D3D12":        "WSL D3D12 / DXGK",
 	"WSL":          "Windows Subsystem for Linux",
 	"VideoToolbox": "Apple VideoToolbox",
 }

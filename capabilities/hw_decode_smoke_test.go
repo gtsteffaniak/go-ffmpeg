@@ -32,10 +32,10 @@ func TestParseHWAccelKey(t *testing.T) {
 
 func TestHWDecodeSmokeArgsVideoToolbox(t *testing.T) {
 	cases := []struct {
-		name     string
-		decoder  string
+		name      string
+		decoder   string
 		bitstream string
-		swCodec  string
+		swCodec   string
 	}{
 		{"h264", "hwaccel:videotoolbox:h264", "/tmp/test.h264", "h264"},
 		{"vp9", "hwaccel:videotoolbox:vp9", "/tmp/test.ivf", "vp9"},
