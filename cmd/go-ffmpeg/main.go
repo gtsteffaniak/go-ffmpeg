@@ -106,6 +106,9 @@ func run() int {
 	}
 
 	opts := capabilities.ReportOptions{Color: color}
+	if capabilities.ReportColorEnabled(os.Stdout, opts) {
+		enableConsoleColor()
+	}
 	if err := caps.ReportWithOptions(os.Stdout, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "go-ffmpeg: report failed: %v\n", err)
 		return 1

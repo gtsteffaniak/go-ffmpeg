@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
+	"golang.org/x/term"
 )
 
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -236,17 +237,18 @@ func (s reportStyle) profileLabel(p BuildProfile) string {
 	}
 }
 
-// IsTerminalWriter reports whether w is an interactive character device.
+// IsTerminalWriter reports whether w is attached to an interactive terminal.
 func IsTerminalWriter(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
 	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(int(f.Fd()))
+}
+
+// ReportColorEnabled reports whether ReportWithOptions will emit ANSI colors to w.
+func ReportColorEnabled(w io.Writer, opts ReportOptions) bool {
+	return reportColorEnabled(w, opts)
 }
 
 func reportColorEnabled(w io.Writer, opts ReportOptions) bool {
