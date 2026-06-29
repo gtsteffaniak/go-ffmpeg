@@ -154,8 +154,10 @@ func hwDecodeSmokeArgs(decoderName, bitstream, hwAccel, swCodec string, plat pla
 		if hwAccel == "" {
 			hwAccel = "vaapi"
 		}
-		if swCodec == "" && strings.HasPrefix(decoderName, "hwaccel:vaapi:") {
-			swCodec = strings.TrimPrefix(decoderName, "hwaccel:vaapi:")
+		if swCodec == "" {
+			if _, sc, ok := ParseHWAccelKey(decoderName); ok {
+				swCodec = sc
+			}
 		}
 		if swCodec == "" {
 			return nil
@@ -165,6 +167,25 @@ func hwDecodeSmokeArgs(decoderName, bitstream, hwAccel, swCodec string, plat pla
 			"-init_hw_device", "vaapi=va:" + renderDev,
 			"-hwaccel", hwAccel,
 			"-hwaccel_device", "va",
+			"-c:v", swCodec,
+			"-i", bitstream,
+			"-f", "null", "-",
+		}
+	case "videotoolbox":
+		if hwAccel == "" {
+			hwAccel = "videotoolbox"
+		}
+		if swCodec == "" {
+			if _, sc, ok := ParseHWAccelKey(decoderName); ok {
+				swCodec = sc
+			}
+		}
+		if swCodec == "" {
+			return nil
+		}
+		return []string{
+			"-hide_banner",
+			"-hwaccel", hwAccel,
 			"-c:v", swCodec,
 			"-i", bitstream,
 			"-f", "null", "-",
@@ -181,11 +202,16 @@ func hwDecodeSmokeArgs(decoderName, bitstream, hwAccel, swCodec string, plat pla
 
 func decoderActuallyCompiled(ctx context.Context, runner *ffexec.Runner, name string, listed bool, hwAccel string, swCodec string, caps *Capabilities) bool {
 	if strings.HasPrefix(name, "hwaccel:") {
+		if parsedAccel, parsedCodec, ok := ParseHWAccelKey(name); ok {
+			if hwAccel == "" {
+				hwAccel = parsedAccel
+			}
+			if swCodec == "" {
+				swCodec = parsedCodec
+			}
+		}
 		if hwAccel == "" {
 			hwAccel = "vaapi"
-		}
-		if swCodec == "" && strings.HasPrefix(name, "hwaccel:vaapi:") {
-			swCodec = strings.TrimPrefix(name, "hwaccel:vaapi:")
 		}
 		if !caps.HWAccels[hwAccel].Compiled {
 			return false

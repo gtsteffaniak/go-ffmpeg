@@ -9,20 +9,14 @@ type encoderReportGroup struct {
 
 var encoderReportGroups = []encoderReportGroup{
 	{
-		Title: "Other encoders",
-		Encoders: []string{
-			"mjpeg", "aac", "libmp3lame",
-		},
-	},
-	{
 		Title:    "H.264 / AVC",
 		Codec:    CodecH264,
-		Encoders: []string{"libx264", "h264_nvenc", "h264_amf", "h264_qsv", "h264_vaapi"},
+		Encoders: []string{"libx264", "h264_videotoolbox", "h264_nvenc", "h264_amf", "h264_qsv", "h264_vaapi"},
 	},
 	{
 		Title:    "H.265 / HEVC",
 		Codec:    CodecHEVC,
-		Encoders: []string{"libx265", "libvvenc", "hevc_nvenc", "hevc_qsv", "hevc_vaapi"},
+		Encoders: []string{"libx265", "libvvenc", "hevc_videotoolbox", "hevc_nvenc", "hevc_qsv", "hevc_vaapi"},
 	},
 	{
 		Title:    "AV1",
@@ -33,5 +27,11 @@ var encoderReportGroups = []encoderReportGroup{
 		Title:    "VP9",
 		Codec:    CodecVP9,
 		Encoders: []string{"libvpx-vp9", "vp9_nvenc", "vp9_amf", "vp9_qsv", "vp9_vaapi"},
+	},
+	{
+		Title: "Other encoders",
+		Encoders: []string{
+			"mjpeg", "aac", "libmp3lame",
+		},
 	},
 }

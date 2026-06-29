@@ -83,6 +83,12 @@ func TestCodecDecoderMap(t *testing.T) {
 	if got := capabilities.CodecHWAccelDecodeKey(capabilities.CodecVP9, capabilities.AccelVAAPI); got != "hwaccel:vaapi:vp9" {
 		t.Fatalf("got %q", got)
 	}
+	if got := capabilities.CodecHWAccelDecodeKey(capabilities.CodecAV1, capabilities.AccelVideoToolbox); got != "hwaccel:videotoolbox:av1" {
+		t.Fatalf("videotoolbox av1 maps to hwaccel key, got %q", got)
+	}
+	if got := capabilities.CodecHWAccelDecodeKey(capabilities.CodecVP9, capabilities.AccelVideoToolbox); got != "hwaccel:videotoolbox:vp9" {
+		t.Fatalf("videotoolbox vp9 maps to hwaccel key, got %q", got)
+	}
 }
 
 func TestCodecEncoderMapD3D12(t *testing.T) {
@@ -134,6 +140,62 @@ func TestBuildCodecMatrix(t *testing.T) {
 	}
 	if support.DecodePreferred.Decoder != "h264_cuvid" {
 		t.Fatalf("preferred decode = %q", support.DecodePreferred.Decoder)
+	}
+}
+
+func TestBuildCodecMatrixDarwinVideoToolbox(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Platform.OS = "darwin"
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Compiled: true, Available: true, Kind: "videotoolbox"}
+	caps.Encoders["hevc_videotoolbox"] = capabilities.EncoderCapability{Name: "hevc_videotoolbox", Compiled: true, Available: true, Kind: "videotoolbox"}
+	caps.Encoders["libx265"] = capabilities.EncoderCapability{Name: "libx265", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["h264"] = capabilities.DecoderCapability{Name: "h264", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["hevc"] = capabilities.DecoderCapability{Name: "hevc", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["hwaccel:videotoolbox:h264"] = capabilities.DecoderCapability{Name: "hwaccel:videotoolbox:h264", Compiled: true, Available: true, Kind: "videotoolbox", HWAccel: "videotoolbox", SWCodec: "h264"}
+	caps.Decoders["hwaccel:videotoolbox:hevc"] = capabilities.DecoderCapability{Name: "hwaccel:videotoolbox:hevc", Compiled: true, Available: true, Kind: "videotoolbox", HWAccel: "videotoolbox", SWCodec: "hevc"}
+	caps.Encoders["libsvtav1"] = capabilities.EncoderCapability{Name: "libsvtav1", Compiled: true, Available: true, Kind: "software"}
+	caps.Encoders["libvpx-vp9"] = capabilities.EncoderCapability{Name: "libvpx-vp9", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["vp9"] = capabilities.DecoderCapability{Name: "vp9", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["av1"] = capabilities.DecoderCapability{Name: "av1", Compiled: true, Available: true, Kind: "software"}
+	caps.Decoders["hwaccel:videotoolbox:vp9"] = capabilities.DecoderCapability{Name: "hwaccel:videotoolbox:vp9", Compiled: true, Available: true, Kind: "videotoolbox", HWAccel: "videotoolbox", SWCodec: "vp9"}
+	caps.Decoders["hwaccel:videotoolbox:av1"] = capabilities.DecoderCapability{Name: "hwaccel:videotoolbox:av1", Compiled: true, Available: true, Kind: "videotoolbox", HWAccel: "videotoolbox", SWCodec: "av1"}
+
+	capabilities.BuildCodecMatrix(caps, capabilities.HierarchyForPlatform(caps.Platform))
+
+	h264 := caps.CodecMatrix[capabilities.CodecH264]
+	if h264.Preferred.Encoder != "h264_videotoolbox" {
+		t.Fatalf("h264 preferred encode = %q, want h264_videotoolbox", h264.Preferred.Encoder)
+	}
+	if h264.Preferred.Accel != capabilities.AccelVideoToolbox {
+		t.Fatalf("h264 preferred accel = %q, want videotoolbox", h264.Preferred.Accel)
+	}
+	if h264.DecodePreferred.Accel != capabilities.AccelVideoToolbox {
+		t.Fatalf("h264 preferred decode accel = %q, want videotoolbox", h264.DecodePreferred.Accel)
+	}
+
+	hevc := caps.CodecMatrix[capabilities.CodecHEVC]
+	if hevc.Preferred.Encoder != "hevc_videotoolbox" {
+		t.Fatalf("hevc preferred encode = %q, want hevc_videotoolbox", hevc.Preferred.Encoder)
+	}
+	if hevc.DecodePreferred.Accel != capabilities.AccelVideoToolbox {
+		t.Fatalf("hevc preferred decode accel = %q, want videotoolbox", hevc.DecodePreferred.Accel)
+	}
+
+	vp9 := caps.CodecMatrix[capabilities.CodecVP9]
+	if vp9.Preferred.Encoder != "libvpx-vp9" || vp9.Preferred.Accel != capabilities.AccelNone {
+		t.Fatalf("vp9 preferred encode = %+v, want libvpx software", vp9.Preferred)
+	}
+	if vp9.DecodePreferred.Accel != capabilities.AccelVideoToolbox {
+		t.Fatalf("vp9 preferred decode accel = %q, want videotoolbox", vp9.DecodePreferred.Accel)
+	}
+
+	av1 := caps.CodecMatrix[capabilities.CodecAV1]
+	if av1.Preferred.Encoder != "libsvtav1" || av1.Preferred.Accel != capabilities.AccelNone {
+		t.Fatalf("av1 preferred encode = %+v, want libsvtav1 software", av1.Preferred)
+	}
+	if av1.DecodePreferred.Accel != capabilities.AccelVideoToolbox {
+		t.Fatalf("av1 preferred decode accel = %q, want videotoolbox", av1.DecodePreferred.Accel)
 	}
 }
 

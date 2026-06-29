@@ -41,7 +41,7 @@ func SmokeTestEncoderArgs(ctx context.Context, runner *ffexec.Runner, kind strin
 func smokeInputPrefix(kind string, plat platform.Info) []string {
 	renderDev := platform.RenderDevice(plat.Details)
 	switch kind {
-	case "nvenc", "amf", "software", "unknown":
+	case "nvenc", "amf", "software", "videotoolbox", "unknown":
 		return []string{
 			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",

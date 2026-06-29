@@ -33,6 +33,23 @@ var KnownDecoders = []struct {
 	// VideoToolbox hwaccel decode (macOS)
 	{"hwaccel:videotoolbox:h264", "videotoolbox", CodecH264, true, "videotoolbox"},
 	{"hwaccel:videotoolbox:hevc", "videotoolbox", CodecHEVC, true, "videotoolbox"},
+	{"hwaccel:videotoolbox:vp9", "videotoolbox", CodecVP9, true, "videotoolbox"},
+	{"hwaccel:videotoolbox:av1", "videotoolbox", CodecAV1, true, "videotoolbox"},
+}
+
+// ParseHWAccelKey extracts backend and software codec from hwaccel capability keys
+// such as hwaccel:videotoolbox:h264.
+func ParseHWAccelKey(name string) (hwAccel, swCodec string, ok bool) {
+	const prefix = "hwaccel:"
+	if !strings.HasPrefix(name, prefix) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(name, prefix)
+	sep := strings.Index(rest, ":")
+	if sep <= 0 || sep >= len(rest)-1 {
+		return "", "", false
+	}
+	return rest[:sep], rest[sep+1:], true
 }
 
 // DecodeBinding links an encoder row to its decode capability entry.

@@ -3,10 +3,26 @@ package capabilities
 import (
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// visibleLen returns terminal display width, ignoring ANSI color/style sequences.
+func visibleLen(s string) int {
+	return len(ansiEscapePattern.ReplaceAllString(s, ""))
+}
+
+// padVisible right-pads s so its visible width is at least width.
+func padVisible(s string, width int) string {
+	if pad := width - visibleLen(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+	return s
+}
 
 // ANSI color codes for terminal output.
 const (
@@ -52,22 +68,27 @@ func (s reportStyle) blue(text string) string    { return s.wrap(ansiBlue, text)
 func (s reportStyle) magenta(text string) string { return s.wrap(ansiMagenta, text) }
 func (s reportStyle) cyan(text string) string    { return s.wrap(ansiCyan, text) }
 
-func (s reportStyle) boolLabel(v bool) string {
+func (s reportStyle) yesNoLabel(v bool) string {
 	if v {
 		return s.green("yes")
 	}
-	return s.dim("no")
+	return s.red("no")
+}
+
+func (s reportStyle) boolLabel(v bool) string {
+	return s.yesNoLabel(v)
 }
 
 func (s reportStyle) availLabel(v bool) string {
-	if v {
-		return s.green("available")
-	}
-	return s.red("unavailable")
+	return s.yesNoLabel(v)
+}
+
+func (s reportStyle) roleStatusPlain(role string, avail bool) string {
+	return role + ": " + yesNoPlain(avail)
 }
 
 func (s reportStyle) roleStatus(role string, avail bool) string {
-	return s.dim(role+":") + " " + s.availLabel(avail)
+	return s.dim(role+":") + " " + s.yesNoLabel(avail)
 }
 
 func (s reportStyle) vplLabel(path string) string {
@@ -88,10 +109,15 @@ func (s reportStyle) qsvRuntimeLabel(p platform.Info) string {
 }
 
 func (s reportStyle) compiledLabel(v bool) string {
-	if v {
-		return s.green("true")
-	}
-	return s.red("false")
+	return s.yesNoLabel(v)
+}
+
+func (s reportStyle) compiledFieldPlain(compiled bool) string {
+	return "compiled=" + yesNoPlain(compiled)
+}
+
+func (s reportStyle) compiledField(compiled bool) string {
+	return "compiled=" + s.compiledLabel(compiled)
 }
 
 func (s reportStyle) section(title string) string {
@@ -191,6 +217,13 @@ func (s reportStyle) resolutionAccelSuffix(accel AccelType) string {
 }
 
 func (s reportStyle) white(text string) string { return s.wrap(ansiWhite, text) }
+
+func yesNoPlain(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
 
 func (s reportStyle) profileLabel(p BuildProfile) string {
 	switch p {

@@ -10,6 +10,9 @@ func DecoderLabel(name string) string {
 	if strings.HasPrefix(name, "hwaccel:vaapi:") {
 		return "VAAPI decode (" + strings.TrimPrefix(name, "hwaccel:vaapi:") + ")"
 	}
+	if strings.HasPrefix(name, "hwaccel:videotoolbox:") {
+		return "VideoToolbox decode (" + strings.TrimPrefix(name, "hwaccel:videotoolbox:") + ")"
+	}
 	return name
 }
 
@@ -94,16 +97,18 @@ func BackendDisplayLabel(name, kind string) string {
 }
 
 var backendLabels = map[string]string{
-	"libx264":    "Software — x264",
-	"libx265":    "Software — x265",
-	"libsvtav1":  "Software — SVT-AV1",
-	"librav1e":   "Software — rav1e",
-	"libaom-av1": "Software — libaom",
-	"libvpx-vp9": "Software — libvpx",
-	"libvvenc":   "Software — vvenc",
-	"mjpeg":      "Built-in — Motion JPEG",
-	"aac":        "Built-in — AAC",
-	"libmp3lame": "Software — LAME (MP3)",
+	"libx264":           "Software - x264",
+	"libx265":           "Software - x265",
+	"libsvtav1":         "Software - SVT-AV1",
+	"librav1e":          "Software - rav1e",
+	"libaom-av1":        "Software - libaom",
+	"libvpx-vp9":        "Software - libvpx",
+	"libvvenc":          "Software - vvenc",
+	"mjpeg":             "Built-in - Motion JPEG",
+	"aac":               "Built-in - AAC",
+	"libmp3lame":        "Software - LAME (MP3)",
+	"h264_videotoolbox": "VideoToolbox - H.264",
+	"hevc_videotoolbox": "VideoToolbox - HEVC",
 }
 
 var accelLabels = map[AccelType]string{
@@ -143,7 +148,8 @@ var platformGateLabels = map[string]string{
 	"VPL":        "oneVPL dispatcher (libvpl2)",
 	"VAAPI":      "VAAPI driver stack",
 	"D3D12":      "WSL D3D12 / DXGK",
-	"WSL":        "Windows Subsystem for Linux",
+	"WSL":          "Windows Subsystem for Linux",
+	"VideoToolbox": "Apple VideoToolbox",
 }
 
 var encoderLabels = map[string]string{
@@ -177,4 +183,7 @@ var encoderLabels = map[string]string{
 	"hevc_vaapi": "HEVC — VAAPI",
 	"av1_vaapi":  "AV1 — VAAPI",
 	"vp9_vaapi":  "VP9 — VAAPI",
+	// VideoToolbox
+	"h264_videotoolbox": "H.264 — VideoToolbox",
+	"hevc_videotoolbox": "HEVC — VideoToolbox",
 }

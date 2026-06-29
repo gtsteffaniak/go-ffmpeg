@@ -30,6 +30,7 @@ type Config struct {
 	Logger Logger
 
 	// EncoderHierarchy overrides hardware acceleration preference order.
+	// When nil or empty, detection uses HierarchyForPlatform (VideoToolbox on macOS, etc.).
 	EncoderHierarchy []capabilities.AccelType
 
 	// SkipHWTests skips expensive hardware encoder smoke tests.
@@ -56,9 +57,6 @@ func (c *Config) withDefaults() Config {
 	}
 	if out.Logger == nil {
 		out.Logger = defaultLogger()
-	}
-	if len(out.EncoderHierarchy) == 0 {
-		out.EncoderHierarchy = capabilities.DefaultHierarchy()
 	}
 	if out.MinVersion == (capabilities.Version{}) {
 		out.MinVersion = capabilities.MinSupportedVersion
