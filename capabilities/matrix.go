@@ -136,23 +136,23 @@ type CodecSupport struct {
 
 // Capabilities is the full capability matrix produced by Detect.
 type Capabilities struct {
-	FFmpegPath     string                       `json:"ffmpegPath"`
-	FFprobePath    string                       `json:"ffprobePath"`
-	FFmpegVersion  string                       `json:"ffmpegVersion"`
-	FFprobeVersion string                       `json:"ffprobeVersion"`
-	BuildConfig    BuildConfig                  `json:"buildConfig"`
-	BuildProfile   BuildProfile                 `json:"buildProfile"`
-	Encoders       map[string]EncoderCapability `json:"encoders"`
-	Decoders       map[string]DecoderCapability `json:"decoders"`
-	Filters        map[string]bool              `json:"filters"`
-	HWAccels       map[string]HWAccelCapability `json:"hwaccels"`
-	Protocols      map[string]bool              `json:"protocols"`
-	Platform       PlatformInfo                 `json:"platform"`
-	CodecMatrix    map[VideoCodec]CodecSupport  `json:"codecMatrix"`
-	EncodeOptions  []EncodeOption               `json:"encodeOptions"`
-	DecodeOptions  []DecodeOption               `json:"decodeOptions"`
-	EnabledOps     []string                     `json:"enabledOps"`
-	DisabledOps    map[string][]string          `json:"disabledOps"`
+	FFmpegPath       string                       `json:"ffmpegPath"`
+	FFprobePath      string                       `json:"ffprobePath"`
+	FFmpegVersion    string                       `json:"ffmpegVersion"`
+	FFprobeVersion   string                       `json:"ffprobeVersion"`
+	BuildConfig      BuildConfig                  `json:"buildConfig"`
+	BuildProfile     BuildProfile                 `json:"buildProfile"`
+	Encoders         map[string]EncoderCapability `json:"encoders"`
+	Decoders         map[string]DecoderCapability `json:"decoders"`
+	Filters          map[string]bool              `json:"filters"`
+	HWAccels         map[string]HWAccelCapability `json:"hwaccels"`
+	Protocols        map[string]bool              `json:"protocols"`
+	Platform         PlatformInfo                 `json:"platform"`
+	CodecMatrix      map[VideoCodec]CodecSupport  `json:"codecMatrix"`
+	EncodeOptions    []EncodeOption               `json:"encodeOptions"`
+	DecodeOptions    []DecodeOption               `json:"decodeOptions"`
+	EnabledOps       []string                     `json:"enabledOps"`
+	DisabledOps      map[string][]string          `json:"disabledOps"`
 	FeatureFlags     FeatureFlags                 `json:"featureFlags"`
 	GeneratedAt      time.Time                    `json:"generatedAt"`
 	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`

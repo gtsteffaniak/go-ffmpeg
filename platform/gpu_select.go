@@ -19,12 +19,12 @@ type GPUChoice struct {
 }
 
 type drmGPU struct {
-	RenderNode  string
-	VendorID    string
-	Vendor      string
-	Name        string
-	Integrated  bool
-	PCIAddress  string
+	RenderNode string
+	VendorID   string
+	Vendor     string
+	Name       string
+	Integrated bool
+	PCIAddress string
 }
 
 // ResolveGPU interprets a gpu config value.

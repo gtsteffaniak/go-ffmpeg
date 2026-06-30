@@ -16,3 +16,6 @@ test-integration:
 lint:
 	go vet ./...
 	@test -z "$$(gofmt -s -l .)"
+
+format:
+	gofmt -s -w .
