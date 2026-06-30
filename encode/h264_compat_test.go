@@ -14,7 +14,7 @@ func TestH264LevelForMaxHeight(t *testing.T) {
 		height int
 		want   string
 	}{
-		{480, "3.0"},
+		{480, "3.1"},
 		{720, "3.1"},
 		{1080, "4.0"},
 		{1440, "4.1"},
@@ -29,12 +29,13 @@ func TestH264LevelForMaxHeight(t *testing.T) {
 
 func TestAppendH264FMP4CompatArgsVideoToolbox(t *testing.T) {
 	t.Parallel()
-	args := encode.AppendH264FMP4CompatArgs(nil, capabilities.AccelVideoToolbox, 1080)
-	joined := strings.Join(args, " ")
-	for _, want := range []string{"-profile:v", "baseline", "-level", "4.0", "-tag:v", "avc1"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("missing %q in compat args: %v", want, args)
-		}
+	args := encode.AppendH264FMP4CompatArgs(nil, capabilities.AccelVideoToolbox, 480)
+	if len(args) != 2 || args[0] != "-tag:v" || args[1] != "avc1" {
+		t.Fatalf("videotoolbox compat args = %v, want tag only", args)
+	}
+	joined := strings.Join(encode.AppendH264FMP4CompatArgs(nil, capabilities.AccelVideoToolbox, 1080), " ")
+	if strings.Contains(joined, "-profile:v") || strings.Contains(joined, "-level") {
+		t.Fatalf("videotoolbox should not force profile/level: %q", joined)
 	}
 }
 

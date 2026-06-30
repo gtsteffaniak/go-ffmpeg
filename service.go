@@ -340,6 +340,19 @@ type OnDemandHLSDefaults = ops.OnDemandHLSDefaults
 // HLSPipelineOptions configures remux/copy/transcode path selection.
 type HLSPipelineOptions = ops.HLSPipelineOptions
 
+// HLSCacheIdentity describes inputs for a stable on-demand HLS disk cache key.
+type HLSCacheIdentity = ops.HLSCacheIdentity
+
+// HLSCacheFingerprint returns a stable directory name for a transcode cache entry.
+func HLSCacheFingerprint(id HLSCacheIdentity) string {
+	return ops.HLSCacheFingerprint(id)
+}
+
+// HLSCacheSchemaVersion returns the active fingerprint schema version.
+func HLSCacheSchemaVersion() string {
+	return ops.HLSCacheSchemaVersion()
+}
+
 const (
 	DefaultHLSSegmentDurationSec = ops.DefaultHLSSegmentDurationSec
 )

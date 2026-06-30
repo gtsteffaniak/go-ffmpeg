@@ -5,14 +5,15 @@ import (
 )
 
 // H264LevelForMaxHeight picks an H.264 level that fits the output height cap.
-// Level 3.1 only supports up to 720p; 1080p requires at least 4.0.
+// Level 3.1 supports up to 720p; 1080p requires at least 4.0.
+// 480p uses 3.1 (not 3.0) — VideoToolbox rejects baseline+3.0 for scaled outputs.
 func H264LevelForMaxHeight(maxHeight int) string {
 	if maxHeight <= 0 {
 		maxHeight = 1080
 	}
 	switch {
 	case maxHeight <= 480:
-		return "3.0"
+		return "3.1"
 	case maxHeight <= 720:
 		return "3.1"
 	case maxHeight <= 1080:
@@ -26,7 +27,9 @@ func H264LevelForMaxHeight(maxHeight int) string {
 func AppendH264FMP4CompatArgs(args []string, accel capabilities.AccelType, maxHeight int) []string {
 	level := H264LevelForMaxHeight(maxHeight)
 	switch accel {
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVideoToolbox:
+		// HW encoders pick a compatible profile/level; forcing baseline+3.0 breaks
+		// h264_videotoolbox on datasaver (480p) with "Cannot prepare encoder: -12902".
 		return append(args, "-tag:v", "avc1")
 	default:
 		return append(args, "-profile:v", "baseline", "-level", level, "-tag:v", "avc1")
