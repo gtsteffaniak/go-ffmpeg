@@ -33,6 +33,10 @@ type Config struct {
 	// When nil or empty, detection uses HierarchyForPlatform (VideoToolbox on macOS, etc.).
 	EncoderHierarchy []capabilities.AccelType
 
+	// GPU selects hardware acceleration. Empty disables HW (software only).
+	// Values: default, igpu, dgpu, a render node (/dev/dri/renderD*), or a device name substring.
+	GPU string
+
 	// SkipHWTests skips expensive hardware encoder smoke tests.
 	SkipHWTests bool
 

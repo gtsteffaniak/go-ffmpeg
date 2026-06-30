@@ -55,10 +55,7 @@ func (s *Service) Reload(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, s.cfg.DetectTimeout)
 	defer cancel()
 
-	caps, err := capabilities.Detect(dctx, s.runner, capabilities.DetectOptions{
-		SkipHWTests:      s.cfg.SkipHWTests,
-		EncoderHierarchy: s.cfg.EncoderHierarchy,
-	})
+	caps, err := capabilities.Detect(dctx, s.runner, s.buildDetectOptions())
 	if err != nil {
 		return err
 	}

@@ -64,6 +64,17 @@ Skip slow hardware encoder smoke tests (useful in CI or headless containers):
 go-ffmpeg -skip-hw-tests
 ```
 
+By default the CLI probes every hardware backend on the system. Use `-skip-hw-tests` only for CI or headless environments.
+
+The report is structured as:
+
+1. **FFmpeg build** — configure flags, compiled libraries, hwaccels, filters, protocols
+2. **System platform** — detected GPUs and driver gates
+3. **Selected GPU** — device, vendor, render node, encoder hierarchy (filebrowser `gpu` config only)
+4. **Hardware backends** — Software, NVENC, QSV, VAAPI, AMF, VideoToolbox sections with per-codec compile + runtime results
+5. **Codec resolution** — preferred encode/decode path for the active scope
+6. **Operations** — enabled/disabled library operations
+
 Color output (auto-detected when stdout is a TTY):
 
 ```bash
@@ -173,7 +184,15 @@ Unsupported encode/decode profiles return `ffmpeg.ErrProfileUnsupported` (`Profi
 
 ## Encoding and decode selection
 
-On startup, `Service` caches the full capability matrix. By default, operations pick the best hardware path (NVENC → AMF → QSV → VAAPI → software). Callers can override per request:
+On startup, `Service` caches the full capability matrix. By default, operations pick the best hardware path (NVENC → AMF → QSV → VAAPI → software). Configure GPU selection on the service (hardware acceleration is disabled when `gpu` is empty):
+
+```go
+svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
+    GPU: "igpu", // or "dgpu", "/dev/dri/renderD129", "GeForce RTX 4090"
+})
+```
+
+Callers can still override per request:
 
 ```go
 // Automatic — uses detected preferred encoder (e.g. h264_qsv on Intel)
