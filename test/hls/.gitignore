@@ -1,0 +1,8 @@
+.fixtures/
+.fixtures-smoke/
+.playback-cache/
+.ci/
+report_site/media/
+playback/node_modules/
+test-ffmpeg
+report.json

@@ -74,3 +74,32 @@ jobs:
           go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
           ./bin/go-ffmpeg -json | head -20
           ./bin/go-ffmpeg -skip-hw-tests | head -15
+
+  hls-software:
+    name: HLS software matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Pull ffmpeg image
+        run: docker pull gtstef/ffmpeg:8.1.1
+      - name: Extract ffmpeg binaries
+        run: |
+          id=$(docker create gtstef/ffmpeg:8.1.1)
+          mkdir -p /tmp/ffmpeg-bin
+          docker cp "$id:/ffmpeg" /tmp/ffmpeg-bin/ffmpeg
+          docker cp "$id:/ffprobe" /tmp/ffmpeg-bin/ffprobe
+          chmod +x /tmp/ffmpeg-bin/ffmpeg /tmp/ffmpeg-bin/ffprobe
+          docker rm "$id"
+      - name: HLS harness unit tests
+        run: cd test/hls && go test -count=1 ./...
+      - name: HLS software-only matrix
+        env:
+          GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
+          GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
+          GOFFMPEG_SKIP_HW: "1"
+          HLS_SOFTWARE_ONLY: "1"
+        run: bash test/hls/scripts/ci-software-matrix.sh

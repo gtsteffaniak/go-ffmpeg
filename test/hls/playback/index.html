@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>HLS playback test (hls.js only)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; background: #111; color: #eee; }
+    video { width: 100%; max-width: 720px; background: #000; }
+    #status { margin: 1rem 0; padding: 0.75rem; background: #222; border-radius: 6px; }
+    #audit { font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 320px; overflow: auto; }
+    .fail { color: #f66; }
+    .pass { color: #6f6; }
+  </style>
+</head>
+<body>
+  <h1>HLS playback test</h1>
+  <p>Minimal hls.js player — no Plyr, no filebrowser. Used to isolate MSE timeline issues.</p>
+  <video id="video" controls playsinline></video>
+  <div id="status">Loading…</div>
+  <div id="audit"></div>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const playlist = params.get('playlist') || 'playlist.m3u8';
+    const autoplay = params.get('autoplay') !== '0';
+    const durationSec = Number(params.get('duration') || 20);
+    const jumpThreshold = Number(params.get('jump') || 0.35);
+
+    const video = document.getElementById('video');
+    const statusEl = document.getElementById('status');
+    const auditEl = document.getElementById('audit');
+
+    const audit = {
+      jumps: [],
+      stalls: 0,
+      samples: [],
+      errors: [],
+      startWall: performance.now(),
+    };
+    window.__playbackAudit = audit;
+
+    function log(line) {
+      auditEl.textContent += line + '\n';
+      auditEl.scrollTop = auditEl.scrollHeight;
+    }
+
+    let lastT = 0;
+    let lastWall = performance.now();
+    let pollTimer = null;
+
+    function samplePlayhead() {
+      const now = performance.now();
+      const t = video.currentTime;
+      const wallDelta = (now - lastWall) / 1000;
+      const playDelta = t - lastT;
+      if (lastT > 0 && !video.paused && !video.seeking) {
+        const expected = wallDelta * 0.85;
+        const forwardJump = playDelta - wallDelta;
+        if (playDelta < -0.05) {
+          audit.jumps.push({ kind: 'backward', at: t, delta: playDelta, wallMs: now - audit.startWall });
+          log(`BACKWARD jump at ${t.toFixed(3)}s delta=${playDelta.toFixed(3)}s`);
+        } else if (forwardJump > jumpThreshold) {
+          audit.jumps.push({ kind: 'forward', at: t, delta: forwardJump, wallMs: now - audit.startWall });
+          log(`FORWARD skip at ${t.toFixed(3)}s +${forwardJump.toFixed(3)}s (wall ${wallDelta.toFixed(2)}s play ${playDelta.toFixed(2)}s)`);
+        }
+        audit.samples.push({ t, wallMs: now - audit.startWall, playDelta, wallDelta });
+      }
+      lastT = t;
+      lastWall = now;
+    }
+
+    function finish(result) {
+      clearInterval(pollTimer);
+      audit.result = result;
+      statusEl.textContent = result.pass
+        ? `PASS — ${durationSec}s playback, ${audit.jumps.length} jumps, ${audit.stalls} stalls`
+        : `FAIL — ${audit.jumps.length} jumps, ${audit.stalls} stalls`;
+      statusEl.className = result.pass ? 'pass' : 'fail';
+      window.__playbackDone = true;
+    }
+
+    if (!Hls.isSupported()) {
+      statusEl.textContent = 'hls.js not supported';
+      finish({ pass: false });
+    } else {
+      const hls = new Hls({
+        maxBufferLength: 12,
+        maxMaxBufferLength: 12,
+        maxBufferHole: 2.0,
+        testBandwidth: false,
+      });
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        audit.errors.push(data);
+        log(`ERROR ${data.type}/${data.details} fatal=${data.fatal}`);
+      });
+      hls.on(Hls.Events.FRAG_BUFFERED, (_e, data) => {
+        log(`buffered sn=${data.frag?.sn} start=${data.frag?.start?.toFixed(3)} dur=${data.frag?.duration?.toFixed(3)} ct=${video.currentTime.toFixed(3)}`);
+      });
+      hls.loadSource(playlist);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        statusEl.textContent = 'Playing…';
+        if (autoplay) {
+          void video.play();
+        }
+        pollTimer = setInterval(samplePlayhead, 100);
+        setTimeout(() => {
+          const pass = audit.jumps.length === 0 && audit.errors.filter(e => e.fatal).length === 0;
+          finish({ pass });
+        }, durationSec * 1000);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -48,11 +48,29 @@ func TestIntegrationDetect(t *testing.T) {
 	t.Log(caps.ReportString())
 }
 
-func TestIntegrationMediaDuration(t *testing.T) {
-	sample := os.Getenv("GOFFMPEG_SAMPLE_MP4")
-	if sample == "" {
-		t.Skip("set GOFFMPEG_SAMPLE_MP4 to run")
+func integrationSampleMP4(t *testing.T) string {
+	t.Helper()
+	if p := os.Getenv("GOFFMPEG_SAMPLE_MP4"); p != "" {
+		return p
 	}
+	for _, rel := range []string{
+		"test/data/Big_Buck_Bunny_1080_10s_2MB.mp4",
+		filepath.Join("..", "test", "data", "Big_Buck_Bunny_1080_10s_2MB.mp4"),
+	} {
+		if st, err := os.Stat(rel); err == nil && !st.IsDir() {
+			abs, err := filepath.Abs(rel)
+			if err == nil {
+				return abs
+			}
+			return rel
+		}
+	}
+	t.Skip("sample not found; set GOFFMPEG_SAMPLE_MP4")
+	return ""
+}
+
+func TestIntegrationMediaDuration(t *testing.T) {
+	sample := integrationSampleMP4(t)
 	ffmpegBin, ffprobeBin := requireFFmpeg(t)
 	svc, err := ffmpeg.New(context.Background(), ffmpeg.Config{
 		FFmpegPath:  ffmpegBin,
@@ -72,10 +90,7 @@ func TestIntegrationMediaDuration(t *testing.T) {
 }
 
 func TestIntegrationScreenshot(t *testing.T) {
-	sample := os.Getenv("GOFFMPEG_SAMPLE_MP4")
-	if sample == "" {
-		t.Skip("set GOFFMPEG_SAMPLE_MP4 to run")
-	}
+	sample := integrationSampleMP4(t)
 	ffmpegBin, ffprobeBin := requireFFmpeg(t)
 	svc, err := ffmpeg.New(context.Background(), ffmpeg.Config{
 		FFmpegPath:  ffmpegBin,
