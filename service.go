@@ -340,14 +340,8 @@ type OnDemandHLSDefaults = ops.OnDemandHLSDefaults
 // HLSPipelineOptions configures remux/copy/transcode path selection.
 type HLSPipelineOptions = ops.HLSPipelineOptions
 
-// HLSPreset names HLS transcode quality levels.
-type HLSPreset = encode.HLSPreset
-
 const (
 	DefaultHLSSegmentDurationSec = ops.DefaultHLSSegmentDurationSec
-	HLSPresetQuality             = encode.HLSPresetQuality
-	HLSPresetLowLatency          = encode.HLSPresetLowLatency
-	HLSPresetConstrained         = encode.HLSPresetConstrained
 )
 
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.
@@ -355,19 +349,15 @@ func DefaultOnDemandHLSDefaults() OnDemandHLSDefaults {
 	return ops.DefaultOnDemandHLSDefaults()
 }
 
-// NormalizeHLSPreset maps aliases to canonical preset names.
-func NormalizeHLSPreset(p HLSPreset) HLSPreset {
-	return encode.NormalizeHLSPreset(p)
-}
-
 // HLSDecodeProfileForOnDemand selects input decode for short on-demand HLS segments.
 func HLSDecodeProfileForOnDemand(info StreamInfo) VideoDecodeProfile {
 	return encode.HLSDecodeProfileForOnDemand(info)
 }
 
-// HLSVideoProfile selects output encode settings for an HLS preset.
-func HLSVideoProfile(info StreamInfo, preset HLSPreset, maxHeight int) VideoProfile {
-	return encode.HLSVideoProfile(info, preset, maxHeight)
+// DefaultHLSVideoProfile returns safe H.264 transcode defaults when the caller
+// does not supply encode settings.
+func DefaultHLSVideoProfile(maxHeight int) VideoProfile {
+	return encode.DefaultHLSVideoProfile(maxHeight)
 }
 
 // SanitizeHLSKeyframes filters spurious keyframe probes.
@@ -391,8 +381,8 @@ func BuildHLSSegmentOptions(path string, index int, params HLSSegmentParams, sta
 }
 
 // BuildHLSSegmentBuildInput derives remux/copy/transcode flags.
-func BuildHLSSegmentBuildInput(info StreamInfo, preset HLSPreset, maxHeight int) HLSSegmentBuildInput {
-	return ops.BuildHLSSegmentBuildInput(info, preset, maxHeight)
+func BuildHLSSegmentBuildInput(info StreamInfo, opts HLSPipelineOptions) HLSSegmentBuildInput {
+	return ops.BuildHLSSegmentBuildInput(info, opts)
 }
 
 // BuildHLSSegmentParamsFast assembles encode params without probing fps.

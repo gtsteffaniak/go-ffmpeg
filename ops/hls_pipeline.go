@@ -3,20 +3,19 @@ package ops
 import (
 	"strings"
 
-	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
 // HLSPipelineOptions configures remux/copy/transcode path selection.
 type HLSPipelineOptions struct {
-	Preset    encode.HLSPreset
-	MaxHeight int
+	// ForceVideoTranscode requires full video re-encode even when stream copy would work.
+	ForceVideoTranscode bool
+	MaxHeight           int
 }
 
-// NeedsFullVideoTranscode reports whether video must be re-encoded for the preset.
+// NeedsFullVideoTranscode reports whether video must be re-encoded.
 func NeedsFullVideoTranscode(info probe.StreamInfo, opts HLSPipelineOptions) bool {
-	switch encode.NormalizeHLSPreset(opts.Preset) {
-	case encode.HLSPresetLowLatency, encode.HLSPresetConstrained:
+	if opts.ForceVideoTranscode {
 		return true
 	}
 	if opts.MaxHeight > 0 && info.Height > opts.MaxHeight {
