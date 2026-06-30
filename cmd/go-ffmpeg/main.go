@@ -64,13 +64,14 @@ func run() int {
 	}
 
 	ctx := context.Background()
-	svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+	cfg := ffmpeg.Config{
 		FFmpegPath:    *ffmpegPath,
 		FFprobePath:   *ffprobePath,
 		DetectTimeout: *timeout,
 		SkipHWTests:   *skipHW,
 		Logger:        ffmpeg.NopLogger(),
-	})
+	}
+	svc, err := ffmpeg.New(ctx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go-ffmpeg: detection failed: %v\n", err)
 		return 1

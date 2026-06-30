@@ -4,7 +4,7 @@ build:
 	go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
 
 report: build
-	./bin/go-ffmpeg -color always | tee compatibility-report.txt
+	env -u GOFFMPEG_SKIP_HW ./bin/go-ffmpeg -color always | tee compatibility-report.txt
 	@echo "Report also saved to compatibility-report.txt (view with: less -R compatibility-report.txt)"
 
 test:

@@ -153,8 +153,10 @@ type Capabilities struct {
 	DecodeOptions  []DecodeOption               `json:"decodeOptions"`
 	EnabledOps     []string                     `json:"enabledOps"`
 	DisabledOps    map[string][]string          `json:"disabledOps"`
-	FeatureFlags   FeatureFlags                 `json:"featureFlags"`
-	GeneratedAt    time.Time                    `json:"generatedAt"`
+	FeatureFlags     FeatureFlags                 `json:"featureFlags"`
+	GeneratedAt      time.Time                    `json:"generatedAt"`
+	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`
+	SelectedGPU      *platform.GPUChoice          `json:"selectedGpu,omitempty"`
 }
 
 // NewCapabilities returns an empty capability matrix.

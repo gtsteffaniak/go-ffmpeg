@@ -12,7 +12,7 @@ func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
 		if plat.WSL {
 			return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
 		}
-		return []AccelType{AccelQSV, AccelVAAPI}
+		return []AccelType{AccelVAAPI, AccelQSV}
 	case "amd":
 		return []AccelType{AccelAMF, AccelVAAPI}
 	case "apple":

@@ -6,11 +6,7 @@ import (
 )
 
 func (s *Service) buildDetectOptions() capabilities.DetectOptions {
-	skipHW := s.cfg.SkipHWTests
-	if s.cfg.GPU == "" {
-		skipHW = true
-	}
-	opts := capabilities.DetectOptions{SkipHWTests: skipHW}
+	opts := capabilities.DetectOptions{SkipHWTests: s.cfg.SkipHWTests}
 	if len(s.cfg.EncoderHierarchy) > 0 {
 		opts.EncoderHierarchy = s.cfg.EncoderHierarchy
 	}
@@ -19,9 +15,9 @@ func (s *Service) buildDetectOptions() capabilities.DetectOptions {
 	}
 	choice, err := capabilities.ResolveGPUChoice(s.cfg.GPU)
 	if err != nil || !choice.Enabled {
-		opts.SkipHWTests = true
 		return opts
 	}
+	opts.GPU = choice
 	opts.RenderDevice = choice.RenderDevice
 	if len(opts.EncoderHierarchy) == 0 {
 		plat := platform.Detect()

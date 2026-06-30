@@ -21,7 +21,7 @@ func ProbeEncoder(ctx context.Context, runner *ffexec.Runner, name string) (bool
 }
 
 // PopulateEncoders fills encoder capabilities in the matrix.
-func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info) {
+func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info, hierarchy []AccelType, gpuScoped bool) {
 	listRes, err := runner.RunFFmpeg(ctx, "-hide_banner", "-encoders")
 	compiledSet := map[string]bool{}
 	if err == nil {
@@ -39,6 +39,11 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 		}
 
 		if known.HW {
+			if gpuScoped && !encoderKindInHierarchy(known.Kind, hierarchy) {
+				enc.TestError = gpuScopedSkipReason(plat)
+				caps.Encoders[known.Name] = enc
+				continue
+			}
 			if skipHW {
 				enc.TestError = "hardware tests skipped (-skip-hw-tests)"
 				caps.Encoders[known.Name] = enc
@@ -66,7 +71,7 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 }
 
 // PopulateDecoders fills decoder capabilities including hardware decode smoke tests.
-func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info) {
+func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info, hierarchy []AccelType, gpuScoped bool) {
 	listRes, err := runner.RunFFmpeg(ctx, "-hide_banner", "-decoders")
 	compiledSet := map[string]bool{}
 	if err == nil {
@@ -96,6 +101,11 @@ func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 		}
 
 		if known.HW {
+			if gpuScoped && !encoderKindInHierarchy(known.Kind, hierarchy) {
+				dec.TestError = gpuScopedSkipReason(plat)
+				caps.Decoders[known.Name] = dec
+				continue
+			}
 			if skipHW {
 				dec.TestError = "hardware tests skipped (-skip-hw-tests)"
 				caps.Decoders[known.Name] = dec

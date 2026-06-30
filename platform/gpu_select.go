@@ -12,10 +12,10 @@ import (
 
 // GPUChoice describes a resolved GPU selection from user config.
 type GPUChoice struct {
-	Enabled      bool
-	RenderDevice string
-	Vendor       string // nvidia, intel, amd, unknown
-	Name         string
+	Enabled      bool   `json:"enabled"`
+	RenderDevice string `json:"renderDevice,omitempty"`
+	Vendor       string `json:"vendor,omitempty"`
+	Name         string `json:"name,omitempty"`
 }
 
 type drmGPU struct {

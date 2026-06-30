@@ -31,7 +31,10 @@ func BuildEncodeOptions(caps *Capabilities) {
 	}
 	var out []EncodeOption
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
-	hierarchy := append([]AccelType(nil), HierarchyForPlatform(caps.Platform)...)
+	hierarchy := caps.EncoderHierarchy
+	if len(hierarchy) == 0 {
+		hierarchy = HierarchyForPlatform(caps.Platform)
+	}
 	for _, codec := range codecs {
 		support, ok := caps.CodecMatrix[codec]
 		if !ok {
@@ -68,7 +71,10 @@ func BuildDecodeOptions(caps *Capabilities) {
 	}
 	var out []DecodeOption
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
-	hierarchy := append([]AccelType(nil), HierarchyForPlatform(caps.Platform)...)
+	hierarchy := caps.EncoderHierarchy
+	if len(hierarchy) == 0 {
+		hierarchy = HierarchyForPlatform(caps.Platform)
+	}
 	for _, codec := range codecs {
 		support, ok := caps.CodecMatrix[codec]
 		if !ok {
