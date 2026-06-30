@@ -251,9 +251,10 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 		args = append(args, "-vf", fmt.Sprintf("scale=-2:min(%d\\,ih)", opts.MaxHeight))
 	}
 	args = append(args, vidArgs...)
-	// Browser MSE expects baseline H.264 (avc1.42E01E); libx264 defaults to High.
 	if opts.Profile.Codec == "" || opts.Profile.Codec == encode.CodecH264 {
-		args = append(args, "-profile:v", "baseline", "-level", "3.1", "-tag:v", "avc1")
+		if encSel, err := resolver.ResolveEncoder(opts.Profile); err == nil {
+			args = encode.AppendH264FMP4CompatArgs(args, encSel.Accel, opts.MaxHeight)
+		}
 	}
 	audio := opts.AudioCodec
 	if audio == "" {

@@ -187,6 +187,10 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 			if result.HW.HWLikelyActive && result.HW.ExpectedAccel != "software" {
 				result.HW.Notes = "Intel xe gtidle sysfs unavailable; encoder name confirms HW path"
 			}
+		case "ioreg":
+			if result.HW.HWLikelyActive && result.HW.ExpectedAccel == "videotoolbox" && !result.HW.GPUDetected {
+				result.HW.Notes = "VideoToolbox uses media engine; ioreg GPU % may stay low — encoder name confirms HW path"
+			}
 		}
 	}()
 
@@ -421,7 +425,8 @@ func verifyHWPlan(svc *goffmpeg.Service, params goffmpeg.HLSSegmentParams, accel
 		}
 	}
 	hv.HWEncoder = strings.Contains(hv.Encoder, "_qsv") || strings.Contains(hv.Encoder, "_vaapi") ||
-		strings.Contains(hv.Encoder, "_nvenc") || strings.Contains(hv.Encoder, "_amf")
+		strings.Contains(hv.Encoder, "_nvenc") || strings.Contains(hv.Encoder, "_amf") ||
+		strings.Contains(hv.Encoder, "_videotoolbox")
 	if accel == capabilities.AccelNone {
 		hv.HWEncoder = false
 	}

@@ -57,8 +57,8 @@ For every fixture × mode × accelerator:
 
 - **Conversion errors** — ffmpeg exit / stderr captured
 - **Per-segment encode time** (ms) and output size
-- **CPU usage** — sampled during encode via `/proc/self/stat`
-- **GPU usage** — `nvidia-smi` when available
+- **CPU usage** — sampled during encode via OS process stats (`ps` on Linux/macOS, performance counters on Windows); values sum across cores (e.g. 300% ≈ three cores fully busy), matching `ps`/`top` reporting
+- **GPU usage** — `nvidia-smi` (NVIDIA), `intel_gpu_top` (Intel Linux), `ioreg` Device Utilization % (macOS Apple GPU). VideoToolbox runs on the media engine; macOS GPU % may under-report during encode even when HW is active.
 - **Timeline validation** — fMP4 `tfdt` continuity (`go-ffmpeg/mp4` checks)
 - **Browser artifacts** — HLS playlist + segments under `report_site/media/` for manual playback
 
@@ -104,7 +104,7 @@ The harness reports whether hardware acceleration is actually in use:
 |--------|---------|
 | **Encoder column** | Resolved encoder from `DescribeHLSEncodePlan` (e.g. `h264_qsv`, `h264_vaapi`, `libx264`) |
 | **HW active** | `yes` when the encoder is a HW backend, or GPU util &gt; 3% was sampled |
-| **GPU avg** | From `nvidia-smi` (NVIDIA) or `intel_gpu_top` (Intel). On Intel without `intel-gpu-tools`, shows `— (install intel-gpu-tools)` |
+| **GPU avg** | From `nvidia-smi` (NVIDIA), `intel_gpu_top` (Intel), or `ioreg` (macOS). VideoToolbox may show low GPU % while still using HW media blocks — check encoder name and encode time vs software |
 
 Quick HW comparison on one segment:
 
