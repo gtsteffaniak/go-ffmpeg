@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HLS playback</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="player-page">
+  <header>
+    <h1 id="title">HLS playback</h1>
+    <p><a href="index.html">← Back to report</a></p>
+  </header>
+  <video id="video" controls playsinline></video>
+  <div id="status">Loading…</div>
+  <pre id="audit"></pre>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script src="player.js"></script>
+</body>
+</html>

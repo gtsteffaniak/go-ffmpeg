@@ -227,16 +227,20 @@ if err := svc.ValidateVideoProfile(profile); err != nil {
 
 ## Testing
 
+Two modes:
+
 ```bash
-# Unit tests (no ffmpeg required)
+# Unit tests (fast)
 make test
 
-# Integration tests (ffmpeg required)
-export GOFFMPEG_FFMPEG_PATH=/path/to/ffmpeg
-export GOFFMPEG_FFPROBE_PATH=/path/to/ffprobe
-export GOFFMPEG_SKIP_HW=1
-make test-integration
+# Integration tests: ffmpeg, HLS matrix, writes test/hls/report_site/data/report.json
+make integration-tests
+make serve-results       # http://127.0.0.1:8765/ — browse the dashboard
 ```
+
+`make report` is separate — the ffmpeg **capability report** in the terminal, not the integration dashboard.
+
+The HLS harness lives in `test/hls/`. It uses the bundled sample at `test/data/Big_Buck_Bunny_1080_10s_2MB.mp4` by default. See [test/hls/README.md](test/hls/README.md) for CLI details.
 
 ## Configuration
 

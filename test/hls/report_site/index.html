@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HLS Transcode Test Report</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>HLS transcode test report</h1>
+    <p id="meta">Loading…</p>
+  </header>
+
+  <section class="cards" id="summary-cards"></section>
+
+  <section class="charts-summary">
+    <div class="chart-box compact"><canvas id="chart-pass"></canvas></div>
+  </section>
+
+  <section class="charts-metrics">
+    <div class="chart-box tall">
+      <h3>Total encode time (all tests)</h3>
+      <div class="chart-wrap"><canvas id="chart-encode"></canvas></div>
+    </div>
+    <div class="chart-box tall">
+      <h3>CPU usage during encode (all tests)</h3>
+      <div class="chart-wrap"><canvas id="chart-cpu"></canvas></div>
+    </div>
+    <div class="chart-box tall">
+      <h3>GPU usage during encode (all tests with samples)</h3>
+      <div class="chart-wrap"><canvas id="chart-gpu"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Hardware (detected once)</h2>
+    <pre id="hardware"></pre>
+  </section>
+
+  <section>
+    <h2>Fixture generation</h2>
+    <div class="table-scroll">
+      <table id="fixture-table">
+        <thead><tr><th>Name</th><th>Path</th><th>Status</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Benchmark results</h2>
+    <p>Click <strong>Play</strong> to open the browser HLS player for manual smoothness checks. Encode / CPU / GPU columns include visual bars scaled to the max in this run.</p>
+    <div class="table-scroll">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>Fixture</th><th>Mode</th><th>Accel</th><th>Pass</th>
+            <th>Encoder</th><th>HW active</th>
+            <th>Total encode</th><th>Avg segment</th><th>Cold seg</th><th>Warm avg</th>
+            <th>CPU avg</th><th>GPU avg</th>
+            <th>Timeline issues</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
