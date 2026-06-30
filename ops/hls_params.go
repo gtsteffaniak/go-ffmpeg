@@ -20,22 +20,22 @@ type HLSSegmentParams struct {
 // HLSSegmentBuildInput describes remux/copy/transcode path selection for one file.
 type HLSSegmentBuildInput struct {
 	Info      probe.StreamInfo
-	Preset    encode.HLSPreset
 	MaxHeight int
 	Remux     bool
 	VideoCopy bool
+	// Profile and Decode are optional; safe defaults apply when transcode is required.
+	Profile encode.VideoProfile
+	Decode  encode.VideoDecodeProfile
 }
 
-// BuildHLSSegmentBuildInput derives remux/copy/transcode flags from stream info and preset.
-func BuildHLSSegmentBuildInput(info probe.StreamInfo, preset encode.HLSPreset, maxHeight int) HLSSegmentBuildInput {
-	pipeline := HLSPipelineOptions{Preset: preset, MaxHeight: maxHeight}
-	fullTranscode := NeedsFullVideoTranscode(info, pipeline)
+// BuildHLSSegmentBuildInput derives remux/copy/transcode flags from stream info and pipeline options.
+func BuildHLSSegmentBuildInput(info probe.StreamInfo, opts HLSPipelineOptions) HLSSegmentBuildInput {
+	fullTranscode := NeedsFullVideoTranscode(info, opts)
 	remux := CanFMP4StreamCopy(info) && !fullTranscode
-	videoCopy := UseVideoCopy(info, pipeline)
+	videoCopy := UseVideoCopy(info, opts)
 	return HLSSegmentBuildInput{
 		Info:      info,
-		Preset:    preset,
-		MaxHeight: maxHeight,
+		MaxHeight: opts.MaxHeight,
 		Remux:     remux,
 		VideoCopy: videoCopy,
 	}
@@ -51,8 +51,14 @@ func BuildHLSSegmentParamsFast(in HLSSegmentBuildInput, defaults OnDemandHLSDefa
 		GOP:       defaults.DefaultGOP,
 	}
 	if !in.Remux && !in.VideoCopy {
-		params.Decode = encode.HLSDecodeProfileForOnDemand(in.Info)
-		params.Profile = encode.HLSVideoProfile(in.Info, in.Preset, in.MaxHeight)
+		params.Decode = in.Decode
+		if encode.VideoDecodeProfileIsEmpty(params.Decode) {
+			params.Decode = encode.HLSDecodeProfileForOnDemand(in.Info)
+		}
+		params.Profile = in.Profile
+		if encode.VideoProfileIsEmpty(params.Profile) {
+			params.Profile = encode.DefaultHLSVideoProfile(in.MaxHeight)
+		}
 	}
 	return params
 }
