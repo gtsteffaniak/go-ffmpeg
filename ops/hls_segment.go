@@ -252,21 +252,16 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		}
 		args = append(args, filterArgs...)
 		args = append(args, vidArgs...)
-		if opts.Profile.Codec == "" || opts.Profile.Codec == encode.CodecH264 {
-			encSel, encErr := resolver.ResolveEncoder(opts.Profile)
-			if encErr == nil && encSel.Accel != capabilities.AccelVAAPI && encSel.Accel != capabilities.AccelD3D12 {
-				args = append(args, "-profile:v", "baseline", "-level", "3.1", "-tag:v", "avc1")
-			} else if encErr == nil && encSel.Accel == capabilities.AccelVAAPI {
-				args = append(args, "-tag:v", "avc1")
-			}
+		encSel, encErr := resolver.ResolveEncoder(opts.Profile)
+		if encErr == nil && (opts.Profile.Codec == "" || opts.Profile.Codec == encode.CodecH264) {
+			args = encode.AppendH264FMP4CompatArgs(args, encSel.Accel, opts.MaxHeight)
 		}
-		args = append(args,
-			"-video_track_timescale", "90000",
-			"-g", fmt.Sprintf("%d", gop),
-			"-keyint_min", fmt.Sprintf("%d", gop),
-			"-sc_threshold", "0",
-			"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", dur),
-		)
+		x264Only := encErr == nil && (encSel.Accel == capabilities.AccelNone || encSel.Accel == "")
+		args = append(args, "-video_track_timescale", "90000", "-g", fmt.Sprintf("%d", gop), "-keyint_min", fmt.Sprintf("%d", gop))
+		if x264Only {
+			args = append(args, "-sc_threshold", "0")
+		}
+		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", dur))
 		if !opts.VideoOnly {
 			args = append(args,
 				"-c:a", "aac",

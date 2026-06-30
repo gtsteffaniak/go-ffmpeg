@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,9 @@ func getGPUBackend() gpuBackend {
 }
 
 func detectGPUBackend() gpuBackend {
+	if runtime.GOOS == "darwin" {
+		return darwinGPUBackend()
+	}
 	if isIntelGPU() {
 		if isIntelXEDriver() {
 			if paths := intelXEGTIdlePaths(); len(paths) > 0 {
@@ -239,10 +243,8 @@ type resourceMonitor struct {
 	stop       chan struct{}
 	done       chan struct{}
 	samples    []resourceSample
-	startCPU   float64
-	lastCPU    float64
-	lastWall   time.Time
 	startWall  time.Time
+	rootPID    int
 	gpuBackend gpuBackend
 }
 
@@ -258,35 +260,15 @@ func newResourceMonitor() *resourceMonitor {
 	return &resourceMonitor{
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
+		rootPID:    os.Getpid(),
 		gpuBackend: be,
 	}
 }
 
-func readProcessCPUTimeSec() float64 {
-	data, err := os.ReadFile("/proc/self/stat")
-	if err != nil {
-		return 0
-	}
-	fields := strings.Fields(string(data))
-	if len(fields) < 17 {
-		return 0
-	}
-	utime, err1 := strconv.ParseFloat(fields[13], 64)
-	stime, err2 := strconv.ParseFloat(fields[14], 64)
-	if err1 != nil || err2 != nil {
-		return 0
-	}
-	clkTck := 100.0
-	return (utime + stime) / clkTck
-}
-
 func (m *resourceMonitor) Start() {
-	m.startCPU = readProcessCPUTimeSec()
-	m.lastCPU = m.startCPU
-	m.lastWall = time.Now()
-	m.startWall = m.lastWall
+	m.startWall = time.Now()
 	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
+		ticker := time.NewTicker(time.Duration(resourceSampleIntervalSec * float64(time.Second)))
 		defer ticker.Stop()
 		defer close(m.done)
 		for {
@@ -294,16 +276,9 @@ func (m *resourceMonitor) Start() {
 			case <-m.stop:
 				return
 			case now := <-ticker.C:
-				cpuNow := readProcessCPUTimeSec()
-				wallDelta := now.Sub(m.lastWall).Seconds()
-				cpuDelta := cpuNow - m.lastCPU
-				var cpuPct float64
-				if wallDelta > 0 {
-					cpuPct = (cpuDelta / wallDelta) * 100
-				}
 				sample := resourceSample{
 					WallMs:     now.Sub(m.startWall).Milliseconds(),
-					CPUPercent: cpuPct,
+					CPUPercent: readProcessTreeCPUPercent(m.rootPID),
 				}
 				if m.gpuBackend.read != nil {
 					sample.GPUPercent = m.gpuBackend.read()
@@ -311,8 +286,6 @@ func (m *resourceMonitor) Start() {
 				m.mu.Lock()
 				m.samples = append(m.samples, sample)
 				m.mu.Unlock()
-				m.lastCPU = cpuNow
-				m.lastWall = now
 			}
 		}
 	}()
@@ -321,14 +294,13 @@ func (m *resourceMonitor) Start() {
 func (m *resourceMonitor) Stop() resourceStats {
 	close(m.stop)
 	<-m.done
-	endCPU := readProcessCPUTimeSec()
 
 	m.mu.Lock()
 	samples := append([]resourceSample(nil), m.samples...)
 	m.mu.Unlock()
 
 	stats := resourceStats{
-		CPUTimeSec: endCPU - m.startCPU,
+		CPUTimeSec: integrateCPUTimeSec(samples, resourceSampleIntervalSec),
 		Samples:    samples,
 		GPUMonitor: m.gpuBackend.name,
 	}
