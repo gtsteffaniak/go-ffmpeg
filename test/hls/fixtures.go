@@ -85,9 +85,9 @@ func generateFixtures(ctx context.Context, reference, outDir string, durationSec
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, err
 	}
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := resolveFFmpegBin()
 	if err != nil {
-		return nil, fmt.Errorf("ffmpeg not in PATH: %w", err)
+		return nil, fmt.Errorf("ffmpeg: %w", err)
 	}
 	if _, err := os.Stat(reference); err != nil {
 		return nil, fmt.Errorf("reference video: %w", err)
@@ -170,11 +170,11 @@ func transcodeReferenceToFixture(ctx context.Context, ffmpeg, reference, outPath
 }
 
 func probeFixtureDurationSec(path string) (float64, error) {
-	ffmpegPath, err := exec.LookPath("ffprobe")
+	ffprobePath, err := resolveFFprobeBin()
 	if err != nil {
 		return 0, err
 	}
-	cmd := exec.Command(ffmpegPath, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path)
+	cmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path)
 	out, err := cmd.Output()
 	if err != nil {
 		return 0, err

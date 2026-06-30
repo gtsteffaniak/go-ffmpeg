@@ -16,7 +16,19 @@ if [[ ! -f "$REFERENCE" ]]; then
   exit 1
 fi
 
+if [[ -n "${GOFFMPEG_FFMPEG_PATH:-}" ]]; then
+  export PATH="$(dirname "$GOFFMPEG_FFMPEG_PATH"):${PATH}"
+fi
+
+if [[ -n "${GOFFMPEG_FFMPEG_PATH:-}" && ! -x "$GOFFMPEG_FFMPEG_PATH" ]]; then
+  echo "GOFFMPEG_FFMPEG_PATH is not executable: $GOFFMPEG_FFMPEG_PATH" >&2
+  exit 1
+fi
+
 echo "Using reference sample: $REFERENCE"
+if [[ -n "${GOFFMPEG_FFMPEG_PATH:-}" ]]; then
+  echo "Using ffmpeg: $GOFFMPEG_FFMPEG_PATH"
+fi
 
 echo "Building HLS test harness …"
 go build -o test-hls .

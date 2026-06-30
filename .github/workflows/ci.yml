@@ -102,4 +102,7 @@ jobs:
           GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
           GOFFMPEG_SKIP_HW: "1"
           HLS_SOFTWARE_ONLY: "1"
-        run: bash test/hls/scripts/ci-software-matrix.sh
+        run: |
+          test -x "$GOFFMPEG_FFMPEG_PATH"
+          test -x "$GOFFMPEG_FFPROBE_PATH"
+          bash test/hls/scripts/ci-software-matrix.sh
