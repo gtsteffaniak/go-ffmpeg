@@ -36,7 +36,7 @@ type encodeTimingSummary struct {
 	ColdSegMs          int64    `json:"coldSegMs,omitempty"`
 	WarmAvgSegMs       int64    `json:"warmAvgSegMs,omitempty"`
 	WarmTotalMs        int64    `json:"warmTotalMs,omitempty"`
-	WarmSegCount       int       `json:"warmSegCount,omitempty"`
+	WarmSegCount       int      `json:"warmSegCount,omitempty"`
 	ThroughputRealtime *float64 `json:"throughputRealtime,omitempty"` // media seconds / encode seconds
 }
 
@@ -61,16 +61,16 @@ type benchmarkResult struct {
 }
 
 type hwVerification struct {
-	ExpectedAccel   string `json:"expectedAccel"`
-	Encoder         string `json:"encoder,omitempty"`
-	Decoder         string `json:"decoder,omitempty"`
-	EncodePlan      string `json:"encodePlan,omitempty"`
-	HWEncoder       bool   `json:"hwEncoder"`
-	GPUMonitor      string `json:"gpuMonitor,omitempty"`
-	GPUUtilAvg      *float64 `json:"gpuUtilAvg,omitempty"`
-	GPUDetected     bool   `json:"gpuDetected"`
-	HWLikelyActive  bool   `json:"hwLikelyActive"`
-	Notes           string `json:"notes,omitempty"`
+	ExpectedAccel  string   `json:"expectedAccel"`
+	Encoder        string   `json:"encoder,omitempty"`
+	Decoder        string   `json:"decoder,omitempty"`
+	EncodePlan     string   `json:"encodePlan,omitempty"`
+	HWEncoder      bool     `json:"hwEncoder"`
+	GPUMonitor     string   `json:"gpuMonitor,omitempty"`
+	GPUUtilAvg     *float64 `json:"gpuUtilAvg,omitempty"`
+	GPUDetected    bool     `json:"gpuDetected"`
+	HWLikelyActive bool     `json:"hwLikelyActive"`
+	Notes          string   `json:"notes,omitempty"`
 }
 
 func variantsForFixture(info goffmpeg.StreamInfo, caps *capabilities.Capabilities) []testVariant {

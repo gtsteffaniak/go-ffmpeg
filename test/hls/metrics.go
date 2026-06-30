@@ -19,13 +19,13 @@ type resourceSample struct {
 }
 
 type resourceStats struct {
-	CPUTimeSec      float64          `json:"cpuTimeSec"`
-	CPUPercentAvg   float64          `json:"cpuPercentAvg"`
-	CPUPercentMax   float64          `json:"cpuPercentMax"`
-	GPUPercentAvg   *float64         `json:"gpuPercentAvg,omitempty"`
-	GPUPercentMax   *float64         `json:"gpuPercentMax,omitempty"`
-	GPUMonitor      string           `json:"gpuMonitor,omitempty"`
-	Samples         []resourceSample `json:"samples,omitempty"`
+	CPUTimeSec    float64          `json:"cpuTimeSec"`
+	CPUPercentAvg float64          `json:"cpuPercentAvg"`
+	CPUPercentMax float64          `json:"cpuPercentMax"`
+	GPUPercentAvg *float64         `json:"gpuPercentAvg,omitempty"`
+	GPUPercentMax *float64         `json:"gpuPercentMax,omitempty"`
+	GPUMonitor    string           `json:"gpuMonitor,omitempty"`
+	Samples       []resourceSample `json:"samples,omitempty"`
 }
 
 type gpuBackend struct {
@@ -235,15 +235,15 @@ func parseIntelGPUTopJSON(data []byte) *float64 {
 }
 
 type resourceMonitor struct {
-	mu          sync.Mutex
-	stop        chan struct{}
-	done        chan struct{}
-	samples     []resourceSample
-	startCPU    float64
-	lastCPU     float64
-	lastWall    time.Time
-	startWall   time.Time
-	gpuBackend  gpuBackend
+	mu         sync.Mutex
+	stop       chan struct{}
+	done       chan struct{}
+	samples    []resourceSample
+	startCPU   float64
+	lastCPU    float64
+	lastWall   time.Time
+	startWall  time.Time
+	gpuBackend gpuBackend
 }
 
 func newResourceMonitor() *resourceMonitor {
@@ -328,9 +328,9 @@ func (m *resourceMonitor) Stop() resourceStats {
 	m.mu.Unlock()
 
 	stats := resourceStats{
-		CPUTimeSec:    endCPU - m.startCPU,
-		Samples:       samples,
-		GPUMonitor:    m.gpuBackend.name,
+		CPUTimeSec: endCPU - m.startCPU,
+		Samples:    samples,
+		GPUMonitor: m.gpuBackend.name,
 	}
 	if len(samples) == 0 {
 		return stats

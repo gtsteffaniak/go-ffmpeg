@@ -12,23 +12,23 @@ import (
 )
 
 type hardwareSummary struct {
-	FFmpegVersion string                            `json:"ffmpegVersion"`
-	GeneratedAt   time.Time                         `json:"generatedAt"`
-	EncodeOptions []capabilities.EncodeOption       `json:"encodeOptions,omitempty"`
-	DecodeOptions []capabilities.DecodeOption       `json:"decodeOptions,omitempty"`
-	Platform      capabilities.PlatformInfo         `json:"platform,omitempty"`
+	FFmpegVersion string                                                `json:"ffmpegVersion"`
+	GeneratedAt   time.Time                                             `json:"generatedAt"`
+	EncodeOptions []capabilities.EncodeOption                           `json:"encodeOptions,omitempty"`
+	DecodeOptions []capabilities.DecodeOption                           `json:"decodeOptions,omitempty"`
+	Platform      capabilities.PlatformInfo                             `json:"platform,omitempty"`
 	CodecMatrix   map[capabilities.VideoCodec]capabilities.CodecSupport `json:"codecMatrix,omitempty"`
 }
 
 type fullReport struct {
-	GeneratedAt      time.Time         `json:"generatedAt"`
-	ReferenceVideo   string            `json:"referenceVideo"`
-	FixtureDuration  int               `json:"fixtureDurationSec"`
-	SegmentCount     int               `json:"segmentCount"`
-	Fixtures         []FixtureResult   `json:"fixtures"`
-	Hardware         hardwareSummary   `json:"hardware"`
-	Results          []benchmarkResult `json:"results"`
-	Summary          reportSummary     `json:"summary"`
+	GeneratedAt     time.Time         `json:"generatedAt"`
+	ReferenceVideo  string            `json:"referenceVideo"`
+	FixtureDuration int               `json:"fixtureDurationSec"`
+	SegmentCount    int               `json:"segmentCount"`
+	Fixtures        []FixtureResult   `json:"fixtures"`
+	Hardware        hardwareSummary   `json:"hardware"`
+	Results         []benchmarkResult `json:"results"`
+	Summary         reportSummary     `json:"summary"`
 }
 
 type reportSummary struct {
