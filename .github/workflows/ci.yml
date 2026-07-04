@@ -64,7 +64,7 @@ jobs:
           GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
           GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
           GOFFMPEG_SKIP_HW: "1"
-        run: go test -tags=integration ./... -run Integration -v
+        run: go test -tags=integration ./... -run "Integration|ContinuousSoftware" -count=1
       - name: CLI compatibility report
         env:
           GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
@@ -94,9 +94,7 @@ jobs:
           docker cp "$id:/ffprobe" /tmp/ffmpeg-bin/ffprobe
           chmod +x /tmp/ffmpeg-bin/ffmpeg /tmp/ffmpeg-bin/ffprobe
           docker rm "$id"
-      - name: HLS harness unit tests
-        run: cd test/hls && go test -count=1 ./...
-      - name: HLS software-only matrix
+      - name: HLS tests
         env:
           GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
           GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
@@ -105,4 +103,5 @@ jobs:
         run: |
           test -x "$GOFFMPEG_FFMPEG_PATH"
           test -x "$GOFFMPEG_FFPROBE_PATH"
-          bash test/hls/scripts/ci-software-matrix.sh
+          make test-hls SEGMENTS=0 FIXTURE_DURATION=32 \
+            FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_eac3_mkv,wmv3_wmapro_wmv

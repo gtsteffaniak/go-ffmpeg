@@ -30,6 +30,59 @@ func TestVideoFilterArgsVAAPIWithSoftwareDecode(t *testing.T) {
 	}
 }
 
+func TestVideoFilterArgsVideoToolboxSoftwareDecode(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Available: true, Kind: "videotoolbox"}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Hardware:  map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "h264_videotoolbox"},
+		Preferred: capabilities.EncoderSelection{Encoder: "h264_videotoolbox", Accel: capabilities.AccelVideoToolbox, Kind: "videotoolbox"},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoFilterArgs(
+		encode.VideoProfile{Codec: encode.CodecH264},
+		encode.VideoDecodeProfile{Codec: capabilities.CodecH264, ForceSoftware: true},
+		720,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := joinArgs(args)
+	if !containsAll(s, "scale=-2:min(720\\,ih)", "format=nv12", "hwupload", "-filter_hw_device", "vt") {
+		t.Fatalf("args = %v", args)
+	}
+	if contains(s, "-init_hw_device") {
+		t.Fatalf("filter args must not include init_hw_device: %v", args)
+	}
+}
+
+func TestVideoFilterArgsVideoToolbox(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Filters["scale_vt"] = true
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Available: true, Kind: "videotoolbox"}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Hardware:  map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "h264_videotoolbox"},
+		Preferred: capabilities.EncoderSelection{Encoder: "h264_videotoolbox", Accel: capabilities.AccelVideoToolbox, Kind: "videotoolbox"},
+		DecodePreferred: capabilities.DecoderSelection{
+			Decoder: "hwaccel:videotoolbox:h264",
+			Accel:   capabilities.AccelVideoToolbox,
+			SWCodec: "h264",
+		},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoFilterArgs(
+		encode.VideoProfile{Codec: encode.CodecH264},
+		encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+		720,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := joinArgs(args)
+	if !contains(s, "scale_vt") {
+		t.Fatalf("args = %v", args)
+	}
+}
+
 func joinArgs(args []string) string {
 	out := ""
 	for _, a := range args {

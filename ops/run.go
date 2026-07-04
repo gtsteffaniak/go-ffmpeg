@@ -64,6 +64,7 @@ func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptio
 type PreviewOptions struct {
 	Input       string
 	SeekPercent float64
+	SeekSec     float64 // when > 0, seek to this timestamp instead of SeekPercent
 	Width       int
 	Height      int
 	Quality     int
@@ -76,11 +77,19 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 	if err != nil {
 		return err
 	}
-	seekPct := opts.SeekPercent
-	if seekPct <= 0 || seekPct > 100 {
-		seekPct = 10
+	var seekSec float64
+	if opts.SeekSec > 0 {
+		seekSec = opts.SeekSec
+		if dur > 0 && seekSec > dur {
+			seekSec = dur
+		}
+	} else {
+		seekPct := opts.SeekPercent
+		if seekPct <= 0 || seekPct > 100 {
+			seekPct = 10
+		}
+		seekSec = dur * seekPct / 100
 	}
-	seekSec := dur * seekPct / 100
 
 	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec), "-i", opts.Input}
 	if opts.Width > 0 && opts.Height > 0 {

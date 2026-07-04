@@ -44,7 +44,7 @@ var KnownEncoders = []struct {
 
 // KnownFilters lists filters required by library operations.
 var KnownFilters = []string{
-	"scale", "format", "segment", "concat", "tile",
+	"scale", "scale_vt", "format", "hwupload", "segment", "concat", "tile",
 	"transpose", "hflip", "vflip", "fps", "setpts",
 }
 

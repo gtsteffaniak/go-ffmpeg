@@ -328,6 +328,12 @@ func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4Trans
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
 type HLSSegmentOptions = ops.HLSSegmentOptions
 
+// HLSContinuousOptions configures a long-running ffmpeg -f hls job.
+type HLSContinuousOptions = ops.HLSContinuousOptions
+
+// HLSContinuousJob runs ffmpeg until EOF or cancellation.
+type HLSContinuousJob = ops.HLSContinuousJob
+
 // HLSSegmentParams holds resolved encode/remux settings for one HLS session.
 type HLSSegmentParams = ops.HLSSegmentParams
 
@@ -510,6 +516,29 @@ func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegm
 		return &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
 	}
 	return nil
+}
+
+// StartHLSContinuous launches ffmpeg -f hls writing fMP4 segments to disk.
+func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOptions) (*HLSContinuousJob, error) {
+	if err := s.require("HLSSegment"); err != nil {
+		return nil, err
+	}
+	if !opts.Remux && !opts.VideoCopy {
+		if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+			return nil, err
+		}
+		if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+			return nil, err
+		}
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	job, err := ops.StartHLSContinuous(ctx, s.runner, caps, opts)
+	if err != nil {
+		return nil, &OperationError{Op: "HLSContinuous", Err: ErrEncodeFailed, Stderr: err.Error()}
+	}
+	return job, nil
 }
 
 // ProbeVideoFPS returns the average frame rate of the first video stream.

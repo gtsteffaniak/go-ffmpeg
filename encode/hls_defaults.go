@@ -8,14 +8,14 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
-// HLSDecodeProfileForOnDemand selects input decode for short on-demand HLS segments.
+// HLSDecodeProfileForOnDemand selects input decode for HLS transcode (continuous or segment).
 func HLSDecodeProfileForOnDemand(info probe.StreamInfo) VideoDecodeProfile {
 	if !isKnownHLSInputVideoCodec(info.VideoCodec) {
 		return VideoDecodeProfile{ForceSoftware: true}
 	}
-	return OnDemandHLSDecodeProfile(VideoDecodeProfile{
+	return VideoDecodeProfile{
 		Codec: probeVideoCodec(info.VideoCodec),
-	})
+	}
 }
 
 // DefaultHLSVideoProfile returns safe H.264 transcode defaults when the caller

@@ -46,6 +46,11 @@ type benchmarkResult struct {
 	Mode          string              `json:"mode"`
 	Accel         string              `json:"accel"`
 	Label         string              `json:"label"`
+	Pipeline      string              `json:"pipeline,omitempty"`  // ondemand (default) or continuous
+	Scenario      string              `json:"scenario,omitempty"`  // full, resume_mid, resume_eof
+	StartIndex    int                 `json:"startIndex,omitempty"`
+	StartSec      float64             `json:"startSec,omitempty"`
+	HasEndList    bool                `json:"hasEndList,omitempty"`
 	Pass          bool                `json:"pass"`
 	EncodeError   string              `json:"encodeError,omitempty"`
 	TotalEncodeMs int64               `json:"totalEncodeMs"`

@@ -13,6 +13,8 @@ func main() {
 	switch os.Args[1] {
 	case "hls-check":
 		os.Exit(runHLSCheck(os.Args[2:]))
+	case "continuous-check":
+		os.Exit(runContinuousCheck(os.Args[2:]))
 	case "matrix":
 		os.Exit(runMatrix(os.Args[2:]))
 	case "run":
@@ -27,6 +29,8 @@ func main() {
 		os.Exit(runPlaybackTest(os.Args[2:]))
 	case "hw-check":
 		os.Exit(runHWCheck(os.Args[2:]))
+	case "realworld-check":
+		os.Exit(runRealworldCheck(os.Args[2:]))
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -44,6 +48,8 @@ Usage:
   test-ffmpeg run [flags]         Full pipeline: fixtures + benchmarks + report
   test-ffmpeg serve-report [flags]
   test-ffmpeg hls-check [flags]
+  test-ffmpeg continuous-check [flags]
+  test-ffmpeg realworld-check [flags]   Full continuous check on HLS_REALWORLD_FILES
   test-ffmpeg matrix [flags]
   test-ffmpeg serve-hls [flags]
   test-ffmpeg playback-test [flags]

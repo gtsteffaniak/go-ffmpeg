@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math"
 	"os"
@@ -52,6 +53,8 @@ func allFixtureSpecs() []FixtureSpec {
 		// MPEG-4 Part 2 legacy
 		{Name: "mpeg4_aac_avi", Video: "mpeg4", Audio: "aac", Container: "avi"},
 		{Name: "mpeg4_mp3_avi", Video: "mpeg4", Audio: "mp3", Container: "avi"},
+		// WMV (Windows Media)
+		{Name: "wmv3_wmapro_wmv", Video: "wmv3", Audio: "wmapro", Container: "wmv"},
 	}
 }
 
@@ -71,6 +74,28 @@ func resolveFixtureSpecs(namesFlag string) []FixtureSpec {
 		}
 	}
 	return out
+}
+
+// resolveFixtureNamesFromFlag returns specs for -fixture-names.
+// When the flag was not passed on the CLI, HLS_FIXTURE_NAMES is used as a fallback.
+func resolveFixtureNamesFromFlag(fs *flag.FlagSet, namesFlag string) []FixtureSpec {
+	names := namesFlag
+	if !flagPassed(fs, "fixture-names") {
+		if names == "" {
+			names = os.Getenv("HLS_FIXTURE_NAMES")
+		}
+	}
+	return resolveFixtureSpecs(names)
+}
+
+func flagPassed(fs *flag.FlagSet, name string) bool {
+	passed := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			passed = true
+		}
+	})
+	return passed
 }
 
 func fixtureFilename(spec FixtureSpec) string {
@@ -154,6 +179,9 @@ func transcodeReferenceToFixture(ctx context.Context, ffmpeg, reference, outPath
 	if spec.Container == "avi" {
 		args = append(args, "-f", "avi")
 	}
+	if spec.Container == "wmv" {
+		args = append(args, "-f", "asf")
+	}
 	args = append(args, outPath)
 
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
@@ -199,6 +227,9 @@ func videoEncoderArgs(codec string) (enc []string, extra []string, err error) {
 	case "mpeg4":
 		return []string{"-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-g", "30"},
 			[]string{"-q:v", "5"}, nil
+	case "wmv3":
+		return []string{"-c:v", "wmv2", "-pix_fmt", "yuv420p", "-g", "30"},
+			[]string{"-q:v", "5"}, nil
 	default:
 		return nil, nil, fmt.Errorf("unsupported video codec %q", codec)
 	}
@@ -218,6 +249,8 @@ func audioEncoderArgs(codec string) ([]string, error) {
 		return []string{"-c:a", "libopus", "-b:a", "96k"}, nil
 	case "vorbis":
 		return []string{"-c:a", "libvorbis", "-b:a", "128k"}, nil
+	case "wmapro":
+		return []string{"-c:a", "wmav2", "-b:a", "128k"}, nil
 	default:
 		return nil, fmt.Errorf("unsupported audio codec %q", codec)
 	}

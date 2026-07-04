@@ -13,10 +13,10 @@ func runGenerateFixtures(args []string) int {
 	reference := fs.String("reference", envOr("HLS_TEST_FILE", defaultSampleVideo()), "reference video")
 	outDir := fs.String("out", ".fixtures", "output directory")
 	duration := fs.Int("duration", defaultFixtureDurationSec, "sample length in seconds")
-	fixtureNames := fs.String("fixture-names", envOr("HLS_FIXTURE_NAMES", ""), "comma-separated fixture names (default: all)")
+	fixtureNames := fs.String("fixture-names", "", "comma-separated fixture names (default: all; or HLS_FIXTURE_NAMES when flag omitted)")
 	_ = fs.Parse(args)
 
-	specs := resolveFixtureSpecs(*fixtureNames)
+	specs := resolveFixtureNamesFromFlag(fs, *fixtureNames)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()

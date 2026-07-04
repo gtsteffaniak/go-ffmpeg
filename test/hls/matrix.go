@@ -18,11 +18,11 @@ func runMatrix(args []string) int {
 	modes := fs.String("modes", "remux,copy,transcode", "comma-separated modes (legacy shortcut)")
 	duration := fs.Int("duration", defaultFixtureDurationSec, "fixture length when generating")
 	skipGenerate := fs.Bool("skip-generate", false, "use existing fixtures")
-	fixtureNames := fs.String("fixture-names", envOr("HLS_FIXTURE_NAMES", ""), "comma-separated fixture names (default: all)")
+	fixtureNames := fs.String("fixture-names", "", "comma-separated fixture names (default: all; or HLS_FIXTURE_NAMES when flag omitted)")
 	softwareOnly := fs.Bool("software-only", false, "run remux/copy/transcode/software only (also when GOFFMPEG_SKIP_HW=1)")
 	_ = fs.Parse(args)
 
-	specs := resolveFixtureSpecs(*fixtureNames)
+	specs := resolveFixtureNamesFromFlag(fs, *fixtureNames)
 	softwareOnlyRun := softwareOnlyRequested(*softwareOnly)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Hour)
