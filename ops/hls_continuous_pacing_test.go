@@ -13,7 +13,7 @@ func TestBuildHLSContinuousArgsDefaultCacheFillNoReadrate(t *testing.T) {
 	t.Parallel()
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
 	caps := &capabilities.Capabilities{
-		FeatureFlags: capabilities.FeatureFlags{Version: capabilities.Version{8, 0, 0}, Readrate: true, ReadrateCatchup: true},
+		FeatureFlags: capabilities.FeatureFlags{Version: capabilities.Version{Major: 8, Minor: 0, Patch: 0}, Readrate: true, ReadrateCatchup: true},
 	}
 	opts := HLSContinuousOptions{
 		Input:      InputSource{URL: "/media/video.mp4"},
@@ -38,7 +38,7 @@ func TestBuildHLSContinuousArgsLivePacedReadrate(t *testing.T) {
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
 	caps := &capabilities.Capabilities{
 		FeatureFlags: capabilities.FeatureFlags{
-			Version:         capabilities.Version{8, 0, 0},
+			Version:         capabilities.Version{Major: 8, Minor: 0, Patch: 0},
 			Readrate:        true,
 			ReadrateCatchup: true,
 		},
@@ -72,7 +72,7 @@ func TestBuildHLSContinuousArgsExplicitThrottleOverridesPacing(t *testing.T) {
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
 	caps := &capabilities.Capabilities{
 		FeatureFlags: capabilities.FeatureFlags{
-			Version:         capabilities.Version{8, 0, 0},
+			Version:         capabilities.Version{Major: 8, Minor: 0, Patch: 0},
 			Readrate:        true,
 			ReadrateCatchup: true,
 		},
