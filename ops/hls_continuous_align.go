@@ -78,10 +78,6 @@ func continuousSegmentReady(outDir string, index int, jobDone bool, opts HLSCont
 	if _, err := os.Stat(path + ".tmp"); err == nil {
 		return false
 	}
-	// Full transcode with -copyts skips tfdt realignment; a finalized .m4s is safe to serve.
-	if hlsContinuousUsesCopyTimestamps(opts) {
-		return true
-	}
 	if continuousPlaylistListsSegment(outDir, index) {
 		return true
 	}
@@ -153,12 +149,9 @@ func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, alig
 			aligned[index] = struct{}{}
 			continue
 		}
-		var err error
-		if hlsContinuousUsesCopyTimestamps(opts) {
-			err = markContinuousSegmentReady(segPath)
-		} else {
-			err = AlignContinuousSegmentFile(segPath, mediaStart)
-		}
+		// Transcode uses -copyts so ffmpeg may place tfdt on encoder/source time; rebasing
+		// to the HLS media grid keeps MSE playback continuous without #EXT-X-DISCONTINUITY.
+		err := AlignContinuousSegmentFile(segPath, mediaStart)
 		if err != nil {
 			return err
 		}

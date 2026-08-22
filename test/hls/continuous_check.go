@@ -178,10 +178,24 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
+		checkMedia := media
 		startSec, _ := mp4.FragmentMediaStartSec(media)
-		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
+		if exactTranscodeTimeline {
+			aligned, alignErr := mp4.AlignFragmentToMediaStart(media, expectedStart)
+			if alignErr != nil {
+				report.Pass = false
+				report.Issues = append(report.Issues, mp4.TimelineIssue{
+					Check:   "align",
+					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
+				})
+			} else {
+				checkMedia = aligned
+				startSec, _ = mp4.FragmentMediaStartSec(aligned)
+			}
+		}
+		actualDur := mp4.FragmentDurationSecWithTimescales(checkMedia, trackTimescales)
 		if actualDur <= 0 {
-			actualDur = mp4.FragmentDurationSec(media)
+			actualDur = mp4.FragmentDurationSec(checkMedia)
 		}
 		if actualDur <= 0 && plSeg.DurSec > 0 {
 			actualDur = plSeg.DurSec
@@ -193,7 +207,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			MediaStartSec:    startSec,
 			ExpectedDurSec:   expectedDur,
 			ActualDurSec:     actualDur,
-			Bytes:            len(media),
+			Bytes:            len(checkMedia),
 		}
 		report.Segments = append(report.Segments, seg)
 
@@ -213,13 +227,13 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
-		issues := mp4.ValidateSegmentTimeline(media, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimeline(checkMedia, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
-			Bytes:            len(media),
+			Bytes:            len(checkMedia),
 		}, tolerance)
 		issues = filterKeyframeAlignedDurationIssues(issues, actualDur, expectedDur, expectedStart, keyframeSeekTimes, tolerance)
 		if prevSeg != nil {
@@ -266,18 +280,18 @@ func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir str
 	}
 	return goffmpeg.HLSContinuousOptions{
 		Input:            goffmpeg.InputSource{URL: file, StreamType: probe.StreamFile},
-		OutputDir:          outDir,
-		StartIndex:         startIndex,
-		StartSec:           startSec,
-		SegmentDurations:   durations,
-		SegmentSec:         goffmpeg.DefaultHLSSegmentDurationSec,
-		FreshPlaylist:      startIndex == 0 && startSec <= 0,
-		Decode:             params.Decode,
-		Profile:            params.Profile,
-		MaxHeight:          params.MaxHeight,
-		Remux:              params.Remux,
-		VideoCopy:          params.VideoCopy,
-		GOP:                params.GOP,
+		OutputDir:        outDir,
+		StartIndex:       startIndex,
+		StartSec:         startSec,
+		SegmentDurations: durations,
+		SegmentSec:       goffmpeg.DefaultHLSSegmentDurationSec,
+		FreshPlaylist:    startIndex == 0 && startSec <= 0,
+		Decode:           params.Decode,
+		Profile:          params.Profile,
+		MaxHeight:        params.MaxHeight,
+		Remux:            params.Remux,
+		VideoCopy:        params.VideoCopy,
+		GOP:              params.GOP,
 	}
 }
 

@@ -12,8 +12,8 @@ import (
 )
 
 type parsedContinuousPlaylist struct {
-	InitURI   string
-	Segments  []parsedPlaylistSegment
+	InitURI    string
+	Segments   []parsedPlaylistSegment
 	HasEndList bool
 	TargetDur  float64
 }

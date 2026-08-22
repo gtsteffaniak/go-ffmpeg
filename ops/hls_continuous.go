@@ -15,25 +15,25 @@ import (
 
 // HLSContinuousOptions configures a long-running ffmpeg -f hls job writing fMP4 segments to disk.
 type HLSContinuousOptions struct {
-	Input       InputSource
-	OutputDir   string // cache job directory (init.m4s + seg/%05d.m4s)
-	StartIndex  int
-	StartSec    float64
+	Input      InputSource
+	OutputDir  string // cache job directory (init.m4s + seg/%05d.m4s)
+	StartIndex int
+	StartSec   float64
 	// SegmentDurations[i] is the #EXTINF duration for segment index i on the HLS media
 	// timeline. When set, fMP4 fragments are aligned to a contiguous decode timeline
 	// (sum of prior durations) instead of source keyframe timestamps.
 	SegmentDurations []float64
 	// SegmentMediaStarts is deprecated for timeline alignment; kept for diagnostics only.
 	SegmentMediaStarts []float64
-	SegmentSec  float64
-	FreshPlaylist bool // use temp_file instead of append_list at StartIndex 0
-	Decode      encode.VideoDecodeProfile
-	Profile     encode.VideoProfile
-	MaxHeight   int
-	Remux       bool
-	VideoCopy   bool
-	GOP         int
-	Throttle    encode.ThrottleConfig
+	SegmentSec         float64
+	FreshPlaylist      bool // use temp_file instead of append_list at StartIndex 0
+	Decode             encode.VideoDecodeProfile
+	Profile            encode.VideoProfile
+	MaxHeight          int
+	Remux              bool
+	VideoCopy          bool
+	GOP                int
+	Throttle           encode.ThrottleConfig
 }
 
 // HLSContinuousJob runs ffmpeg until EOF, cancellation, or error.

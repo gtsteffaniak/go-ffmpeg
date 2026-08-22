@@ -30,8 +30,8 @@ func TestVideoToolboxPreInputInitSkipsWhenHWDecode(t *testing.T) {
 	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Available: true, Kind: "videotoolbox"}
 	caps.Decoders["hwaccel:videotoolbox:h264"] = capabilities.DecoderCapability{Name: "hwaccel:videotoolbox:h264", Available: true, SWCodec: "h264"}
 	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
-		Hardware:  map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "h264_videotoolbox"},
-		Preferred: capabilities.EncoderSelection{Encoder: "h264_videotoolbox", Accel: capabilities.AccelVideoToolbox, Kind: "videotoolbox"},
+		Hardware:       map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "h264_videotoolbox"},
+		Preferred:      capabilities.EncoderSelection{Encoder: "h264_videotoolbox", Accel: capabilities.AccelVideoToolbox, Kind: "videotoolbox"},
 		HardwareDecode: map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "hwaccel:videotoolbox:h264"},
 		DecodePreferred: capabilities.DecoderSelection{
 			Decoder: "hwaccel:videotoolbox:h264",
