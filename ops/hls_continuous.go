@@ -33,6 +33,8 @@ type HLSContinuousOptions struct {
 	Remux              bool
 	VideoCopy          bool
 	GOP                int
+	// Pacing selects cache-fill vs live-paced input when Throttle.Enabled is false.
+	Pacing             HLSContinuousPacing
 	Throttle           encode.ThrottleConfig
 }
 
@@ -180,9 +182,10 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	if videoCopyPipeline {
 		args = appendHLSInputTimestampFlags(args)
 	}
+	throttle := resolveContinuousThrottle(opts)
 	var inputExtra *InputExtraFlags
-	if opts.Throttle.Enabled {
-		inputExtra = &InputExtraFlags{Throttle: &opts.Throttle, Features: caps.FeatureFlags}
+	if throttle.Enabled {
+		inputExtra = &InputExtraFlags{Throttle: &throttle, Features: caps.FeatureFlags}
 	}
 	args = appendInputFlags(args, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {

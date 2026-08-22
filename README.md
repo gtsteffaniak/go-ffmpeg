@@ -238,7 +238,36 @@ Long-running `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache
 | `ops.FixContinuousPlaylistTargetDuration` | Set `#EXT-X-TARGETDURATION` from max `#EXTINF` |
 | `ops.FixContinuousPlaylistSegmentURIs` | Rewrite bare filenames to `seg/NNNNN.m4s` |
 
-Continuous jobs support remux, video-copy, and full transcode; resume via `StartIndex` / `StartSec`; optional readrate throttling.
+**Input pacing** (`HLSContinuousPacing` on `HLSContinuousOptions`; overridden when `Throttle.Enabled` is true):
+
+| Pacing | Use case | ffmpeg behavior |
+|--------|----------|-----------------|
+| `HLSContinuousCacheFill` (default) | Background disk cache prefetch | No readrate — encode at max CPU/GPU speed |
+| `HLSContinuousLivePaced` | Watch-while-transcode | `-readrate 1`, `-readrate_catchup 2`, `-readrate_initial_burst 60` (tunable via `ThrottleConfigLivePaced`) |
+| `HLSContinuousRemuxSegmentDeletion` | Stream-copy + segment deletion | `-readrate 10`, high catchup (Jellyfin-style) |
+
+```go
+// Background cache — fill disk as fast as possible
+job, err := svc.StartHLSContinuous(ctx, goffmpeg.HLSContinuousOptions{
+    OutputDir: cacheDir,
+    Pacing:    goffmpeg.HLSContinuousCacheFill, // default zero value
+    ...
+})
+
+// Active playback — pace at ~1x after a 60s startup burst
+job, err := svc.StartHLSContinuous(ctx, goffmpeg.HLSContinuousOptions{
+    OutputDir: cacheDir,
+    Pacing:    goffmpeg.HLSContinuousLivePaced,
+    ...
+})
+
+// Or set throttle explicitly (overrides Pacing):
+Throttle: encode.ThrottleConfigLivePaced(90),
+```
+
+Head start for disk cache comes from **max-speed encode** plus serving segments when `seg/NNNNN.m4s.ready` exists. For live sessions, pair `HLSContinuousLivePaced` with **app-level pause** when segments are farther ahead of the player than your buffer setting (Jellyfin/Plex model).
+
+Continuous jobs support remux, video-copy, and full transcode; resume via `StartIndex` / `StartSec`.
 
 ### HLS — disk cache
 
@@ -268,6 +297,15 @@ Continuous jobs support remux, video-copy, and full transcode; resume via `Start
 | `ResolveVideoDecoder` | Decoder selection without building full args |
 | `EncodeOptions` / `AvailableEncodeOptions` | Cached encode paths from detection |
 | `DecodeOptions` / `AvailableDecodeOptions` | Cached decode paths from detection |
+
+### Throttle presets (`encode` package)
+
+| Function | Description |
+|----------|-------------|
+| `ThrottleConfigOff` | Max encode speed (background disk cache) |
+| `ThrottleConfigLivePaced` | `-readrate 1` + catchup + `initial_burst` for watch-while-transcode |
+| `ThrottleConfigRemuxSegmentDeletion` | Jellyfin-style `-readrate 10` for stream-copy + segment deletion |
+| `DefaultLivePacedBurstSec` | Default burst seconds (60) for live-paced jobs |
 
 ## Encoding and decode selection
 

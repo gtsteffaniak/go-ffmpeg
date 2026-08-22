@@ -334,6 +334,14 @@ type HLSContinuousOptions = ops.HLSContinuousOptions
 // HLSContinuousJob runs ffmpeg until EOF or cancellation.
 type HLSContinuousJob = ops.HLSContinuousJob
 
+// HLSContinuousPacing selects input read pacing for a continuous HLS job.
+type HLSContinuousPacing = ops.HLSContinuousPacing
+
+const (
+	HLSContinuousCacheFill              = ops.HLSContinuousCacheFill
+	HLSContinuousLivePaced              = ops.HLSContinuousLivePaced
+	HLSContinuousRemuxSegmentDeletion = ops.HLSContinuousRemuxSegmentDeletion
+)
 // HLSSegmentParams holds resolved encode/remux settings for one HLS session.
 type HLSSegmentParams = ops.HLSSegmentParams
 
