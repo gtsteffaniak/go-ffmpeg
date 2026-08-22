@@ -17,6 +17,14 @@ func TestParseSemver(t *testing.T) {
 		{"5.0", capabilities.Version{5, 0, 0}, false},
 		{"4.4.2", capabilities.Version{4, 4, 2}, false},
 		{"7.0.0", capabilities.Version{7, 0, 0}, false},
+		// Windows Gyan builds (filebrowser #2820): the build-suffix tail is
+		// dot-separated and contains non-numeric tokens.
+		{"9.0-full_build-www.gyan.dev", capabilities.Version{9, 0, 0}, false},
+		{"7.1-full_build-www.gyan.dev", capabilities.Version{7, 1, 0}, false},
+		{"6.1.1-full_build-www.gyan.dev", capabilities.Version{6, 1, 1}, false},
+		// Distro builds with a revision suffix after the patch component.
+		{"4.4.2-0ubuntu0.22.04.1", capabilities.Version{4, 4, 2}, false},
+		{"2026-08-19-git-abc1234", capabilities.Version{2026, 0, 0}, false},
 		{"", capabilities.Version{}, true},
 		{"invalid", capabilities.Version{}, true},
 	}

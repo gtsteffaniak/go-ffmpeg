@@ -31,6 +31,13 @@ func (v Version) String() string {
 }
 
 // ParseSemver parses an ffmpeg version tag (e.g. "8.1.1", "n8.1.1", "5.0").
+//
+// Build-suffix tokens after the numeric version are tolerated in every
+// component: Windows builds report versions like "9.0-full_build-www.gyan.dev",
+// whose dot-separated tail contains non-numeric tokens ("gyan", "dev"). A
+// component with no leading digits is treated as the end of the version
+// (component 0) rather than a parse error, so "9.0-full_build-www.gyan.dev"
+// parses as 9.0.0 instead of failing and failing the minimum-version gate.
 func ParseSemver(raw string) (Version, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -48,40 +55,35 @@ func ParseSemver(raw string) (Version, error) {
 	if len(parts) < 1 {
 		return Version{}, fmt.Errorf("invalid version %q", raw)
 	}
-	parsePart := func(s string) (int, error) {
+	// leadingDigits returns the numeric prefix of s and whether s had one.
+	leadingDigits := func(s string) (int, bool) {
 		s = strings.TrimSpace(s)
-		if s == "" {
-			return 0, nil
-		}
-		// Drop trailing non-digit suffix (e.g. "1-g1234ab").
 		end := 0
 		for end < len(s) && s[end] >= '0' && s[end] <= '9' {
 			end++
 		}
 		if end == 0 {
-			return 0, fmt.Errorf("invalid version component %q", s)
+			return 0, false
 		}
 		n, err := strconv.Atoi(s[:end])
 		if err != nil {
-			return 0, err
+			return 0, false
 		}
-		return n, nil
+		return n, true
 	}
-	major, err := parsePart(parts[0])
-	if err != nil {
-		return Version{}, fmt.Errorf("invalid version %q: %w", raw, err)
+	major, ok := leadingDigits(parts[0])
+	if !ok {
+		return Version{}, fmt.Errorf("invalid version %q: invalid version component %q", raw, parts[0])
 	}
 	minor, patch := 0, 0
 	if len(parts) > 1 {
-		minor, err = parsePart(parts[1])
-		if err != nil {
-			return Version{}, fmt.Errorf("invalid version %q: %w", raw, err)
+		if n, ok := leadingDigits(parts[1]); ok {
+			minor = n
 		}
 	}
 	if len(parts) > 2 {
-		patch, err = parsePart(parts[2])
-		if err != nil {
-			return Version{}, fmt.Errorf("invalid version %q: %w", raw, err)
+		if n, ok := leadingDigits(parts[2]); ok {
+			patch = n
 		}
 	}
 	return Version{Major: major, Minor: minor, Patch: patch}, nil
