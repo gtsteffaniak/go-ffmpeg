@@ -7,7 +7,7 @@ A Go wrapper library **and CLI** for FFmpeg and FFprobe with startup capability 
 - **Capability detection** on startup: binary version, build flags, encoders/decoders, filters, protocols, platform GPU gates, and optional hardware encoder smoke tests
 - **Compatibility CLI** (`go-ffmpeg`) — run a full report on any system without writing code
 - **Human-readable report** plus JSON export of the full capability matrix
-- **Pluggable operations** with pre-flight checks (`ProbeStream`, `Screenshot`, `Transcode`, and more)
+- **Pluggable operations** with pre-flight checks — probe, transcode, HLS (on-demand and continuous), fMP4 streaming, subtitles, images, and more
 - **Config-based encoding** via `VideoProfile` and automatic encoder resolution (NVENC → AMF → QSV → VAAPI → software)
 - **Concurrency control** via service semaphore
 - **Integration tests** compatible with [gtstef/ffmpeg:8.1.1](https://hub.docker.com/r/gtstef/ffmpeg)
@@ -102,7 +102,7 @@ Codec resolution:
   h264 -> libx264 (none)
   av1 -> libsvtav1 (none)
 ---
-Operations enabled: ProbeStream, GetMediaDuration, Screenshot, Transcode, ...
+Operations enabled: ProbeStream, GetMediaDuration, GetImageDimensions, Screenshot, VideoPreview, Transcode, SegmentRecord, FMP4StreamCopy, FMP4Transcode, HLSSegment, TimelapseCompile, ExtractSubtitle, ConvertHEIC, DetectSubtitles
 ```
 
 ## Quick start (library)
@@ -164,23 +164,110 @@ export GOFFMPEG_FFPROBE_PATH=$PWD/ffprobe
 
 ## Operations
 
+Capability detection gates each operation at startup. `Service.SupportedOps()` lists what the current FFmpeg build and platform can run. Unsupported operations return `ffmpeg.ErrUnsupported` with reasons from the capability matrix. Unsupported encode/decode profiles return `ffmpeg.ErrProfileUnsupported` (`ProfileError`) when validation fails before ffmpeg runs.
+
+### Service
+
+| Method | Description |
+|--------|-------------|
+| `New` / `Reload` | Create service and run (or refresh) capability detection |
+| `Capabilities` | Full capability matrix (`ReportString`, JSON export) |
+| `SupportedOps` | Enabled operation names from detection |
+| `Acquire` / `Release` | Concurrency semaphore (respects `MaxConcurrent`) |
+| `FFmpegPath` / `FFprobePath` | Resolved binary paths |
+| `Logger` | Configured `Logger` instance |
+
+
 | Method | Description |
 |--------|-------------|
 | `ProbeStream` | Validate and probe RTSP/HLS/file streams |
 | `GetMediaDuration` | Read duration via ffprobe |
-| `GetImageDimensions` | Read width/height |
+| `GetImageDimensions` | Read width/height of an image file |
 | `Screenshot` | Extract a single JPEG/PNG frame |
 | `VideoPreview` | MJPEG preview frame to `io.Writer` |
 | `Transcode` | Re-encode with `VideoProfile` |
 | `SegmentRecord` | Segmented MP4 recording |
-| `FMP4StreamCopy` | Live fragmented MP4 to stdout |
+| `FMP4StreamCopy` | Live fragmented MP4 stream copy to `io.Writer` |
+| `FMP4Transcode` | Live fragmented MP4 transcode to `io.Writer` |
+| `HLSSegment` | On-demand fMP4 HLS media segment (remux, copy, or transcode) |
 | `TimelapseCompile` | Build video from concat list |
-| `DetectSubtitles` / `ExtractSubtitle` | Subtitle probe and WebVTT extract |
+| `DetectSubtitles` | List embedded subtitle tracks |
+| `ExtractSubtitle` | Extract a subtitle stream to WebVTT |
 | `ConvertHEIC` | HEIC/HEIF to JPEG |
 
-Unsupported operations return `ffmpeg.ErrUnsupported` with reasons from the capability matrix.
+### HLS — on-demand segments
 
-Unsupported encode/decode profiles return `ffmpeg.ErrProfileUnsupported` (`ProfileError`) when validation fails before ffmpeg runs.
+Per-segment encoding for browser MSE playback (independent `ffmpeg` invocations per segment index).
+
+| Method / helper | Description |
+|-----------------|-------------|
+| `HLSSegment` | Encode one fMP4 media fragment (`moof`+`mdat`) |
+| `HLSInitAndSegment` | Init segment + media fragment in one call |
+| `HLSSegmentMedia` | Stream media fragment bytes to `io.Writer` |
+| `BuildHLSSegmentParams` | Resolve remux/copy/transcode params for a file |
+| `DescribeHLSSegmentPlan` | Human-readable summary of resolved HLS params |
+| `BuildHLSSegmentOptions` | Build `HLSSegmentOptions` for segment index *n* |
+| `BuildHLSSegmentBuildInput` | Derive remux/copy/transcode flags from stream info |
+| `BuildHLSSegmentParamsFast` | Assemble params without probing fps |
+| `BuildHLSSegmentTimeline` | Keyframe-aligned segment start times and durations |
+| `SanitizeHLSKeyframes` | Filter spurious keyframe probe times |
+| `KeyframeSeekBefore` | Largest keyframe time ≤ *sec* |
+| `NeedsFullVideoTranscode` | Whether video must be re-encoded |
+| `UseVideoCopy` | H.264 stream-copy with audio transcode |
+| `CanFMP4StreamCopy` | Whether remux to fMP4 is possible |
+| `CanH264VideoCopy` | H.264 copy with audio transcode |
+| `HLSSegmentGOP` | GOP size from fps and on-demand defaults |
+| `DefaultOnDemandHLSDefaults` | Default segment duration and GOP settings |
+| `HLSDecodeProfileForOnDemand` | Input decode profile for HLS transcode |
+| `DefaultHLSVideoProfile` | Safe H.264 transcode defaults |
+
+### HLS — continuous jobs
+
+Long-running `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache directory (same pipeline as filebrowser disk cache).
+
+| Method / type | Description |
+|---------------|-------------|
+| `StartHLSContinuous` | Launch continuous HLS job; returns `*HLSContinuousJob` |
+| `HLSContinuousJob.Wait` | Block until ffmpeg exits and segment alignment completes |
+| `HLSContinuousJob.Cancel` | Stop the ffmpeg process |
+| `HLSContinuousJob.Done` | Channel that fires when ffmpeg exits (before alignment) |
+| `HLSContinuousJob.VTDecodeUnreliable` | VideoToolbox decode failures detected in stderr |
+| `ops.AlignContinuousHLSSegments` | Rebase all segment `tfdt` to the HLS media timeline |
+| `ops.AlignContinuousSegmentFile` | Rebase one segment file to a target media start |
+| `ops.ValidateContinuousHLSOutput` | Validate playlist + per-segment timeline |
+| `ops.FixContinuousPlaylistTargetDuration` | Set `#EXT-X-TARGETDURATION` from max `#EXTINF` |
+| `ops.FixContinuousPlaylistSegmentURIs` | Rewrite bare filenames to `seg/NNNNN.m4s` |
+
+Continuous jobs support remux, video-copy, and full transcode; resume via `StartIndex` / `StartSec`; optional readrate throttling.
+
+### HLS — disk cache
+
+| Method / helper | Description |
+|-----------------|-------------|
+| `HLSCacheFingerprint` | Stable SHA-based directory name for a cache entry |
+| `HLSCacheIdentity` | Inputs that affect cached segment bytes (path, mtime, profile, encode params) |
+| `HLSCacheSchemaVersion` | Active fingerprint schema version (`v1`) |
+
+### Probe helpers
+
+| Method | Description |
+|--------|-------------|
+| `ProbeFile` | Probe a local media file (`ProbeStream` with `StreamFile`) |
+| `ProbeVideoFPS` | Video frame rate via ffprobe |
+| `ProbeVideoKeyframeTimes` | Keyframe timestamps for HLS segment planning |
+
+### Encode / decode resolution
+
+| Method | Description |
+|--------|-------------|
+| `VideoEncoderArgs` | ffmpeg video encoder arguments for a `VideoProfile` |
+| `VideoDecoderArgs` | ffmpeg video decoder arguments for a `VideoDecodeProfile` |
+| `ValidateVideoProfile` | Pre-flight encode profile check |
+| `ResolveVideoEncoder` | Encoder selection without building full args |
+| `ValidateVideoDecodeProfile` | Pre-flight decode profile check |
+| `ResolveVideoDecoder` | Decoder selection without building full args |
+| `EncodeOptions` / `AvailableEncodeOptions` | Cached encode paths from detection |
+| `DecodeOptions` / `AvailableDecodeOptions` | Cached decode paths from detection |
 
 ## Encoding and decode selection
 
