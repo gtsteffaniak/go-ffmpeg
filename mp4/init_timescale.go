@@ -44,7 +44,8 @@ func tkhdTrackID(data []byte, trakOff, trakEnd int) (uint32, bool) {
 		version := data[atomOff+8]
 		idOff := atomOff + 20
 		if version == 1 {
-			idOff = atomOff + 32
+			// version+flags (4) + creation (8) + modification (8)
+			idOff = atomOff + 28
 		}
 		if idOff+4 > atomOff+atomSize || idOff+4 > len(data) {
 			return nil
@@ -102,8 +103,36 @@ func mdhdTimescale(data []byte, atomOff, atomSize int) (uint32, bool) {
 
 // FragmentDurationSecWithTimescales returns the longest track span using init timescales when known.
 func FragmentDurationSecWithTimescales(media []byte, trackTimescales map[uint32]uint32) float64 {
+	secs := fragmentTrackDurationSecs(media, trackTimescales)
+	var maxSec float64
+	for _, sec := range secs {
+		if sec > maxSec {
+			maxSec = sec
+		}
+	}
+	return maxSec
+}
+
+// FragmentDurationMinSecWithTimescales returns the shortest track span using init timescales when known.
+// Use this for HLS #EXTINF so the playlist timeline matches when the first track ends in a segment.
+func FragmentDurationMinSecWithTimescales(media []byte, trackTimescales map[uint32]uint32) float64 {
+	secs := fragmentTrackDurationSecs(media, trackTimescales)
+	var minSec float64
+	for _, sec := range secs {
+		if sec <= 0 {
+			continue
+		}
+		if minSec <= 0 || sec < minSec {
+			minSec = sec
+		}
+	}
+	return minSec
+}
+
+func fragmentTrackDurationSecs(media []byte, trackTimescales map[uint32]uint32) map[uint32]float64 {
+	out := make(map[uint32]float64)
 	if len(media) == 0 {
-		return 0
+		return out
 	}
 	trackTicks := make(map[uint32]uint64)
 	_ = walkAtoms(media, 0, len(media), func(off, size int, typ string) error {
@@ -128,7 +157,6 @@ func FragmentDurationSecWithTimescales(media []byte, trackTimescales map[uint32]
 			return nil
 		})
 	})
-	var maxSec float64
 	for trackID, ticks := range trackTicks {
 		ts := trackTimescales[trackID]
 		var sec float64
@@ -137,9 +165,9 @@ func FragmentDurationSecWithTimescales(media []byte, trackTimescales map[uint32]
 		} else {
 			sec = inferTrackDurationSec(ticks)
 		}
-		if sec > maxSec {
-			maxSec = sec
+		if sec > 0 {
+			out[trackID] = sec
 		}
 	}
-	return maxSec
+	return out
 }

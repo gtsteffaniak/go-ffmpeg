@@ -49,4 +49,13 @@ func TestVideoDecoderArgsVideoToolbox(t *testing.T) {
 	if !strings.Contains(joined, "videotoolbox") || !strings.Contains(joined, "vp9") {
 		t.Fatalf("args = %v", args)
 	}
+	if !strings.Contains(joined, "init_hw_device") {
+		t.Fatalf("expected init_hw_device for videotoolbox: %v", args)
+	}
+	if !strings.Contains(joined, "hwaccel_output_format") || !strings.Contains(joined, "videotoolbox_vld") {
+		t.Fatalf("expected videotoolbox_vld hwaccel output: %v", args)
+	}
+	if !strings.Contains(joined, "noautorotate") {
+		t.Fatalf("expected -noautorotate for videotoolbox decode: %v", args)
+	}
 }

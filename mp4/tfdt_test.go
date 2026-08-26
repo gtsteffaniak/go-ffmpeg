@@ -56,6 +56,28 @@ func TestAlignFragmentToMediaStartRebasesRemux(t *testing.T) {
 	}
 }
 
+func TestAlignAndReadWithHLSFMP4Timescale(t *testing.T) {
+	t.Parallel()
+	const hlsVideoTS = uint32(12288)
+	timescales := map[uint32]uint32{1: hlsVideoTS}
+	media := sampleSingleMoofMedia(0)
+	out, err := AlignFragmentToMediaStartWithTimescales(media, 4.0, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := FragmentMediaStartSecWithTimescales(out, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got < 3.99 || got > 4.01 {
+		t.Fatalf("aligned start = %.3f, want 4.000", got)
+	}
+	ticks := readNestedTFDTv0(out)
+	if ticks != uint32(4.0*float64(hlsVideoTS)) {
+		t.Fatalf("tfdt ticks = %d, want %d", ticks, uint32(4.0*float64(hlsVideoTS)))
+	}
+}
+
 func sampleSingleMoofMedia(firstTFDT uint32) []byte {
 	tfhd := makeFullAtom("tfhd", 0, append([]byte{0, 0, 0, 0x01}, uint32ToBytes(1)...))
 	tfdt := makeFullAtom("tfdt", 0, uint32ToBytes(firstTFDT))

@@ -3,7 +3,7 @@ let chartInstances = [];
 async function loadReport() {
   const res = await fetch('data/report.json');
   if (!res.ok) {
-    document.getElementById('meta').textContent = 'No results yet — run: make integration-tests';
+    document.getElementById('meta').textContent = 'No results yet — run: make test-hls';
     return;
   }
   const report = await res.json();
@@ -46,7 +46,10 @@ function metricBar(value, max, kind, format) {
 
 function rowLabel(row) {
   const accel = row.accel && row.accel !== 'software' ? row.accel : '';
-  return accel ? `${row.fixture} · ${row.mode} · ${accel}` : `${row.fixture} · ${row.mode}`;
+  const pipe = row.pipeline === 'continuous' ? 'continuous' : 'ondemand';
+  const scenario = row.scenario ? ` · ${row.scenario}` : '';
+  const base = accel ? `${row.fixture} · ${row.mode} · ${accel}` : `${row.fixture} · ${row.mode}`;
+  return `${base} · ${pipe}${scenario}`;
 }
 
 function renderReport(r) {
@@ -84,7 +87,7 @@ function renderReport(r) {
     const warm = row.timing?.warmAvgSegMs;
     const pass = row.pass ? '<span class="pass">PASS</span>' : '<span class="fail">FAIL</span>';
     const play = row.playbackUrl
-      ? `<a href="player.html?playlist=${encodeURIComponent(row.playbackUrl)}&label=${encodeURIComponent(row.fixture + ' ' + row.label)}">Play</a>`
+      ? `<a href="player.html?playlist=${encodeURIComponent(row.playbackUrl)}&label=${encodeURIComponent(rowLabel(row))}">Play</a>`
       : '';
     const gpu = gpuLabel(row);
     const hw = row.hw?.expectedAccel === 'software' || row.mode === 'remux' || row.mode === 'copy'
@@ -93,6 +96,8 @@ function renderReport(r) {
     const gpuVal = gpuPercent(row);
     return `<tr>
       <td>${row.fixture}</td>
+      <td>${row.pipeline || 'ondemand'}</td>
+      <td>${row.scenario || '—'}</td>
       <td>${row.mode}</td>
       <td>${row.accel}</td>
       <td>${pass}</td>
@@ -125,11 +130,16 @@ function destroyCharts() {
   chartInstances = [];
 }
 
-function setChartHeight(canvasId, rowCount, minHeight = 420) {
+function setChartHeight(canvasId, rowCount, minHeight = 280) {
   const wrap = document.getElementById(canvasId)?.closest('.chart-wrap');
+  const box = wrap?.closest('.chart-box.tall');
   if (!wrap) return;
-  const h = Math.max(minHeight, rowCount * 26 + 80);
+  const rowHeight = 10;
+  const h = Math.max(minHeight, rowCount * rowHeight + 48);
   wrap.style.height = `${h}px`;
+  if (box) {
+    box.style.minHeight = `${h + 56}px`;
+  }
 }
 
 function horizontalBarChart(canvasId, labels, values, label, color, maxValue) {
@@ -167,7 +177,12 @@ function horizontalBarChart(canvasId, labels, values, label, color, maxValue) {
         },
         y: {
           grid: { display: false },
-          ticks: { color: '#e8eaed', font: { size: 11 }, autoSkip: false },
+          ticks: {
+            color: '#e8eaed',
+            font: { size: 11 },
+            autoSkip: false,
+            padding: 2,
+          },
         },
       },
     },

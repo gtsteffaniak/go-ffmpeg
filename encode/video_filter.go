@@ -8,6 +8,8 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
+const videoToolboxDeviceAlias = "vt"
+
 // VideoFilterArgs returns -filter_hw_device and -vf for hardware encoders.
 // Must be appended after input and before encoder args.
 func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfile, maxHeight int) ([]string, error) {
@@ -23,6 +25,8 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 		return r.vaapiVideoFilters(decode, maxHeight)
 	case capabilities.AccelQSV:
 		return qsvVideoFilters(maxHeight)
+	case capabilities.AccelVideoToolbox:
+		return r.videotoolboxVideoFilters(decode, maxHeight)
 	default:
 		return videoFilterScaleOnly(maxHeight)
 	}
@@ -60,6 +64,53 @@ func qsvVideoFilters(maxHeight int) ([]string, error) {
 	}
 	parts = append(parts, "format=nv12")
 	return []string{"-vf", strings.Join(parts, ",")}, nil
+}
+
+func (r *Resolver) videotoolboxVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
+	useScaleVT := r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vt")
+	vtDecode := decodeUsesVideoToolbox(r, decode)
+
+	var parts []string
+	switch {
+	case vtDecode && useScaleVT:
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale_vt=w=-2:h=min(%d\\,ih)", maxHeight))
+		}
+	case vtDecode:
+		if maxHeight > 0 {
+			parts = append(parts, "hwdownload", fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight), "format=nv12", "hwupload")
+		}
+	case useScaleVT:
+		parts = append(parts, "format=nv12", "hwupload")
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale_vt=w=-2:h=min(%d\\,ih)", maxHeight))
+		}
+	default:
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+		}
+		parts = append(parts, "format=nv12", "hwupload")
+	}
+	if len(parts) == 0 {
+		return nil, nil
+	}
+
+	args := []string{"-filter_hw_device", videoToolboxDeviceAlias, "-vf", strings.Join(parts, ",")}
+	return args, nil
+}
+
+func decodeUsesVideoToolbox(r *Resolver, decode VideoDecodeProfile) bool {
+	if decode.ForceSoftware {
+		return false
+	}
+	if r == nil {
+		return false
+	}
+	sel, err := r.ResolveDecoder(decode)
+	if err != nil {
+		return false
+	}
+	return sel.Accel == capabilities.AccelVideoToolbox
 }
 
 // EncoderUsesHardware reports whether the resolved encoder is a hardware backend.

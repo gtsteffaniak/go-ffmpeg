@@ -21,15 +21,16 @@ func runFullTest(args []string) int {
 	segments := fs.Int("segments", 0, "HLS segments per test (0 = full fixture timeline, ~duration/4s)")
 	duration := fs.Int("duration", defaultFixtureDurationSec, "fixture sample length in seconds")
 	skipGenerate := fs.Bool("skip-generate", false, "skip fixture generation (use existing files)")
-	fixtureNames := fs.String("fixture-names", envOr("HLS_FIXTURE_NAMES", ""), "comma-separated fixture names (default: all)")
+	fixtureNames := fs.String("fixture-names", "", "comma-separated fixture names (default: all; or HLS_FIXTURE_NAMES when flag omitted)")
 	softwareOnly := fs.Bool("software-only", false, "run remux/copy/transcode/software only (also when GOFFMPEG_SKIP_HW=1)")
+	continuous := fs.Bool("continuous", true, "also run ffmpeg -f hls continuous pipeline benchmarks")
 	serve := fs.Bool("serve", false, "start report HTTP server after run")
 	port := fs.Int("port", 8765, "report server port")
 	debug := fs.Bool("debug", false, "ffmpeg stderr")
 	tolerance := fs.Float64("tolerance", 0.12, "timeline tolerance seconds")
 	_ = fs.Parse(args)
 
-	specs := resolveFixtureSpecs(*fixtureNames)
+	specs := resolveFixtureNamesFromFlag(fs, *fixtureNames)
 	softwareOnlyRun := softwareOnlyRequested(*softwareOnly)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Hour)
@@ -112,34 +113,29 @@ func runFullTest(args []string) int {
 				})
 				continue
 			}
+			br.Pipeline = "ondemand"
 			report.Results = append(report.Results, *br)
-			status := "PASS"
-			if br.Skipped {
-				status = "SKIP"
-			} else if !br.Pass {
-				status = "FAIL"
-			}
-			avgMs := int64(0)
-			if len(br.Segments) > 0 {
-				var sum int64
-				for _, s := range br.Segments {
-					sum += s.EncodeMs
+			printBenchmarkLine(statusFromResult(br), label, br)
+
+			if *continuous && variantSupportsContinuous(variant) {
+				keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, path)
+				keyframeSeekTimes := goffmpeg.SanitizeHLSKeyframes(keyframes, info.Duration)
+				starts, _ := goffmpeg.BuildHLSSegmentTimeline(info.Duration, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
+				for _, scenario := range continuousScenarios(starts) {
+					contLabel := fmt.Sprintf("%s/%s/continuous/%s", spec.Name, variant.Label, scenario.Name)
+					cbr, err := runContinuousBenchmark(ctx, svc, path, spec.Name, variant, scenario, *tolerance, mediaDir)
+					if err != nil {
+						fmt.Printf("FAIL %-40s %v\n", contLabel, err)
+						report.Results = append(report.Results, benchmarkResult{
+							Fixture: spec.Name, Label: contLabel, Pipeline: "continuous", Scenario: scenario.Name,
+							Pass: false, EncodeError: err.Error(),
+						})
+						continue
+					}
+					report.Results = append(report.Results, *cbr)
+					printBenchmarkLine(statusFromResult(cbr), contLabel, cbr)
 				}
-				avgMs = sum / int64(len(br.Segments))
 			}
-			fmt.Printf("%-4s %-40s encode=%dms avgSeg=%dms",
-				status, label, br.TotalEncodeMs, avgMs)
-			if br.Timing.WarmAvgSegMs > 0 {
-				fmt.Printf(" cold=%dms warm=%dms", br.Timing.ColdSegMs, br.Timing.WarmAvgSegMs)
-			}
-			fmt.Printf(" cpu=%.0f%%", br.Resources.CPUPercentAvg)
-			if br.Resources.GPUPercentAvg != nil {
-				fmt.Printf(" gpu=%.0f%%", *br.Resources.GPUPercentAvg)
-			}
-			if br.EncodeError != "" {
-				fmt.Printf(" err=%s", truncate(br.EncodeError, 60))
-			}
-			fmt.Println()
 		}
 	}
 
@@ -176,6 +172,45 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
+func statusFromResult(br *benchmarkResult) string {
+	if br.Skipped {
+		return "SKIP"
+	}
+	if !br.Pass {
+		return "FAIL"
+	}
+	return "PASS"
+}
+
+func printBenchmarkLine(status, label string, br *benchmarkResult) {
+	avgMs := int64(0)
+	if len(br.Segments) > 0 {
+		var sum int64
+		for _, s := range br.Segments {
+			sum += s.EncodeMs
+		}
+		avgMs = sum / int64(len(br.Segments))
+	}
+	fmt.Printf("%-4s %-40s encode=%dms segs=%d",
+		status, label, br.TotalEncodeMs, len(br.Segments))
+	if br.Pipeline == "continuous" {
+		fmt.Printf(" start=%d@%.1fs endlist=%t", br.StartIndex, br.StartSec, br.HasEndList)
+	} else if avgMs > 0 {
+		fmt.Printf(" avgSeg=%dms", avgMs)
+	}
+	if br.Timing.WarmAvgSegMs > 0 {
+		fmt.Printf(" cold=%dms warm=%dms", br.Timing.ColdSegMs, br.Timing.WarmAvgSegMs)
+	}
+	fmt.Printf(" cpu=%.0f%%", br.Resources.CPUPercentAvg)
+	if br.Resources.GPUPercentAvg != nil {
+		fmt.Printf(" gpu=%.0f%%", *br.Resources.GPUPercentAvg)
+	}
+	if br.EncodeError != "" {
+		fmt.Printf(" err=%s", truncate(br.EncodeError, 60))
+	}
+	fmt.Println()
+}
+
 func reportHandler(reportDir string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir(reportDir)))
@@ -189,6 +224,12 @@ func runReportServe(args []string) int {
 	_ = fs.Parse(args)
 
 	addr := fmt.Sprintf(":%d", *port)
+	if n, err := fixReportContinuousPlaylists(*reportDir); err != nil {
+		fmt.Fprintf(os.Stderr, "fix continuous playlists: %v\n", err)
+		return 1
+	} else if n > 0 {
+		fmt.Printf("Fixed %d continuous ffmpeg.m3u8 playlist(s) for browser playback\n", n)
+	}
 	fmt.Printf("Report site: http://0.0.0.0:%d/\n", *port)
 	return runHTTPServer(addr, reportHandler(*reportDir))
 }

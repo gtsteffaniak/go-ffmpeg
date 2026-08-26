@@ -58,8 +58,7 @@ if (!playlist) {
   hls.loadSource(playlist);
   hls.attachMedia(video);
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    statusEl.textContent = 'Playing — watch for skips; jumps logged below';
-    void video.play();
+    statusEl.textContent = 'Click play — watch for skips; jumps logged below';
     setInterval(samplePlayhead, 100);
   });
 }

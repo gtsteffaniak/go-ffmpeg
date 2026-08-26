@@ -3,6 +3,7 @@ package encode
 import (
 	"testing"
 
+	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
@@ -24,7 +25,10 @@ func TestDefaultHLSVideoProfile(t *testing.T) {
 func TestHLSDecodeProfileForOnDemand(t *testing.T) {
 	t.Parallel()
 	out := HLSDecodeProfileForOnDemand(probe.StreamInfo{VideoCodec: "h264"})
-	if !out.ForceSoftware {
-		t.Fatal("on-demand should force software decode for h264")
+	if out.ForceSoftware {
+		t.Fatal("on-demand h264 should allow hardware decode")
+	}
+	if out.Codec != capabilities.CodecH264 {
+		t.Fatalf("codec = %v, want h264", out.Codec)
 	}
 }

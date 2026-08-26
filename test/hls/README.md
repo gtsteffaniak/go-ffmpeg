@@ -4,18 +4,17 @@ HLS transcode validation harness for on-demand fMP4 segments. Generates a **fixt
 
 ## Quick start
 
-From the repo root (recommended):
+From the **go-ffmpeg repo root**:
 
 ```bash
-make integration-tests   # run all integration tests + generate results
-make serve-results       # → http://127.0.0.1:8765/
+make test-hls          # all 21 fixtures + full matrix → test/hls/report_site/data/report.json
+make serve-report      # http://127.0.0.1:8765/
 ```
 
-Advanced use from this directory:
+Optional subset for faster runs:
 
 ```bash
-make generate-results    # benchmark matrix only → report_site/data/report.json
-make serve-results       # serve existing results
+make test-hls FIXTURE_NAMES=h264_aac_mp4,hevc_aac_mp4 SEGMENTS=3 FIXTURE_DURATION=10
 ```
 
 `make report` at the repo root is the **ffmpeg capability report** in the terminal — not this dashboard.
@@ -25,18 +24,20 @@ make serve-results       # serve existing results
 | Command | Purpose |
 |---------|---------|
 | `generate-fixtures` | Reference → 21 named 2-minute samples (h264/hevc/vp9/av1 × aac/mp3/ac3/eac3/opus/vorbis × mp4/mkv/mov/webm/avi) |
-| `generate-results` | Fixtures + full benchmark matrix → `report_site/data/report.json` |
-| `serve-results` | Static dashboard + HLS player (requires `generate-results` first) |
-| `hls-check` | Single-file segment timeline validation |
+| `run` | Fixtures + full benchmark matrix → `report_site/data/report.json` (what `make test-hls` runs) |
+| `serve-report` | Static dashboard + HLS player (requires `run` / `test-hls` first) |
+| `hls-check` | Single-file on-demand segment timeline validation |
+| `continuous-check` | Single-file `ffmpeg -f hls` continuous job (full file) |
+| `continuous-check-resume` | Continuous job from `-start-index` / `-start-sec` (EOF resume repro) |
 | `matrix` | CLI-only matrix (uses cached HW detect) |
 | `playback-test` | Automated hls.js playhead jump test |
 
 ### Generate fixtures only
 
 ```bash
-make fixtures FIXTURE_DURATION=10
-# Files land in .fixtures/ with names like h264_aac_mp4.mp4, hevc_eac3_mkv.mkv, vp9_opus_webm.webm
-# Default reference: ../data/Big_Buck_Bunny_1080_10s_2MB.mp4
+make test-hls FIXTURE_DURATION=10
+# or via the harness binary after make test-hls builds it:
+./test/hls/test-ffmpeg generate-fixtures -duration 10 -fixtures test/hls/.fixtures
 ```
 
 ### Full run with report server
@@ -61,6 +62,7 @@ For every fixture × mode × accelerator:
 - **GPU usage** — `nvidia-smi` (NVIDIA), `intel_gpu_top` (Intel Linux), `ioreg` Device Utilization % (macOS Apple GPU). VideoToolbox runs on the media engine; macOS GPU % may under-report during encode even when HW is active.
 - **Timeline validation** — fMP4 `tfdt` continuity (`go-ffmpeg/mp4` checks)
 - **Browser artifacts** — HLS playlist + segments under `report_site/media/` for manual playback
+- **Continuous pipeline** — for remux/copy/transcode/software, also runs `ffmpeg -f hls` with scenarios `full`, `resume_mid`, and `resume_eof` (mirrors filebrowser tail resume). Play via **Play** → `ffmpeg.m3u8`.
 
 ### Modes tested per fixture
 
@@ -75,7 +77,7 @@ Hardware detection runs **once** via `sync.Once` and is reused for all matrix/be
 
 ## Report site
 
-After `make generate-results` (or root `make integration-tests`):
+After `make test-hls`:
 
 - **Dashboard** — pass/fail charts, encode time by fixture, CPU bars
 - **Fixture table** — generation status
@@ -83,7 +85,7 @@ After `make generate-results` (or root `make integration-tests`):
 - **Hardware section** — cached capability matrix from startup
 
 ```bash
-make serve-results   # http://127.0.0.1:8765/
+make serve-report   # http://127.0.0.1:8765/
 ```
 
 ## Fixture naming
@@ -149,18 +151,25 @@ location.reload();
 
 ## CI (software-only)
 
-Every pull request runs the H.264 software matrix via GitHub Actions (`hls-software` job) and locally:
+Every pull request runs the H.264 software matrix via GitHub Actions (`hls-software` job). `make test-hls` runs in this order:
+
+1. Generate fixtures (`HLS_TEST_FIXTURES`: `FIXTURE_NAMES` when set, else `h264_aac_mp4` + `wmv3_wmapro_wmv` for integration tests)
+2. Unit tests (`go test` in `test/hls`, no `-tags=integration`)
+3. Integration tests (`go test -tags=integration` — encode/remux checks against `.fixtures`)
+4. Full benchmark matrix (`test-ffmpeg run -skip-generate`)
+
+Locally:
 
 ```bash
-cd test/hls
-GOFFMPEG_SKIP_HW=1 make ci-software
+GOFFMPEG_SKIP_HW=1 HLS_SOFTWARE_ONLY=1 make test-hls SEGMENTS=3 FIXTURE_DURATION=10 \
+  FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_aac_mov,h264_mp3_mkv,h264_ac3_mkv,h264_eac3_mkv,h264_aac_avi,h264_mp3_avi
 ```
 
-This uses the bundled `test/data/Big_Buck_Bunny_1080_10s_2MB.mp4` sample, builds 8 H.264 fixtures, and runs remux / copy / transcode/software with 3 segments each.
+CI passes `FIXTURE_NAMES` for a faster subset (includes `wmv3_wmapro_wmv` for integration tests). Local `make test-hls` without `FIXTURE_NAMES` generates all 21 fixtures for the benchmark report.
 
 ## Agent workflow
 
 1. Change encode/timeline code in `go-ffmpeg` or `filebrowser/backend/ffmpeg`
-2. Root: `make integration-tests SEGMENTS=3` — or here: `make generate-results SEGMENTS=3 FIXTURE_DURATION=10`
+2. Root: `make test-hls SEGMENTS=3 FIXTURE_DURATION=10`
 3. Open report site — check failures table and manually **Play** borderline cases
 4. Ship when remux + transcode/software paths pass for your target fixtures

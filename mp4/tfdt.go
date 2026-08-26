@@ -29,6 +29,12 @@ func OffsetDecodeTimeByStartSec(media []byte, startSec float64) ([]byte, error) 
 // equals mediaStartSec on the HLS playlist timeline. Works for transcode (tfdt≈0),
 // remux/copy (source PTS + output_ts_offset), and mixed multi-moof segments.
 func AlignFragmentToMediaStart(media []byte, mediaStartSec float64) ([]byte, error) {
+	return AlignFragmentToMediaStartWithTimescales(media, mediaStartSec, nil)
+}
+
+// AlignFragmentToMediaStartWithTimescales is like AlignFragmentToMediaStart but uses
+// init-segment mdhd timescales when provided.
+func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
 	if len(media) == 0 {
 		return media, nil
 	}
@@ -42,7 +48,7 @@ func AlignFragmentToMediaStart(media []byte, mediaStartSec float64) ([]byte, err
 	}
 	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
 	for trackID, firstTicks := range firstByTrack {
-		timescale := timescaleForTrack(trackID)
+		timescale := timescaleForTrackID(trackID, trackTimescales)
 		target := int64(math.Round(mediaStartSec * float64(timescale)))
 		deltaByTrack[trackID] = target - int64(firstTicks)
 	}
@@ -50,6 +56,15 @@ func AlignFragmentToMediaStart(media []byte, mediaStartSec float64) ([]byte, err
 		return nil, err
 	}
 	return out, nil
+}
+
+func timescaleForTrackID(trackID uint32, trackTimescales map[uint32]uint32) uint32 {
+	if len(trackTimescales) > 0 {
+		if ts, ok := trackTimescales[trackID]; ok && ts > 0 {
+			return ts
+		}
+	}
+	return timescaleForTrack(trackID)
 }
 
 func patchTFDTs(data []byte, startSec float64, additive bool) error {

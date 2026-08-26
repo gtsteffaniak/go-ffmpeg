@@ -15,18 +15,41 @@ import (
 
 const defaultHLSSegmentFPS = 30
 
-// appendHLSTimestampArgs configures output timestamps for independent segment encodes.
-// output_ts_offset places each fragment on a continuous media timeline without
-// #EXT-X-DISCONTINUITY (which causes visible backward skips in hls.js).
-func appendHLSTimestampArgs(args []string, startSec float64) []string {
-	args = append(args,
-		"-avoid_negative_ts", "make_zero",
-		"-fflags", "+genpts",
-	)
+// hlsFFmpegLogLevel returns ffmpeg -loglevel for HLS encode jobs. Non-verbose runs use
+// "error" to reduce noise; verbose runs follow runner.FFmpegLogLevel() and rely on
+// filterMatroskaSeekNoise to drop benign matroska index warnings during input -ss seeks.
+func hlsFFmpegLogLevel(r *ffexec.Runner) string {
+	if r != nil && r.VerboseFFmpeg {
+		return r.FFmpegLogLevel()
+	}
+	return "error"
+}
+
+// appendHLSInputTimestampFlags must appear before -i so demuxers (e.g. AVI) generate PTS for stream copy.
+func appendHLSInputTimestampFlags(args []string) []string {
+	return append(args, "-fflags", "+genpts")
+}
+
+// appendHLSTranscodeCopyTimestampArgs matches Jellyfin HLS transcode timestamp handling.
+func appendHLSTranscodeCopyTimestampArgs(args []string) []string {
+	return append(args, "-copyts", "-avoid_negative_ts", "disabled")
+}
+
+// appendHLSOutputTimestampArgs configures mux output timestamps for HLS fMP4 segments
+// when stream-copying without -copyts (legacy video-copy path).
+func appendHLSOutputTimestampArgs(args []string, startSec float64) []string {
+	args = append(args, "-avoid_negative_ts", "make_zero")
 	if startSec > 0 {
 		args = append(args, "-output_ts_offset", fmt.Sprintf("%.6f", startSec))
 	}
 	return args
+}
+
+// appendHLSTimestampArgs configures output timestamps for independent segment encodes.
+// output_ts_offset places each fragment on a continuous media timeline without
+// #EXT-X-DISCONTINUITY (which causes visible backward skips in hls.js).
+func appendHLSTimestampArgs(args []string, startSec float64) []string {
+	return appendHLSOutputTimestampArgs(args, startSec)
 }
 
 // minHLSSegmentMediaBytes rejects empty fMP4 fragments (moof+mdat shell only).
@@ -52,6 +75,10 @@ type HLSSegmentOptions struct {
 	GOP          int
 	VideoOnly    bool
 	Throttle     encode.ThrottleConfig
+	// TrackTimescales maps init-segment track IDs to mdhd timescales for tfdt alignment.
+	// When empty, HLSInitAndSegment derives timescales from the init segment; callers
+	// encoding later segments should pass the same map from segment 0.
+	TrackTimescales map[uint32]uint32
 }
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
@@ -83,7 +110,11 @@ func HLSInitAndSegment(ctx context.Context, runner *ffexec.Runner, caps *capabil
 	if err = validateHLSSegmentMedia(media, opts); err != nil {
 		return nil, nil, err
 	}
-	media, err = finalizeHLSSegmentMedia(media, opts)
+	finalizeOpts := opts
+	if len(finalizeOpts.TrackTimescales) == 0 {
+		finalizeOpts.TrackTimescales = mp4.TrackTimescalesFromInit(init)
+	}
+	media, err = finalizeHLSSegmentMedia(media, finalizeOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -102,7 +133,7 @@ func finalizeHLSSegmentMedia(media []byte, opts HLSSegmentOptions) ([]byte, erro
 	if timelineSec <= 0 && opts.StartSec > 0 {
 		timelineSec = opts.StartSec
 	}
-	patched, err := mp4.AlignFragmentToMediaStart(media, timelineSec)
+	patched, err := mp4.AlignFragmentToMediaStartWithTimescales(media, timelineSec, opts.TrackTimescales)
 	if err != nil {
 		return nil, fmt.Errorf("align segment tfdt at %.3fs: %w", timelineSec, err)
 	}
@@ -192,12 +223,15 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		gop = HLSSegmentGOP(defaultHLSSegmentFPS, DefaultOnDemandHLSDefaults())
 	}
 
-	args := []string{"-hide_banner", "-nostats", "-y"}
+	args := []string{"-hide_banner", "-nostats", "-loglevel", hlsFFmpegLogLevel(runner), "-y"}
 	videoCopyPipeline := hlsUsesVideoCopyPipeline(opts)
 	if opts.StartSec > 0 {
 		if videoCopyPipeline || !opts.AccurateSeek {
 			args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
 		}
+	}
+	if videoCopyPipeline {
+		args = appendHLSInputTimestampFlags(args)
 	}
 	var inputExtra *InputExtraFlags
 	if !videoCopyPipeline && opts.Throttle.Enabled {
@@ -206,11 +240,15 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	args = appendInputFlags(args, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
+		if initArgs := resolver.VideoToolboxPreInputInit(opts.Decode, opts.Profile); len(initArgs) > 0 {
+			args = append(args, initArgs...)
+		}
 		decodeArgs, err := resolver.VideoDecoderArgs(opts.Decode)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, decodeArgs...)
+		args = append(args, "-fflags", "+discardcorrupt+genpts")
 	}
 	args = append(args, "-i", opts.Input.URL)
 	if !videoCopyPipeline && opts.StartSec > 0 && opts.AccurateSeek {
@@ -278,14 +316,13 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	if timelineSec <= 0 && opts.StartSec > 0 {
 		timelineSec = opts.StartSec
 	}
-	args = appendHLSTimestampArgs(args, timelineSec)
+	args = appendHLSOutputTimestampArgs(args, timelineSec)
 	// empty_moov is required even for media-only segments; without it ffmpeg emits
 	// progressive mp4 (moov+mdat) instead of moof+mdat fragments for hls.js MSE.
 	movFlags := "empty_moov+frag_keyframe+default_base_moof"
 	args = append(args,
 		"-movflags", movFlags,
 		"-f", "mp4",
-		"-loglevel", runner.FFmpegLogLevel(),
 		"-",
 	)
 

@@ -244,7 +244,13 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 		if sw == "" {
 			return nil, unavailableDecodeProfile(profile.Codec, sel.Decoder, sel.Accel, "no software codec for videotoolbox decode path")
 		}
-		return []string{"-hwaccel", "videotoolbox", "-c:v", sw}, nil
+		return []string{
+			"-init_hw_device", "videotoolbox=" + videoToolboxDeviceAlias,
+			"-hwaccel", "videotoolbox",
+			"-hwaccel_output_format", "videotoolbox_vld",
+			"-noautorotate",
+			"-c:v", sw,
+		}, nil
 	default:
 		return nil, nil
 	}

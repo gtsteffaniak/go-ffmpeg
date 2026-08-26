@@ -31,6 +31,12 @@ type TimelineIssue struct {
 
 // ValidateSegmentTimeline checks one encoded media fragment against expected HLS placement.
 func ValidateSegmentTimeline(media []byte, seg SegmentTimeline, toleranceSec float64) []TimelineIssue {
+	return ValidateSegmentTimelineWithTimescales(media, seg, toleranceSec, nil)
+}
+
+// ValidateSegmentTimelineWithTimescales is like ValidateSegmentTimeline but interprets
+// tfdt ticks using init-segment mdhd timescales when provided.
+func ValidateSegmentTimelineWithTimescales(media []byte, seg SegmentTimeline, toleranceSec float64, trackTimescales map[uint32]uint32) []TimelineIssue {
 	if toleranceSec <= 0 {
 		toleranceSec = DefaultHLSTimeToleranceSec
 	}
@@ -41,7 +47,7 @@ func ValidateSegmentTimeline(media []byte, seg SegmentTimeline, toleranceSec flo
 			Message: fmt.Sprintf("segment %d too small (%d bytes)", seg.Index, len(media)),
 		})
 	}
-	startSec, err := FragmentMediaStartSec(media)
+	startSec, err := FragmentMediaStartSecWithTimescales(media, trackTimescales)
 	if err != nil {
 		issues = append(issues, TimelineIssue{
 			Check:   "tfdt_start",
@@ -109,15 +115,25 @@ func ValidateContinuity(prev, next SegmentTimeline, toleranceSec float64) []Time
 	return nil
 }
 
-// FragmentMediaStartSec returns the first video track baseMediaDecodeTime in seconds.
+// FragmentMediaStartSec returns the first video track baseMediaDecodeTime in seconds
+// using the default 90 kHz video timescale.
 func FragmentMediaStartSec(media []byte) (float64, error) {
+	return FragmentMediaStartSecWithTimescales(media, nil)
+}
+
+// FragmentMediaStartSecWithTimescales returns the first video track decode time in
+// seconds using init-segment mdhd timescales when provided. ffmpeg HLS fMP4 often
+// writes a video timescale other than 90000 (e.g. 12288).
+func FragmentMediaStartSecWithTimescales(media []byte, trackTimescales map[uint32]uint32) (float64, error) {
 	firstByTrack, err := firstTFDTByTrack(media)
 	if err != nil {
 		return 0, err
 	}
+	trackID := uint32(1)
 	ticks, ok := firstByTrack[1]
 	if !ok {
-		for _, v := range firstByTrack {
+		for id, v := range firstByTrack {
+			trackID = id
 			ticks = v
 			ok = true
 			break
@@ -126,7 +142,11 @@ func FragmentMediaStartSec(media []byte) (float64, error) {
 	if !ok {
 		return 0, fmt.Errorf("no tfdt in fragment")
 	}
-	return float64(ticks) / float64(defaultVideoTimescale), nil
+	ts := timescaleForTrackID(trackID, trackTimescales)
+	if ts == 0 {
+		ts = defaultVideoTimescale
+	}
+	return float64(ticks) / float64(ts), nil
 }
 
 func validateMonotonicTFDT(media []byte) error {

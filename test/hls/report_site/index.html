@@ -51,12 +51,12 @@
 
   <section>
     <h2>Benchmark results</h2>
-    <p>Click <strong>Play</strong> to open the browser HLS player for manual smoothness checks. Encode / CPU / GPU columns include visual bars scaled to the max in this run.</p>
+    <p>Click <strong>Play</strong> to open the browser HLS player for manual smoothness checks. <strong>continuous</strong> rows use <code>ffmpeg -f hls</code> (same pipeline as filebrowser); try <code>resume_eof</code> to reproduce tail-segment resume.</p>
     <div class="table-scroll">
       <table id="results-table">
         <thead>
           <tr>
-            <th>Fixture</th><th>Mode</th><th>Accel</th><th>Pass</th>
+            <th>Fixture</th><th>Pipeline</th><th>Scenario</th><th>Mode</th><th>Accel</th><th>Pass</th>
             <th>Encoder</th><th>HW active</th>
             <th>Total encode</th><th>Avg segment</th><th>Cold seg</th><th>Warm avg</th>
             <th>CPU avg</th><th>GPU avg</th>

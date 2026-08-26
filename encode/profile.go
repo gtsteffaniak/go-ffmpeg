@@ -167,8 +167,12 @@ func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		}
 	case capabilities.AccelVideoToolbox:
 		return []string{
-			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
-			"-pix_fmt", o.pixFmt, "-g", gop,
+			"-c:v", encoder,
+			"-b:v", b.Target,
+			"-qmin", "-1",
+			"-qmax", "-1",
+			"-allow_sw", "1",
+			"-g", gop,
 		}
 	default:
 		args := []string{
@@ -250,7 +254,13 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
 	case capabilities.AccelVideoToolbox:
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
+		return []string{
+			"-c:v", encoder,
+			"-b:v", b.Target,
+			"-qmin", "-1",
+			"-qmax", "-1",
+			"-allow_sw", "1",
+		}
 	default:
 		preset := x265Preset(o.quality)
 		if encoder == "libx265" {
