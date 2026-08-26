@@ -20,7 +20,7 @@ var MinSupportedVersion = Version{Major: 5, Minor: 0, Patch: 0}
 type FeatureFlags struct {
 	Version         Version `json:"version"`
 	NoiseBSFDrop    bool    `json:"noiseBsfDrop"`
-	Readrate        bool    `json:"readrate"`        // true when version >= 5.0 (always true at MinSupportedVersion)
+	Readrate        bool    `json:"readrate"` // true when version >= 5.0 (always true at MinSupportedVersion)
 	ReadrateCatchup bool    `json:"readrateCatchup"`
 	InputSideBSF    bool    `json:"inputSideBsf"`
 }
