@@ -139,3 +139,68 @@ jobs:
           go test ./capabilities ./encode -count=1 -run 'TestDetect|TestFeatureFlags|TestAppendReadrate'
           go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
           ./bin/go-ffmpeg -skip-hw-tests -json | head -10
+
+  ffmpeg-matrix:
+    name: FFmpeg ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "5.1"
+            image: jrottenberg/ffmpeg:5.1-alpine
+            ffmpeg_src: /usr/local/bin/ffmpeg
+            ffprobe_src: /usr/local/bin/ffprobe
+          - version: "6.1"
+            image: jrottenberg/ffmpeg:6.1-alpine320
+            ffmpeg_src: /bin/ffmpeg
+            ffprobe_src: /bin/ffprobe
+          - version: "7.1"
+            image: gtstef/ffmpeg:7.1.1
+            ffmpeg_src: /ffmpeg
+            ffprobe_src: /ffprobe
+          - version: "8.1"
+            image: gtstef/ffmpeg:8.1.1
+            ffmpeg_src: /ffmpeg
+            ffprobe_src: /ffprobe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: Pull ffmpeg image
+        run: docker pull ${{ matrix.image }}
+      - name: Extract ffmpeg binaries
+        run: |
+          id=$(docker create ${{ matrix.image }})
+          mkdir -p /tmp/ffmpeg-bin
+          docker cp "$id:${{ matrix.ffmpeg_src }}" /tmp/ffmpeg-bin/ffmpeg
+          docker cp "$id:${{ matrix.ffprobe_src }}" /tmp/ffmpeg-bin/ffprobe
+          chmod +x /tmp/ffmpeg-bin/ffmpeg /tmp/ffmpeg-bin/ffprobe
+          docker rm "$id"
+          /tmp/ffmpeg-bin/ffmpeg -version | head -1
+      - name: Version-gated unit tests
+        env:
+          GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
+          GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
+          GOFFMPEG_SKIP_HW: "1"
+        run: |
+          go test ./capabilities ./encode -count=1 -run 'TestDetect|TestFeatureFlags|TestAppendReadrate|TestAppendReadrateArgsLivePaced'
+      - name: Integration subset
+        env:
+          GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
+          GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
+          GOFFMPEG_SKIP_HW: "1"
+          GOFFMPEG_SAMPLE_MP4: test/data/Big_Buck_Bunny_1080_10s_2MB.mp4
+        run: go test -tags=integration ./... -run 'TestIntegration(Detect|MediaDuration|Screenshot)' -count=1
+      - name: CLI compatibility report
+        env:
+          GOFFMPEG_FFMPEG_PATH: /tmp/ffmpeg-bin/ffmpeg
+          GOFFMPEG_FFPROBE_PATH: /tmp/ffmpeg-bin/ffprobe
+          GOFFMPEG_SKIP_HW: "1"
+        run: |
+          go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
+          ./bin/go-ffmpeg -skip-hw-tests -json | head -10

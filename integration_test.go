@@ -84,8 +84,9 @@ func TestIntegrationMediaDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dur <= 0 {
-		t.Fatalf("duration = %v", dur)
+	// Big_Buck_Bunny_1080_10s_2MB.mp4 is ~10s; allow encoder/probe rounding.
+	if dur < 9.0 || dur > 11.0 {
+		t.Fatalf("duration = %.3fs, want ~10s ±1s", dur)
 	}
 }
 
@@ -113,5 +114,19 @@ func TestIntegrationScreenshot(t *testing.T) {
 	st, err := os.Stat(out)
 	if err != nil || st.Size() == 0 {
 		t.Fatal("screenshot empty")
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) < 3 || data[0] != 0xFF || data[1] != 0xD8 || data[2] != 0xFF {
+		t.Fatalf("screenshot is not a JPEG (magic % x)", data[:min(3, len(data))])
+	}
+	w, h, err := svc.GetImageDimensions(context.Background(), out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w <= 0 || h <= 0 {
+		t.Fatalf("dimensions = %dx%d", w, h)
 	}
 }

@@ -265,6 +265,15 @@ func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOpt
 // VideoProfile configures transcoding.
 type VideoProfile = encode.VideoProfile
 
+// Video codec constants for VideoProfile.Codec.
+const (
+	CodecH264 = encode.CodecH264
+	CodecHEVC = encode.CodecHEVC
+	CodecAV1  = encode.CodecAV1
+	CodecVP9  = encode.CodecVP9
+	CodecCopy = encode.CodecCopy
+)
+
 // VideoDecodeProfile configures input-side hardware decode.
 type VideoDecodeProfile = encode.VideoDecodeProfile
 

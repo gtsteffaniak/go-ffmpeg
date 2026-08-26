@@ -27,7 +27,9 @@ The library cannot invent encoders not compiled into the binary.
 
 ## CI
 
-Integration tests pin a full 8.1.1 image. An apt-ffmpeg job validates detection on stripped builds.
+- **Full builds:** `ffmpeg-matrix` job runs detection, version-gated unit tests, integration subset, and CLI report on **5.1**, **6.1**, **7.1**, and **8.1** (docker images).
+- **Default integration/HLS:** pinned `gtstef/ffmpeg:8.1.1` full static build.
+- **Stripped distro:** `apt-ffmpeg` job validates detection and graceful `ErrUnsupported` on apt-packaged ffmpeg.
 
 ## Go toolchain
 

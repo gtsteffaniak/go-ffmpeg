@@ -52,10 +52,12 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 
 ## CI / matrix
 
-- PR: lint (root + `test/hls`), unit `-race`, integration on full **8.x** docker image.
-- Apt ffmpeg job exercises stripped distro builds.
+- PR: lint (root + `test/hls`), unit `-race`, integration on full **8.1.1** docker image, HLS software matrix.
+- **`ffmpeg-matrix`:** 5.1 / 6.1 / 7.1 / 8.1 — detection, version-gated throttle tests, integration subset (detect, duration, screenshot), CLI report.
+- **`apt-ffmpeg`:** stripped distro detection and graceful unsupported ops.
 - `GOFFMPEG_SKIP_HW=1` on GitHub-hosted runners; no GPU jobs without self-hosted runners.
 - Do not commit `test/hls/report_site/media/` or generated fixtures.
+- Add a matrix case when introducing a new version-gated ffmpeg flag.
 
 ## Style
 
