@@ -8,6 +8,12 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
+// IsKnownHLSInputVideoCodec reports whether the source codec has a first-class HLS
+// hardware decode path (H.264, HEVC, VP9, AV1).
+func IsKnownHLSInputVideoCodec(name string) bool {
+	return isKnownHLSInputVideoCodec(name)
+}
+
 // HLSDecodeProfileForOnDemand selects input decode for HLS transcode (continuous or segment).
 func HLSDecodeProfileForOnDemand(info probe.StreamInfo) VideoDecodeProfile {
 	if !isKnownHLSInputVideoCodec(info.VideoCodec) {

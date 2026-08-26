@@ -75,6 +75,10 @@ type HLSSegmentOptions struct {
 	GOP          int
 	VideoOnly    bool
 	Throttle     encode.ThrottleConfig
+	// TrackTimescales maps init-segment track IDs to mdhd timescales for tfdt alignment.
+	// When empty, HLSInitAndSegment derives timescales from the init segment; callers
+	// encoding later segments should pass the same map from segment 0.
+	TrackTimescales map[uint32]uint32
 }
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
@@ -106,7 +110,11 @@ func HLSInitAndSegment(ctx context.Context, runner *ffexec.Runner, caps *capabil
 	if err = validateHLSSegmentMedia(media, opts); err != nil {
 		return nil, nil, err
 	}
-	media, err = finalizeHLSSegmentMedia(media, opts)
+	finalizeOpts := opts
+	if len(finalizeOpts.TrackTimescales) == 0 {
+		finalizeOpts.TrackTimescales = mp4.TrackTimescalesFromInit(init)
+	}
+	media, err = finalizeHLSSegmentMedia(media, finalizeOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -125,7 +133,7 @@ func finalizeHLSSegmentMedia(media []byte, opts HLSSegmentOptions) ([]byte, erro
 	if timelineSec <= 0 && opts.StartSec > 0 {
 		timelineSec = opts.StartSec
 	}
-	patched, err := mp4.AlignFragmentToMediaStart(media, timelineSec)
+	patched, err := mp4.AlignFragmentToMediaStartWithTimescales(media, timelineSec, opts.TrackTimescales)
 	if err != nil {
 		return nil, fmt.Errorf("align segment tfdt at %.3fs: %w", timelineSec, err)
 	}

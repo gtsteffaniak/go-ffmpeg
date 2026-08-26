@@ -50,7 +50,18 @@ func runContinuousCheck(args []string) int {
 		return 1
 	}
 
-	report, err := checkContinuousHLS(ctx, svc, *file, *mode, *outDir, *tolerance, *startIndex, *startSec)
+	info, err := svc.ProbeFile(ctx, *file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "continuous-check: probe: %v\n", err)
+		return 1
+	}
+	params, err := paramsForMode(ctx, svc, *file, info, *mode)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "continuous-check: %v\n", err)
+		return 1
+	}
+
+	report, err := checkContinuousHLS(ctx, svc, *file, params, *outDir, *tolerance, *startIndex, *startSec)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "continuous-check: %v\n", err)
 		return 1
@@ -69,7 +80,7 @@ func runContinuousCheck(args []string) int {
 	return 0
 }
 
-func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, outDir string, tolerance float64, startIndex int, startSec float64) (report *continuousCheckReport, err error) {
+func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string, params goffmpeg.HLSSegmentParams, outDir string, tolerance float64, startIndex int, startSec float64) (report *continuousCheckReport, err error) {
 	if _, statErr := os.Stat(file); statErr != nil {
 		return nil, fmt.Errorf("file: %w", statErr)
 	}
@@ -78,11 +89,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 	if err != nil {
 		return nil, fmt.Errorf("probe: %w", err)
 	}
-
-	params, err := paramsForMode(ctx, svc, file, info, mode)
-	if err != nil {
-		return nil, err
-	}
+	mode := hlsModeFromParams(params)
 
 	cleanupDir := ""
 	if outDir == "" {
@@ -274,6 +281,16 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 	report.PlaylistOK = playlistOK
 	report.SegmentCount = len(report.Segments)
 	return report, nil
+}
+
+func hlsModeFromParams(params goffmpeg.HLSSegmentParams) string {
+	if params.Remux {
+		return "remux"
+	}
+	if params.VideoCopy {
+		return "copy"
+	}
+	return "transcode"
 }
 
 func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir string, starts, durations []float64, transcode bool, startIndex int, startSec float64) goffmpeg.HLSContinuousOptions {

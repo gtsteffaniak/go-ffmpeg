@@ -38,7 +38,19 @@ func runRealworldCheck(args []string) int {
 			continue
 		}
 		label := filepathBase(file)
-		report, err := checkContinuousHLS(ctx, svc, file, *mode, "", *tolerance, 0, 0)
+		info, err := svc.ProbeFile(ctx, file)
+		if err != nil {
+			fmt.Printf("FAIL %-40s probe: %v\n", label, err)
+			failures++
+			continue
+		}
+		params, err := paramsForMode(ctx, svc, file, info, *mode)
+		if err != nil {
+			fmt.Printf("FAIL %-40s %v\n", label, err)
+			failures++
+			continue
+		}
+		report, err := checkContinuousHLS(ctx, svc, file, params, "", *tolerance, 0, 0)
 		if err != nil {
 			fmt.Printf("FAIL %-40s %v\n", label, err)
 			failures++

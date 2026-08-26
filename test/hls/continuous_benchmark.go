@@ -62,8 +62,6 @@ func runContinuousBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fi
 
 	params, err := paramsForVariant(ctx, svc, file, info, variant)
 	if err != nil {
-		result.Pass = false
-		result.EncodeError = err.Error()
 		result.Skipped = true
 		result.SkipReason = err.Error()
 		return result, nil
@@ -95,11 +93,7 @@ func runContinuousBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fi
 		result.HW.HWLikelyActive = hwLikelyActive(result.HW, result.Resources, result.Pass)
 	}()
 
-	mode := variant.Mode
-	if mode == "copy" {
-		mode = "remux"
-	}
-	cr, err := checkContinuousHLS(ctx, svc, file, mode, artifactDir, tolerance, scenario.StartIndex, scenario.StartSec)
+	cr, err := checkContinuousHLS(ctx, svc, file, params, artifactDir, tolerance, scenario.StartIndex, scenario.StartSec)
 	if err != nil {
 		result.Pass = false
 		result.EncodeError = err.Error()

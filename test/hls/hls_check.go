@@ -10,7 +10,7 @@ import (
 	"time"
 
 	goffmpeg "github.com/gtsteffaniak/go-ffmpeg"
-	"github.com/gtsteffaniak/go-ffmpeg/encode"
+	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 	"github.com/gtsteffaniak/go-ffmpeg/mp4"
 )
 
@@ -129,6 +129,7 @@ func encodeHLS(ctx context.Context, svc *goffmpeg.Service, file, mode string, se
 
 		opts := goffmpeg.BuildHLSSegmentOptions(file, i, params, starts, durations, false, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
 		opts.MediaTimelineSec = mediaTimelineSec
+		opts.TrackTimescales = trackTimescales
 
 		var media []byte
 		if i == 0 {
@@ -150,7 +151,7 @@ func encodeHLS(ctx context.Context, svc *goffmpeg.Service, file, mode string, se
 			expectedDur = durations[i]
 		}
 
-		startSec, _ := mp4.FragmentMediaStartSec(media)
+		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
 		if i > 0 && len(report.Segments) > 0 {
 			implied := startSec - report.Segments[len(report.Segments)-1].MediaStartSec
@@ -179,14 +180,14 @@ func encodeHLS(ctx context.Context, svc *goffmpeg.Service, file, mode string, se
 		report.Segments = append(report.Segments, seg)
 		result.Segments = append(result.Segments, encodedHLSSegment{Media: media, Report: seg})
 
-		issues := mp4.ValidateSegmentTimeline(media, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
 			Index:            i,
 			ExpectedStartSec: mediaTimelineSec,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
 			Bytes:            len(media),
-		}, tolerance)
+		}, tolerance, trackTimescales)
 		issues = filterKeyframeAlignedDurationIssues(issues, actualDur, expectedDur, mediaTimelineSec, keyframeSeekTimes, tolerance)
 		if prevSeg != nil {
 			prevTimeline := mp4.SegmentTimeline{
@@ -226,18 +227,7 @@ func paramsForMode(ctx context.Context, svc *goffmpeg.Service, path string, info
 	case "copy":
 		return goffmpeg.HLSSegmentParams{VideoCopy: true, GOP: defaults.DefaultGOP}, nil
 	case "transcode":
-		gop := goffmpeg.HLSSegmentGOP(30, defaults)
-		if fps, err := svc.ProbeVideoFPS(ctx, path); err == nil {
-			gop = goffmpeg.HLSSegmentGOP(fps, defaults)
-		}
-		return goffmpeg.HLSSegmentParams{
-			Remux:     false,
-			VideoCopy: false,
-			MaxHeight: 1080,
-			GOP:       gop,
-			Decode:    encode.OnDemandHLSDecodeProfile(encode.VideoDecodeProfile{Codec: videoCodecFromProbe(info.VideoCodec)}),
-			Profile:   encode.VideoProfile{Codec: encode.CodecH264, Quality: encode.PresetVeryfast, GOP: gop},
-		}, nil
+		return transcodeHLSSegmentParams(ctx, svc, path, info, capabilities.AccelNone)
 	default:
 		return goffmpeg.HLSSegmentParams{}, fmt.Errorf("unknown mode %q (use remux, copy, transcode)", mode)
 	}

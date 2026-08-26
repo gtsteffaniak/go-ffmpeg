@@ -11,7 +11,6 @@ import (
 
 	goffmpeg "github.com/gtsteffaniak/go-ffmpeg"
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
-	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	"github.com/gtsteffaniak/go-ffmpeg/mp4"
 )
 
@@ -148,8 +147,6 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 
 	params, err := paramsForVariant(ctx, svc, file, info, variant)
 	if err != nil {
-		result.Pass = false
-		result.EncodeError = err.Error()
 		result.Skipped = true
 		result.SkipReason = err.Error()
 		return result, nil
@@ -218,6 +215,7 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 
 		opts := goffmpeg.BuildHLSSegmentOptions(file, i, params, starts, durations, false, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
 		opts.MediaTimelineSec = mediaTimelineSec
+		opts.TrackTimescales = trackTimescales
 
 		var media []byte
 		if i == 0 {
@@ -253,7 +251,7 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 		}
 
 		segBench.Bytes = len(media)
-		startSec, _ := mp4.FragmentMediaStartSec(media)
+		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
 		if i > 0 && len(result.Segments) > 0 {
 			implied := startSec - result.Segments[len(result.Segments)-1].MediaStartSec
@@ -274,14 +272,14 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 		segBench.MediaStartSec = startSec
 		segBench.ActualDurSec = actualDur
 
-		issues := mp4.ValidateSegmentTimeline(media, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
 			Index:            i,
 			ExpectedStartSec: mediaTimelineSec,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
 			Bytes:            len(media),
-		}, tolerance)
+		}, tolerance, trackTimescales)
 		issues = filterKeyframeAlignedDurationIssues(issues, actualDur, expectedDur, mediaTimelineSec, keyframeSeekTimes, tolerance)
 		if i > 0 && len(result.Segments) > 0 {
 			prev := result.Segments[len(result.Segments)-1]
@@ -335,51 +333,7 @@ func paramsForVariant(ctx context.Context, svc *goffmpeg.Service, path string, i
 		}
 		return goffmpeg.HLSSegmentParams{VideoCopy: true, GOP: defaults.DefaultGOP}, nil
 	case "transcode":
-		gop := goffmpeg.HLSSegmentGOP(30, defaults)
-		if fps, err := svc.ProbeVideoFPS(ctx, path); err == nil {
-			gop = goffmpeg.HLSSegmentGOP(fps, defaults)
-		}
-		decodeCodec := videoCodecFromProbe(info.VideoCodec)
-		if isLegacyMPEG4Video(info.VideoCodec) {
-			profile := encode.VideoProfile{Codec: encode.CodecH264, GOP: gop}
-			if variant.Accel == capabilities.AccelNone {
-				profile.ForceSoftware = true
-			} else {
-				caps := cachedCapabilities(svc)
-				if caps != nil && !caps.CodecEncodeAvailable(capabilities.CodecH264, variant.Accel) {
-					return goffmpeg.HLSSegmentParams{}, fmt.Errorf("accel %s not available", variant.Accel)
-				}
-				profile.Accel = variant.Accel
-			}
-			return goffmpeg.HLSSegmentParams{
-				Remux: false, VideoCopy: false, MaxHeight: 1080, GOP: gop,
-				Decode:  encode.VideoDecodeProfile{ForceSoftware: true},
-				Profile: profile,
-			}, nil
-		}
-		decode := encode.OnDemandHLSDecodeProfile(encode.VideoDecodeProfile{Codec: decodeCodec})
-		profile := encode.VideoProfile{
-			Codec:   encode.CodecH264,
-			Quality: encode.PresetVeryfast,
-			GOP:     gop,
-		}
-		if variant.Accel == capabilities.AccelNone {
-			profile.ForceSoftware = true
-		} else {
-			caps := cachedCapabilities(svc)
-			if caps != nil && !caps.CodecEncodeAvailable(capabilities.CodecH264, variant.Accel) {
-				return goffmpeg.HLSSegmentParams{}, fmt.Errorf("accel %s not available", variant.Accel)
-			}
-			profile.Accel = variant.Accel
-		}
-		return goffmpeg.HLSSegmentParams{
-			Remux:     false,
-			VideoCopy: false,
-			MaxHeight: 1080,
-			GOP:       gop,
-			Decode:    decode,
-			Profile:   profile,
-		}, nil
+		return transcodeHLSSegmentParams(ctx, svc, path, info, variant.Accel)
 	default:
 		return goffmpeg.HLSSegmentParams{}, fmt.Errorf("unknown mode %q", variant.Mode)
 	}
