@@ -83,7 +83,7 @@ func TestBuildHLSContinuousArgsExplicitThrottleOverridesPacing(t *testing.T) {
 		SegmentSec: 4,
 		Pacing:     HLSContinuousLivePaced,
 		Remux:      true,
-		Throttle: encode.ThrottleConfig{
+		Throttle: &encode.ThrottleConfig{
 			Enabled:      true,
 			Rate:         1.5,
 			Catchup:      3,
@@ -115,9 +115,17 @@ func TestResolveContinuousThrottle(t *testing.T) {
 	}
 	override := resolveContinuousThrottle(HLSContinuousOptions{
 		Pacing:   HLSContinuousCacheFill,
-		Throttle: encode.ThrottleConfig{Enabled: true, Rate: 2},
+		Throttle: &encode.ThrottleConfig{Enabled: true, Rate: 2},
 	})
 	if override.Rate != 2 {
 		t.Fatalf("explicit throttle = %+v", override)
+	}
+	disabled := encode.ThrottleConfigOff()
+	explicitOff := resolveContinuousThrottle(HLSContinuousOptions{
+		Pacing:   HLSContinuousLivePaced,
+		Throttle: &disabled,
+	})
+	if explicitOff.Enabled {
+		t.Fatal("explicit disabled throttle should override live pacing")
 	}
 }

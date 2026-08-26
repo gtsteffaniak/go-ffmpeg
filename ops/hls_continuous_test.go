@@ -55,7 +55,7 @@ func TestBuildHLSContinuousArgsReadrateWhenThrottleEnabled(t *testing.T) {
 		OutputDir:  "/cache/job",
 		SegmentSec: 4,
 		Remux:      true,
-		Throttle: encode.ThrottleConfig{
+		Throttle: &encode.ThrottleConfig{
 			Enabled:      true,
 			Rate:         1.0,
 			Catchup:      2.0,

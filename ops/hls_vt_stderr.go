@@ -8,7 +8,11 @@ import (
 
 const vtDecodeFailureThreshold = 8
 
-var matroskaEBMLSeekNoise = []byte("invalid as first byte of an EBML number")
+var (
+	matroskaEBMLSeekNoise = []byte("invalid as first byte of an EBML number")
+	vtDecoderCBNoise      = []byte("vt decoder cb")
+	vtHardwareFailNoise   = []byte("hardware accelerator failed to decode picture")
+)
 
 type vtDecodeStderrMonitor struct {
 	dst io.Writer
@@ -17,6 +21,7 @@ type vtDecodeStderrMonitor struct {
 	failures int
 	// unreliable is set after sustained VT decode failures (damaged H.264 bitstream).
 	unreliable bool
+	pending    []byte
 }
 
 func newVTDecodeStderrMonitor(dst io.Writer) *vtDecodeStderrMonitor {
@@ -24,15 +29,7 @@ func newVTDecodeStderrMonitor(dst io.Writer) *vtDecodeStderrMonitor {
 }
 
 func (m *vtDecodeStderrMonitor) Write(p []byte) (int, error) {
-	if bytes.Contains(p, []byte("vt decoder cb")) ||
-		bytes.Contains(p, []byte("hardware accelerator failed to decode picture")) {
-		m.mu.Lock()
-		m.failures++
-		if m.failures >= vtDecodeFailureThreshold {
-			m.unreliable = true
-		}
-		m.mu.Unlock()
-	}
+	m.countVTDecodeLines(p)
 	if m.dst == nil {
 		return len(p), nil
 	}
@@ -42,6 +39,28 @@ func (m *vtDecodeStderrMonitor) Write(p []byte) (int, error) {
 	}
 	_, err := m.dst.Write(filtered)
 	return len(p), err
+}
+
+func (m *vtDecodeStderrMonitor) countVTDecodeLines(p []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data := append(append([]byte(nil), m.pending...), p...)
+	m.pending = nil
+	for len(data) > 0 {
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			m.pending = data
+			return
+		}
+		line := data[:i]
+		data = data[i+1:]
+		if bytes.Contains(line, vtDecoderCBNoise) || bytes.Contains(line, vtHardwareFailNoise) {
+			m.failures++
+			if m.failures >= vtDecodeFailureThreshold {
+				m.unreliable = true
+			}
+		}
+	}
 }
 
 func (m *vtDecodeStderrMonitor) VTDecodeUnreliable() bool {

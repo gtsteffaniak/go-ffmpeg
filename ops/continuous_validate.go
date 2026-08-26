@@ -81,7 +81,7 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 		checkMedia := media
 		checkStart := startSec
 		if transcode {
-			aligned, alignErr := mp4.AlignFragmentToMediaStart(media, expectedStart)
+			aligned, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales)
 			if alignErr != nil {
 				result.Issues = append(result.Issues, mp4.TimelineIssue{
 					Check:   "align",
@@ -157,6 +157,7 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 	out := &continuousPlaylist{}
 	scanner := bufio.NewScanner(f)
 	var pendingDur float64
+	hasExtInf := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#EXTM3U") {
@@ -164,7 +165,11 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 		}
 		if strings.HasPrefix(line, "#EXT-X-TARGETDURATION:") {
 			raw := strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:")
-			out.TargetDur, _ = strconv.ParseFloat(raw, 64)
+			dur, parseErr := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			if parseErr != nil || dur <= 0 {
+				return nil, fmt.Errorf("invalid #EXT-X-TARGETDURATION %q", raw)
+			}
+			out.TargetDur = dur
 			continue
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
@@ -180,14 +185,23 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 			if i := strings.Index(raw, ","); i >= 0 {
 				raw = raw[:i]
 			}
-			pendingDur, _ = strconv.ParseFloat(raw, 64)
+			dur, parseErr := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			if parseErr != nil || dur < 0 {
+				return nil, fmt.Errorf("invalid #EXTINF %q", raw)
+			}
+			pendingDur = dur
+			hasExtInf = true
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
+		if !hasExtInf {
+			return nil, fmt.Errorf("segment URI %q is missing a preceding #EXTINF", line)
+		}
 		out.Segments = append(out.Segments, continuousPlaylistSegment{DurSec: pendingDur, URI: line})
 		pendingDur = 0
+		hasExtInf = false
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err

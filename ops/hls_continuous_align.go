@@ -17,10 +17,18 @@ import (
 
 var continuousAlignMu sync.Mutex
 
-const continuousAlignPollInterval = 50 * time.Millisecond
+const (
+	continuousAlignPollInterval = 50 * time.Millisecond
+	continuousAlignTmpSuffix    = ".align.tmp"
+)
 
 // AlignContinuousSegmentFile rebases fMP4 decode timestamps to mediaStartSec on the HLS timeline.
+// Init-segment timescales are loaded from init.m4s next to the segment or in the job directory.
 func AlignContinuousSegmentFile(path string, mediaStartSec float64) error {
+	return alignContinuousSegmentFile(path, mediaStartSec, trackTimescalesForSegmentFile(path))
+}
+
+func alignContinuousSegmentFile(path string, mediaStartSec float64, trackTimescales map[uint32]uint32) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -28,7 +36,7 @@ func AlignContinuousSegmentFile(path string, mediaStartSec float64) error {
 	if len(data) < mp4.MinHLSSegmentMediaBytes {
 		return fmt.Errorf("segment too small (%d bytes)", len(data))
 	}
-	aligned, err := mp4.AlignFragmentToMediaStart(data, mediaStartSec)
+	aligned, err := mp4.AlignFragmentToMediaStartWithTimescales(data, mediaStartSec, trackTimescales)
 	if err != nil {
 		return err
 	}
@@ -36,6 +44,27 @@ func AlignContinuousSegmentFile(path string, mediaStartSec float64) error {
 		return err
 	}
 	return markContinuousSegmentReady(path)
+}
+
+func trackTimescalesForSegmentFile(path string) map[uint32]uint32 {
+	dir := filepath.Dir(path)
+	for _, candidate := range []string{
+		filepath.Join(dir, "init.m4s"),
+		filepath.Join(filepath.Dir(dir), "init.m4s"),
+	} {
+		if ts := loadContinuousInitTimescales(candidate); len(ts) > 0 {
+			return ts
+		}
+	}
+	return nil
+}
+
+func loadContinuousInitTimescales(initPath string) map[uint32]uint32 {
+	data, err := os.ReadFile(initPath)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	return mp4.TrackTimescalesFromInit(data)
 }
 
 func markContinuousSegmentReady(path string) error {
@@ -133,6 +162,7 @@ func continuousPlaylistHasEndList(outDir string) bool {
 func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, aligned map[int]struct{}, jobDone bool) error {
 	continuousAlignMu.Lock()
 	defer continuousAlignMu.Unlock()
+	timescales := loadContinuousInitTimescales(filepath.Join(outDir, "init.m4s"))
 	for index := opts.StartIndex; index < opts.StartIndex+4096; index++ {
 		if _, ok := aligned[index]; ok {
 			continue
@@ -151,7 +181,7 @@ func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, alig
 		}
 		// Transcode uses -copyts so ffmpeg may place tfdt on encoder/source time; rebasing
 		// to the HLS media grid keeps MSE playback continuous without #EXT-X-DISCONTINUITY.
-		err := AlignContinuousSegmentFile(segPath, mediaStart)
+		err := alignContinuousSegmentFile(segPath, mediaStart, timescales)
 		if err != nil {
 			return err
 		}
@@ -266,7 +296,6 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 	defer cancel()
 
 	aligned := make(map[int]struct{})
-	jobDone := false
 	ticker := time.NewTicker(continuousAlignPollInterval)
 	defer ticker.Stop()
 
@@ -276,7 +305,6 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 		}
 		cancel()
 		ticker.Stop()
-		jobDone = true
 		if err := alignReadyContinuousSegments(outDir, opts, aligned, true); err != nil {
 			job.mu.Lock()
 			if job.err == nil {
@@ -296,13 +324,13 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = alignReadyContinuousSegments(outDir, opts, aligned, jobDone)
+			_ = alignReadyContinuousSegments(outDir, opts, aligned, false)
 		}
 	}
 }
 
 func writeContinuousFileAtomic(path string, data []byte) error {
-	tmp := path + ".tmp"
+	tmp := path + continuousAlignTmpSuffix
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}

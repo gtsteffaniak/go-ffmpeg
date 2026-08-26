@@ -74,6 +74,58 @@ func TestContinuousSegmentReadyTranscodeWithoutLargeNextSegment(t *testing.T) {
 	}
 }
 
+func TestWriteContinuousFileAtomicUsesDistinctTmpSuffix(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "00000.m4s")
+	if err := writeContinuousFileAtomic(path, []byte("aligned")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path + ".tmp"); err == nil {
+		t.Fatal("aligner must not write ffmpeg's .tmp suffix")
+	}
+	if _, err := os.Stat(path + continuousAlignTmpSuffix); err == nil {
+		t.Fatal("align tmp should be renamed away")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "aligned" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestContinuousSegmentReadyIgnoresAlignTmp(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "seg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	media := buildTestFragmentWithTFDT(64000)
+	segPath := filepath.Join(dir, "seg", "00001.m4s")
+	if err := os.WriteFile(segPath, media, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(segPath+".align.tmp", []byte("in-progress"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	playlist := "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg/00001.m4s\n"
+	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlist), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := HLSContinuousOptions{Remux: true}
+	if !continuousSegmentReady(dir, 1, false, opts) {
+		t.Fatal("aligner .align.tmp must not mark the segment as still muxing")
+	}
+	if err := os.WriteFile(segPath+".tmp", []byte("ffmpeg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if continuousSegmentReady(dir, 1, false, opts) {
+		t.Fatal("ffmpeg .tmp should still mean the segment is being muxed")
+	}
+}
+
 func buildTestFragmentWithTFDT(ticks uint32) []byte {
 	tfdt := makeFullAtom("tfdt", 0, uint32ToBytes(ticks))
 	tfhd := makeFullAtom("tfhd", 0, []byte{0, 0, 0, 0, 0, 0, 0, 1})

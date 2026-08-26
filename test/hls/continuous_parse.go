@@ -34,6 +34,7 @@ func parseFFmpegM3U8(path string) (*parsedContinuousPlaylist, error) {
 	out := &parsedContinuousPlaylist{}
 	scanner := bufio.NewScanner(f)
 	var pendingDur float64
+	hasExtInf := false
 	index := 0
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -42,7 +43,11 @@ func parseFFmpegM3U8(path string) (*parsedContinuousPlaylist, error) {
 		}
 		if strings.HasPrefix(line, "#EXT-X-TARGETDURATION:") {
 			raw := strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:")
-			out.TargetDur, _ = strconv.ParseFloat(raw, 64)
+			dur, parseErr := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			if parseErr != nil || dur <= 0 {
+				return nil, fmt.Errorf("invalid #EXT-X-TARGETDURATION %q", raw)
+			}
+			out.TargetDur = dur
 			continue
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
@@ -58,11 +63,19 @@ func parseFFmpegM3U8(path string) (*parsedContinuousPlaylist, error) {
 			if i := strings.Index(raw, ","); i >= 0 {
 				raw = raw[:i]
 			}
-			pendingDur, _ = strconv.ParseFloat(raw, 64)
+			dur, parseErr := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			if parseErr != nil || dur < 0 {
+				return nil, fmt.Errorf("invalid #EXTINF %q", raw)
+			}
+			pendingDur = dur
+			hasExtInf = true
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
 			continue
+		}
+		if !hasExtInf {
+			return nil, fmt.Errorf("segment URI %q is missing a preceding #EXTINF", line)
 		}
 		out.Segments = append(out.Segments, parsedPlaylistSegment{
 			Index:  index,
@@ -71,6 +84,7 @@ func parseFFmpegM3U8(path string) (*parsedContinuousPlaylist, error) {
 		})
 		index++
 		pendingDur = 0
+		hasExtInf = false
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err

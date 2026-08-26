@@ -9,6 +9,11 @@ endif
 SAMPLE := test/data/Big_Buck_Bunny_1080_10s_2MB.mp4
 HLS_DIR := test/hls
 HLS_BIN := $(HLS_DIR)/test-ffmpeg
+HLS_SRCS := $(wildcard $(HLS_DIR)/*.go) $(HLS_DIR)/go.mod $(HLS_DIR)/go.sum
+LIB_SRCS := go.mod go.sum $(wildcard *.go) \
+	$(wildcard ops/*.go) $(wildcard mp4/*.go) $(wildcard encode/*.go) \
+	$(wildcard capabilities/*.go) $(wildcard exec/*.go) $(wildcard probe/*.go) \
+	$(wildcard platform/*.go) $(wildcard gtlogger/*.go)
 REPORT_DIR := $(HLS_DIR)/report_site
 FIXTURES_DIR := $(HLS_DIR)/.fixtures
 
@@ -23,7 +28,7 @@ FIXTURE_NAMES ?=
 build:
 	go build -o $(BIN) ./cmd/go-ffmpeg
 
-$(HLS_BIN):
+$(HLS_BIN): $(HLS_SRCS) $(LIB_SRCS)
 	go build -C $(HLS_DIR) -o test-ffmpeg .
 
 # FFmpeg capability report (terminal only — not the HLS dashboard)

@@ -55,9 +55,6 @@ func runContinuousCheck(args []string) int {
 		fmt.Fprintf(os.Stderr, "continuous-check: %v\n", err)
 		return 1
 	}
-	if *outDir == "" && report.OutputDir != "" {
-		defer os.RemoveAll(report.OutputDir)
-	}
 
 	printContinuousReport(report)
 	if *jsonOut != "" {
@@ -72,9 +69,9 @@ func runContinuousCheck(args []string) int {
 	return 0
 }
 
-func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, outDir string, tolerance float64, startIndex int, startSec float64) (*continuousCheckReport, error) {
-	if _, err := os.Stat(file); err != nil {
-		return nil, fmt.Errorf("file: %w", err)
+func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, outDir string, tolerance float64, startIndex int, startSec float64) (report *continuousCheckReport, err error) {
+	if _, statErr := os.Stat(file); statErr != nil {
+		return nil, fmt.Errorf("file: %w", statErr)
 	}
 
 	info, err := svc.ProbeFile(ctx, file)
@@ -87,14 +84,27 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 		return nil, err
 	}
 
+	cleanupDir := ""
 	if outDir == "" {
 		outDir, err = os.MkdirTemp("", "hls-continuous-check-*")
 		if err != nil {
 			return nil, err
 		}
+		cleanupDir = outDir
 	} else if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if cleanupDir == "" {
+			return
+		}
+		if rmErr := os.RemoveAll(cleanupDir); rmErr != nil {
+			fmt.Fprintf(os.Stderr, "continuous-check: remove %s: %v\n", cleanupDir, rmErr)
+			if err == nil {
+				err = fmt.Errorf("cleanup output dir %s: %w", cleanupDir, rmErr)
+			}
+		}
+	}()
 
 	keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, file)
 	keyframeSeekTimes := goffmpeg.SanitizeHLSKeyframes(keyframes, info.Duration)
@@ -120,7 +130,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 		return nil, fmt.Errorf("parse playlist: %w", err)
 	}
 
-	report := &continuousCheckReport{
+	report = &continuousCheckReport{
 		Pass:           true,
 		File:           file,
 		Mode:           mode,
@@ -178,27 +188,22 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
-		checkMedia := media
 		startSec, _ := mp4.FragmentMediaStartSec(media)
+		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
+		if actualDur <= 0 {
+			actualDur = mp4.FragmentDurationSec(media)
+		}
+		if actualDur <= 0 && plSeg.DurSec > 0 {
+			actualDur = plSeg.DurSec
+		}
 		if exactTranscodeTimeline {
-			aligned, alignErr := mp4.AlignFragmentToMediaStart(media, expectedStart)
-			if alignErr != nil {
+			if _, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales); alignErr != nil {
 				report.Pass = false
 				report.Issues = append(report.Issues, mp4.TimelineIssue{
 					Check:   "align",
 					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
 				})
-			} else {
-				checkMedia = aligned
-				startSec, _ = mp4.FragmentMediaStartSec(aligned)
 			}
-		}
-		actualDur := mp4.FragmentDurationSecWithTimescales(checkMedia, trackTimescales)
-		if actualDur <= 0 {
-			actualDur = mp4.FragmentDurationSec(checkMedia)
-		}
-		if actualDur <= 0 && plSeg.DurSec > 0 {
-			actualDur = plSeg.DurSec
 		}
 
 		seg := segmentReport{
@@ -207,7 +212,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			MediaStartSec:    startSec,
 			ExpectedDurSec:   expectedDur,
 			ActualDurSec:     actualDur,
-			Bytes:            len(checkMedia),
+			Bytes:            len(media),
 		}
 		report.Segments = append(report.Segments, seg)
 
@@ -227,13 +232,13 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
-		issues := mp4.ValidateSegmentTimeline(checkMedia, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimeline(media, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
-			Bytes:            len(checkMedia),
+			Bytes:            len(media),
 		}, tolerance)
 		issues = filterKeyframeAlignedDurationIssues(issues, actualDur, expectedDur, expectedStart, keyframeSeekTimes, tolerance)
 		if prevSeg != nil {

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,9 +34,10 @@ type HLSContinuousOptions struct {
 	Remux              bool
 	VideoCopy          bool
 	GOP                int
-	// Pacing selects cache-fill vs live-paced input when Throttle.Enabled is false.
-	Pacing             HLSContinuousPacing
-	Throttle           encode.ThrottleConfig
+	// Pacing selects cache-fill vs live-paced input when Throttle is nil.
+	Pacing HLSContinuousPacing
+	// Throttle, when non-nil, overrides Pacing — including Enabled: false.
+	Throttle *encode.ThrottleConfig
 }
 
 // HLSContinuousJob runs ffmpeg until EOF, cancellation, or error.
@@ -138,8 +140,12 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 	// HLS segment paths with subdirs (seg/%05d.m4s) resolve from the process working
 	// directory, not the playlist path — run ffmpeg inside the cache job directory.
 	cmd.Dir = outDir
-	var stderr strings.Builder
-	stderrMon := newVTDecodeStderrMonitor(runner.FFmpegStderrWriter(&stderr))
+	stderr := newStderrTail(continuousStderrTailMax)
+	var dst io.Writer = stderr
+	if runner.VerboseFFmpeg {
+		dst = io.MultiWriter(os.Stderr, stderr)
+	}
+	stderrMon := newVTDecodeStderrMonitor(dst)
 	cmd.Stderr = stderrMon
 
 	job := &HLSContinuousJob{
@@ -295,4 +301,44 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 
 func (o HLSContinuousOptions) VideoOnly() bool {
 	return false
+}
+
+const continuousStderrTailMax = 64 << 10
+
+// stderrTail keeps a bounded tail of ffmpeg stderr so long-running continuous
+// jobs cannot grow an unbounded capture buffer.
+type stderrTail struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func newStderrTail(max int) *stderrTail {
+	if max <= 0 {
+		max = continuousStderrTailMax
+	}
+	return &stderrTail{max: max}
+}
+
+func (s *stderrTail) Write(p []byte) (int, error) {
+	if s == nil {
+		return len(p), nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buf = append(s.buf, p...)
+	if len(s.buf) > s.max {
+		keep := s.buf[len(s.buf)-s.max:]
+		s.buf = append([]byte(nil), keep...)
+	}
+	return len(p), nil
+}
+
+func (s *stderrTail) String() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.buf)
 }

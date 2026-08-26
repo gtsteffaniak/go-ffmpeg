@@ -34,6 +34,38 @@ func TestVTDecodeStderrMonitorFiltersMatroskaNoise(t *testing.T) {
 	}
 }
 
+func TestVTDecodeStderrMonitorCountsPerLine(t *testing.T) {
+	t.Parallel()
+	m := newVTDecodeStderrMonitor(nil)
+	chunk := strings.Repeat("vt decoder cb failed\n", vtDecodeFailureThreshold)
+	if _, err := m.Write([]byte(chunk)); err != nil {
+		t.Fatal(err)
+	}
+	if !m.VTDecodeUnreliable() {
+		t.Fatal("expected unreliable after threshold matching lines in one Write")
+	}
+}
+
+func TestVTDecodeStderrMonitorCountsSplitLine(t *testing.T) {
+	t.Parallel()
+	m := newVTDecodeStderrMonitor(nil)
+	if _, err := m.Write([]byte("vt decoder c")); err != nil {
+		t.Fatal(err)
+	}
+	if m.VTDecodeUnreliable() {
+		t.Fatal("incomplete line should not count as a failure")
+	}
+	if _, err := m.Write([]byte("b hardware accelerator failed to decode picture\n")); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	failures := m.failures
+	m.mu.Unlock()
+	if failures != 1 {
+		t.Fatalf("failures = %d, want 1 for one split matching line", failures)
+	}
+}
+
 func TestBuildHLSContinuousArgsLogLevel(t *testing.T) {
 	t.Parallel()
 	caps := &capabilities.Capabilities{}

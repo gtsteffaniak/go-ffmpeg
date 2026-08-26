@@ -338,10 +338,11 @@ type HLSContinuousJob = ops.HLSContinuousJob
 type HLSContinuousPacing = ops.HLSContinuousPacing
 
 const (
-	HLSContinuousCacheFill              = ops.HLSContinuousCacheFill
-	HLSContinuousLivePaced              = ops.HLSContinuousLivePaced
+	HLSContinuousCacheFill            = ops.HLSContinuousCacheFill
+	HLSContinuousLivePaced            = ops.HLSContinuousLivePaced
 	HLSContinuousRemuxSegmentDeletion = ops.HLSContinuousRemuxSegmentDeletion
 )
+
 // HLSSegmentParams holds resolved encode/remux settings for one HLS session.
 type HLSSegmentParams = ops.HLSSegmentParams
 

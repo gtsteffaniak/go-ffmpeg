@@ -238,7 +238,7 @@ Long-running `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache
 | `ops.FixContinuousPlaylistTargetDuration` | Set `#EXT-X-TARGETDURATION` from max `#EXTINF` |
 | `ops.FixContinuousPlaylistSegmentURIs` | Rewrite bare filenames to `seg/NNNNN.m4s` |
 
-**Input pacing** (`HLSContinuousPacing` on `HLSContinuousOptions`; overridden when `Throttle.Enabled` is true):
+**Input pacing** (`HLSContinuousPacing` on `HLSContinuousOptions`; overridden when `Throttle` is non-nil):
 
 | Pacing | Use case | ffmpeg behavior |
 |--------|----------|-----------------|
@@ -261,8 +261,9 @@ job, err := svc.StartHLSContinuous(ctx, goffmpeg.HLSContinuousOptions{
     ...
 })
 
-// Or set throttle explicitly (overrides Pacing):
-Throttle: encode.ThrottleConfigLivePaced(90),
+// Or set throttle explicitly (overrides Pacing, including Enabled: false):
+cfg := encode.ThrottleConfigLivePaced(90)
+Throttle: &cfg,
 ```
 
 Head start for disk cache comes from **max-speed encode** plus serving segments when `seg/NNNNN.m4s.ready` exists. For live sessions, pair `HLSContinuousLivePaced` with **app-level pause** when segments are farther ahead of the player than your buffer setting (Jellyfin/Plex model).

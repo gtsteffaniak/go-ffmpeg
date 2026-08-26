@@ -3,7 +3,8 @@ package ops
 import "github.com/gtsteffaniak/go-ffmpeg/encode"
 
 // HLSContinuousPacing selects input read pacing for a continuous HLS job.
-// Explicit Throttle.Enabled on HLSContinuousOptions overrides pacing presets.
+// A non-nil Throttle on HLSContinuousOptions overrides pacing presets,
+// including when Throttle.Enabled is false.
 type HLSContinuousPacing int
 
 const (
@@ -16,8 +17,8 @@ const (
 )
 
 func resolveContinuousThrottle(opts HLSContinuousOptions) encode.ThrottleConfig {
-	if opts.Throttle.Enabled {
-		return opts.Throttle
+	if opts.Throttle != nil {
+		return *opts.Throttle
 	}
 	switch opts.Pacing {
 	case HLSContinuousLivePaced:
