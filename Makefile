@@ -49,11 +49,29 @@ test-integration:
 	GOFFMPEG_SAMPLE_MP4="$(SAMPLE)" GOFFMPEG_SKIP_HW="$${GOFFMPEG_SKIP_HW:-1}" \
 		go test -tags=integration ./... -run Integration -count=1
 
+# Minimum fixtures for go test -tags=integration (encode/remux checks in test/hls).
+HLS_INTEGRATION_FIXTURES := h264_aac_mp4,wmv3_wmapro_wmv
+# Fixtures generated before go test: full FIXTURE_NAMES when set, else integration minimum.
+HLS_TEST_FIXTURES := $(if $(strip $(FIXTURE_NAMES)),$(FIXTURE_NAMES),$(HLS_INTEGRATION_FIXTURES))
+
 test-hls: $(HLS_BIN)
+	@test -f "$(REFERENCE)" || (echo "missing reference video: $(REFERENCE)" >&2; exit 1)
+	@echo "Generating fixtures for tests: $(HLS_TEST_FIXTURES)"
+	$(HLS_BIN) generate-fixtures -reference "$(REFERENCE)" -out "$(FIXTURES_DIR)" -duration $(FIXTURE_DURATION) \
+		-fixture-names "$(HLS_TEST_FIXTURES)"
+	@echo "Unit tests (test/hls, no fixtures required)"
 	go test -C $(HLS_DIR) -count=1 ./...
+	@echo "Integration tests (test/hls, requires .fixtures)"
+	go test -C $(HLS_DIR) -tags=integration -count=1 ./...
+ifeq ($(strip $(FIXTURE_NAMES)),)
+	$(HLS_BIN) generate-fixtures -reference "$(REFERENCE)" -out "$(FIXTURES_DIR)" -duration $(FIXTURE_DURATION)
 	$(HLS_BIN) run -reference "$(REFERENCE)" -fixtures "$(FIXTURES_DIR)" -report "$(REPORT_DIR)" \
-		-segments $(SEGMENTS) -duration $(FIXTURE_DURATION) -continuous=$(CONTINUOUS) -serve=false \
-		$(if $(strip $(FIXTURE_NAMES)),-fixture-names "$(FIXTURE_NAMES)",-fixture-names "")
+		-segments $(SEGMENTS) -duration $(FIXTURE_DURATION) -continuous=$(CONTINUOUS) -serve=false -skip-generate
+else
+	$(HLS_BIN) run -reference "$(REFERENCE)" -fixtures "$(FIXTURES_DIR)" -report "$(REPORT_DIR)" \
+		-segments $(SEGMENTS) -duration $(FIXTURE_DURATION) -continuous=$(CONTINUOUS) -serve=false -skip-generate \
+		-fixture-names "$(FIXTURE_NAMES)"
+endif
 
 serve-report: $(HLS_BIN)
 	@test -f "$(REPORT_DIR)/data/report.json" || (echo "No report yet. Run: make test-hls" >&2; exit 1)

@@ -151,14 +151,21 @@ location.reload();
 
 ## CI (software-only)
 
-Every pull request runs the H.264 software matrix via GitHub Actions (`hls-software` job) and locally:
+Every pull request runs the H.264 software matrix via GitHub Actions (`hls-software` job). `make test-hls` runs in this order:
+
+1. Generate fixtures (`HLS_TEST_FIXTURES`: `FIXTURE_NAMES` when set, else `h264_aac_mp4` + `wmv3_wmapro_wmv` for integration tests)
+2. Unit tests (`go test` in `test/hls`, no `-tags=integration`)
+3. Integration tests (`go test -tags=integration` — encode/remux checks against `.fixtures`)
+4. Full benchmark matrix (`test-ffmpeg run -skip-generate`)
+
+Locally:
 
 ```bash
 GOFFMPEG_SKIP_HW=1 HLS_SOFTWARE_ONLY=1 make test-hls SEGMENTS=3 FIXTURE_DURATION=10 \
   FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_aac_mov,h264_mp3_mkv,h264_ac3_mkv,h264_eac3_mkv,h264_aac_avi,h264_mp3_avi
 ```
 
-This uses the bundled sample. CI passes `FIXTURE_NAMES` for a faster H.264 subset; local `make test-hls` runs all 21 fixtures by default.
+CI passes `FIXTURE_NAMES` for a faster subset (includes `wmv3_wmapro_wmv` for integration tests). Local `make test-hls` without `FIXTURE_NAMES` generates all 21 fixtures for the benchmark report.
 
 ## Agent workflow
 

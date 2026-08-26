@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -18,7 +20,7 @@ func TestOnDemandSoftwareTranscodeSegment(t *testing.T) {
 	file := ".fixtures/h264_aac_mp4.mp4"
 	info, err := svc.ProbeFile(ctx, file)
 	if err != nil {
-		t.Skip("h264 fixture missing")
+		t.Fatalf("probe %s: %v", file, err)
 	}
 
 	params, err := transcodeHLSSegmentParams(ctx, svc, file, info, capabilities.AccelNone)
@@ -54,7 +56,7 @@ func TestOnDemandSoftwareTranscodeWMVSegment(t *testing.T) {
 	file := ".fixtures/wmv3_wmapro_wmv.wmv"
 	info, err := svc.ProbeFile(ctx, file)
 	if err != nil {
-		t.Skip("wmv fixture missing")
+		t.Fatalf("probe %s: %v", file, err)
 	}
 
 	params, err := transcodeHLSSegmentParams(ctx, svc, file, info, capabilities.AccelNone)

@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -7,6 +9,8 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 )
 
+const h264FixturePath = ".fixtures/h264_aac_mp4.mp4"
+
 func TestParamsForVariantH264SoftwareDecode(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
@@ -14,14 +18,13 @@ func TestParamsForVariantH264SoftwareDecode(t *testing.T) {
 		t.Skip(err)
 	}
 
-	path := ".fixtures/h264_aac_mp4.mp4"
-	info, err := svc.ProbeFile(ctx, path)
+	info, err := svc.ProbeFile(ctx, h264FixturePath)
 	if err != nil {
-		t.Skip("fixture missing")
+		t.Fatalf("probe %s: %v", h264FixturePath, err)
 	}
 
 	variant := testVariant{Mode: "transcode", Accel: capabilities.AccelNone, Label: "transcode/software"}
-	params, err := paramsForVariant(ctx, svc, path, info, variant)
+	params, err := paramsForVariant(ctx, svc, h264FixturePath, info, variant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +44,13 @@ func TestRunBenchmarkH264SoftwareTranscode(t *testing.T) {
 		t.Skip(err)
 	}
 
-	path := ".fixtures/h264_aac_mp4.mp4"
 	variant := testVariant{Mode: "transcode", Accel: capabilities.AccelNone, Label: "transcode/software"}
-	br, err := runBenchmark(ctx, svc, path, "h264_aac_mp4", variant, 1, 0.05, t.TempDir())
+	br, err := runBenchmark(ctx, svc, h264FixturePath, "h264_aac_mp4", variant, 1, 0.05, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if br.Skipped {
-		t.Skip(br.SkipReason)
+		t.Fatalf("unexpected skip: %s", br.SkipReason)
 	}
 	if !br.Pass {
 		t.Fatalf("benchmark failed: %s", br.EncodeError)
@@ -62,14 +64,13 @@ func TestRunBenchmarkH264RemuxMultiSegment(t *testing.T) {
 		t.Skip(err)
 	}
 
-	path := ".fixtures/h264_aac_mp4.mp4"
 	variant := testVariant{Mode: "remux", Label: "remux"}
-	br, err := runBenchmark(ctx, svc, path, "h264_aac_mp4", variant, 3, 0.05, t.TempDir())
+	br, err := runBenchmark(ctx, svc, h264FixturePath, "h264_aac_mp4", variant, 3, 0.05, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if br.Skipped {
-		t.Skip(br.SkipReason)
+		t.Fatalf("unexpected skip: %s", br.SkipReason)
 	}
 	if !br.Pass {
 		t.Fatalf("remux benchmark failed: %v", br.Issues)
