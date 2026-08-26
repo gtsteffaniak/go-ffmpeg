@@ -21,6 +21,7 @@ type Service struct {
 	caps      *capabilities.Capabilities
 	resolver  *encode.Resolver
 	semaphore chan struct{}
+	detectMu  sync.Mutex
 	mu        sync.RWMutex
 }
 

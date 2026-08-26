@@ -11,6 +11,17 @@ func (s *Service) ensureDetected(ctx context.Context) error {
 		return nil
 	}
 	s.mu.RUnlock()
+
+	s.detectMu.Lock()
+	defer s.detectMu.Unlock()
+
+	s.mu.RLock()
+	if s.caps != nil {
+		s.mu.RUnlock()
+		return nil
+	}
+	s.mu.RUnlock()
+
 	return s.Reload(ctx)
 }
 

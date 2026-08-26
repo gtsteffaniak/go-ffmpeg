@@ -227,7 +227,7 @@ func videoEncoderArgs(codec string) (enc []string, extra []string, err error) {
 	case "mpeg4":
 		return []string{"-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-g", "30"},
 			[]string{"-q:v", "5"}, nil
-	case "wmv3":
+	case "wmv2", "wmv3":
 		return []string{"-c:v", "wmv2", "-pix_fmt", "yuv420p", "-g", "30"},
 			[]string{"-q:v", "5"}, nil
 	default:

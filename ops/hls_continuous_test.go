@@ -154,7 +154,7 @@ func TestBuildHLSContinuousArgsVideoOnlyOmitsAudio(t *testing.T) {
 		OutputDir:  "/cache/job",
 		SegmentSec: 4,
 		Remux:      true,
-		VideoOnly:  true,
+		OmitAudio:  true,
 	}
 
 	args, err := buildHLSContinuousArgs(runner, caps, opts)

@@ -99,8 +99,13 @@ func TestServiceReloadUsesInjectedLogger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ffmpeg is required: %v", err)
 	}
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Fatalf("ffprobe is required: %v", err)
+	}
 	svc, err := New(ctx, Config{
 		FFmpegPath:   ffmpegPath,
+		FFprobePath:  ffprobePath,
 		Logger:       capture,
 		DetectOnInit: boolPtr(false),
 	})

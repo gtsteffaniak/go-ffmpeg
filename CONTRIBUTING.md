@@ -24,7 +24,7 @@
 6. Return `OperationError` with classified `Kind` via `wrapOp` for encode failures.
 7. Version-gate new ffmpeg flags with `capabilities.FeatureFlags`.
 8. Godoc on options; `Example*` test if user-facing.
-9. Update [docs/operations.md](operations.md) in the same change.
+9. Update [docs/operations.md](docs/operations.md) in the same change.
 
 ## Backwards compatibility
 
