@@ -38,6 +38,8 @@ type HLSContinuousOptions struct {
 	Pacing HLSContinuousPacing
 	// Throttle, when non-nil, overrides Pacing — including Enabled: false.
 	Throttle *encode.ThrottleConfig
+	// VideoOnly omits audio streams from the output.
+	VideoOnly bool
 }
 
 // HLSContinuousJob runs ffmpeg until EOF, cancellation, or error.
@@ -209,7 +211,7 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	}
 	args = append(args, "-i", opts.Input.URL)
 	args = append(args, "-map", "0:v:0")
-	if !opts.VideoOnly() {
+	if !opts.VideoOnly {
 		args = append(args, "-map", "0:a:0?")
 	}
 	args = append(args, "-sn", "-dn")
@@ -217,12 +219,12 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	switch {
 	case opts.Remux:
 		args = append(args, "-c:v", "copy")
-		if !opts.VideoOnly() {
+		if !opts.VideoOnly {
 			args = append(args, "-c:a", "copy")
 		}
 	case opts.VideoCopy:
 		args = append(args, "-c:v", "copy")
-		if !opts.VideoOnly() {
+		if !opts.VideoOnly {
 			args = append(args,
 				"-c:a", "aac",
 				"-ar", "48000",
@@ -254,7 +256,7 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 			args = append(args, "-sc_threshold", "0")
 		}
 		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", segDur))
-		if !opts.VideoOnly() {
+		if !opts.VideoOnly {
 			args = append(args,
 				"-c:a", "aac",
 				"-ar", "48000",
@@ -297,10 +299,6 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	}
 	args = append(args, "ffmpeg.m3u8")
 	return args, nil
-}
-
-func (o HLSContinuousOptions) VideoOnly() bool {
-	return false
 }
 
 const continuousStderrTailMax = 64 << 10

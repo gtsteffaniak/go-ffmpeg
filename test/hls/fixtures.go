@@ -54,7 +54,7 @@ func allFixtureSpecs() []FixtureSpec {
 		{Name: "mpeg4_aac_avi", Video: "mpeg4", Audio: "aac", Container: "avi"},
 		{Name: "mpeg4_mp3_avi", Video: "mpeg4", Audio: "mp3", Container: "avi"},
 		// WMV (Windows Media)
-		{Name: "wmv3_wmapro_wmv", Video: "wmv3", Audio: "wmapro", Container: "wmv"},
+		{Name: "wmv2_wmapro_wmv", Video: "wmv2", Audio: "wmapro", Container: "wmv"},
 	}
 }
 

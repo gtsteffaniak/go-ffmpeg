@@ -15,7 +15,14 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/mp4"
 )
 
-var continuousAlignMu sync.Mutex
+var continuousAlignLocks sync.Map // outDir -> *sync.Mutex
+
+func lockContinuousAlign(outDir string) func() {
+	v, _ := continuousAlignLocks.LoadOrStore(outDir, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 const (
 	continuousAlignPollInterval = 50 * time.Millisecond
@@ -160,8 +167,8 @@ func continuousPlaylistHasEndList(outDir string) bool {
 }
 
 func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, aligned map[int]struct{}, jobDone bool) error {
-	continuousAlignMu.Lock()
-	defer continuousAlignMu.Unlock()
+	unlock := lockContinuousAlign(outDir)
+	defer unlock()
 	timescales := loadContinuousInitTimescales(filepath.Join(outDir, "init.m4s"))
 	for index := opts.StartIndex; index < opts.StartIndex+4096; index++ {
 		if _, ok := aligned[index]; ok {

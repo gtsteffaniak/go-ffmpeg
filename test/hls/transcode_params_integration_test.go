@@ -15,7 +15,7 @@ func TestTranscodeHLSSegmentParamsWMVSoftwareDecode(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	file := ".fixtures/wmv3_wmapro_wmv.wmv"
+	file := ".fixtures/wmv2_wmapro_wmv.wmv"
 	info, err := svc.ProbeFile(ctx, file)
 	if err != nil {
 		t.Fatalf("probe %s: %v", file, err)
@@ -38,7 +38,7 @@ func TestTranscodeHLSSegmentParamsWMVSkipsHardware(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	file := ".fixtures/wmv3_wmapro_wmv.wmv"
+	file := ".fixtures/wmv2_wmapro_wmv.wmv"
 	info, err := svc.ProbeFile(ctx, file)
 	if err != nil {
 		t.Fatalf("probe %s: %v", file, err)
