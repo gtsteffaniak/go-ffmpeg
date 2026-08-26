@@ -43,9 +43,8 @@
 
 | Layer | Expectation |
 |-------|-------------|
-| Unit | No ffmpeg when possible; table tests for flags/parsing; `t.Parallel` when safe |
-| Default `go test` | `t.Skip` if ffmpeg missing |
-| Integration (`-tags=integration`) | Real ffmpeg; `GOFFMPEG_REQUIRE_FFMPEG=1` in CI |
+| Unit | ffmpeg required; `t.Fatalf` if missing |
+| Integration (`-tags=integration`) | Real ffmpeg + sample video for media tests |
 | Encode/HLS | Assert output meaning (timeline, format), not only `err == nil` |
 | Race | `make test-race` must stay green |
 

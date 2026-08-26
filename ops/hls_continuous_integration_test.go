@@ -73,13 +73,18 @@ func integrationFFmpegPaths(t *testing.T) (ffmpeg, ffprobe string) {
 	ffmpeg = os.Getenv("GOFFMPEG_FFMPEG_PATH")
 	ffprobe = os.Getenv("GOFFMPEG_FFPROBE_PATH")
 	if ffmpeg == "" {
-		ffmpeg = "/opt/homebrew/bin/ffmpeg"
+		var err error
+		ffmpeg, err = exec.LookPath("ffmpeg")
+		if err != nil {
+			t.Fatalf("ffmpeg is required: %v", err)
+		}
 	}
 	if ffprobe == "" {
-		ffprobe = "/opt/homebrew/bin/ffprobe"
-	}
-	if _, err := exec.LookPath(ffmpeg); err != nil {
-		t.Skip("ffmpeg not available")
+		var err error
+		ffprobe, err = exec.LookPath("ffprobe")
+		if err != nil {
+			t.Fatalf("ffprobe is required: %v", err)
+		}
 	}
 	return ffmpeg, ffprobe
 }

@@ -3,7 +3,6 @@ package ffmpeg
 import (
 	"context"
 	"log/slog"
-	"os"
 	"os/exec"
 	"sync"
 	"testing"
@@ -98,10 +97,7 @@ func TestServiceReloadUsesInjectedLogger(t *testing.T) {
 	ctx := context.Background()
 	ffmpegPath, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		if os.Getenv("GOFFMPEG_REQUIRE_FFMPEG") == "1" {
-			t.Fatalf("ffmpeg required: %v", err)
-		}
-		t.Skipf("ffmpeg not available: %v", err)
+		t.Fatalf("ffmpeg is required: %v", err)
 	}
 	svc, err := New(ctx, Config{
 		FFmpegPath:   ffmpegPath,

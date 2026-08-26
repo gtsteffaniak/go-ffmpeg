@@ -15,7 +15,7 @@ func TestOnDemandSoftwareTranscodeSegment(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	file := ".fixtures/h264_aac_mp4.mp4"
@@ -61,7 +61,7 @@ func TestOnDemandSoftwareTranscodeWMVSegment(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	file := ".fixtures/wmv2_wmapro_wmv.wmv"

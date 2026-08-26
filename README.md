@@ -70,7 +70,7 @@ go-ffmpeg -skip-hw-tests     # CI / headless
 ## Testing
 
 ```bash
-make test              # unit tests (skips if ffmpeg missing unless GOFFMPEG_REQUIRE_FFMPEG=1)
+make test              # unit tests (ffmpeg required on PATH or GOFFMPEG_*_PATH)
 make test-race
 make test-integration  # requires sample video + ffmpeg
 make test-hls          # HLS harness + fixtures (see test/hls/README.md)

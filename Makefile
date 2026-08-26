@@ -49,7 +49,7 @@ test-race:
 
 test-integration:
 	@test -f "$(SAMPLE)" || (echo "missing sample video: $(SAMPLE)" >&2; exit 1)
-	GOFFMPEG_SAMPLE_MP4="$(SAMPLE)" GOFFMPEG_SKIP_HW="$${GOFFMPEG_SKIP_HW:-1}" GOFFMPEG_REQUIRE_FFMPEG=1 \
+	GOFFMPEG_SAMPLE_MP4="$(SAMPLE)" GOFFMPEG_SKIP_HW="$${GOFFMPEG_SKIP_HW:-1}" \
 		go test -tags=integration ./... -run "Integration|ContinuousSoftware" -count=1
 
 # Minimum fixtures for go test -tags=integration (encode/remux checks in test/hls).

@@ -15,23 +15,23 @@ type ThrottleConfig struct {
 	MinDurationSec float64 // reserved for callers; not passed to ffmpeg directly
 }
 
-// AppendReadrateArgs appends -readrate flags when cfg.Enabled and the version supports them.
+// AppendReadrateArgs appends -readrate flags when cfg.Enabled.
+// Base -readrate is always emitted for supported ffmpeg (min 5.0). Catchup requires 8.0+;
+// initial_burst requires 6.1+.
 func AppendReadrateArgs(args []string, ver capabilities.Version, cfg ThrottleConfig) []string {
 	if !cfg.Enabled {
 		return args
 	}
-	flags := capabilities.FeatureFlagsFromVersion(ver)
 	rate := cfg.Rate
 	if rate <= 0 {
 		rate = 1.0
 	}
-	if flags.Readrate {
-		args = append(args, "-readrate", fmt.Sprintf("%g", rate))
-	}
+	args = append(args, "-readrate", fmt.Sprintf("%g", rate))
 	catchup := cfg.Catchup
 	if catchup <= 0 {
 		catchup = 2.0
 	}
+	flags := capabilities.FeatureFlagsFromVersion(ver)
 	if flags.ReadrateCatchup {
 		args = append(args, "-readrate_catchup", fmt.Sprintf("%g", catchup))
 	}
