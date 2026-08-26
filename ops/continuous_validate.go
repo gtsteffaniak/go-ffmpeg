@@ -69,7 +69,7 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 		if transcode {
 			expectedStart = float64(absIndex) * opts.SegmentSec
 		}
-		startSec, _ := mp4.FragmentMediaStartSec(media)
+		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
 		if actualDur <= 0 {
 			actualDur = mp4.FragmentDurationSec(media)
@@ -89,21 +89,21 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 				})
 			} else {
 				checkMedia = aligned
-				checkStart, _ = mp4.FragmentMediaStartSec(aligned)
+				checkStart, _ = mp4.FragmentMediaStartSecWithTimescales(aligned, trackTimescales)
 				if dur := mp4.FragmentDurationSecWithTimescales(aligned, trackTimescales); dur > 0 {
 					actualDur = dur
 				}
 			}
 		}
 
-		issues := mp4.ValidateSegmentTimeline(checkMedia, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(checkMedia, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    checkStart,
 			ActualDurSec:     actualDur,
 			Bytes:            len(checkMedia),
-		}, toleranceSec)
+		}, toleranceSec, trackTimescales)
 		if transcode && plSeg.DurSec > 0 {
 			issues = filterTranscodeDurationIssues(issues)
 		}

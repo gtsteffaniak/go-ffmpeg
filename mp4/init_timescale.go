@@ -44,7 +44,8 @@ func tkhdTrackID(data []byte, trakOff, trakEnd int) (uint32, bool) {
 		version := data[atomOff+8]
 		idOff := atomOff + 20
 		if version == 1 {
-			idOff = atomOff + 32
+			// version+flags (4) + creation (8) + modification (8)
+			idOff = atomOff + 28
 		}
 		if idOff+4 > atomOff+atomSize || idOff+4 > len(data) {
 			return nil

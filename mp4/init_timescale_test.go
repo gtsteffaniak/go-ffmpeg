@@ -2,6 +2,23 @@ package mp4
 
 import "testing"
 
+func TestTrackTimescalesFromInitVideo12288(t *testing.T) {
+	t.Parallel()
+	tkhdPayload := make([]byte, 12)
+	copy(tkhdPayload[8:12], uint32ToBytes(1))
+	tkhd := makeFullAtom("tkhd", 0, tkhdPayload)
+	mdhdPayload := make([]byte, 12)
+	copy(mdhdPayload[8:12], uint32ToBytes(12288))
+	mdhd := makeFullAtom("mdhd", 0, mdhdPayload)
+	mdia := makeAtom("mdia", mdhd)
+	trak := makeAtom("trak", append(append([]byte{}, tkhd...), mdia...))
+	moov := makeAtom("moov", trak)
+	got := TrackTimescalesFromInit(moov)
+	if got[1] != 12288 {
+		t.Fatalf("timescales = %v, want track 1 = 12288", got)
+	}
+}
+
 func TestFragmentDurationMinSecWithTimescales(t *testing.T) {
 	t.Parallel()
 	const videoTS = uint32(90000)

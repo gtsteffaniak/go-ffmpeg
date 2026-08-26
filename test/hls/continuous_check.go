@@ -188,7 +188,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
-		startSec, _ := mp4.FragmentMediaStartSec(media)
+		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
 		if actualDur <= 0 {
 			actualDur = mp4.FragmentDurationSec(media)
@@ -232,14 +232,14 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file, mode, 
 			}
 		}
 
-		issues := mp4.ValidateSegmentTimeline(media, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
 			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
 			Bytes:            len(media),
-		}, tolerance)
+		}, tolerance, trackTimescales)
 		issues = filterKeyframeAlignedDurationIssues(issues, actualDur, expectedDur, expectedStart, keyframeSeekTimes, tolerance)
 		if prevSeg != nil {
 			prevTL := mp4.SegmentTimeline{Index: prevSeg.Index, MediaStartSec: prevSeg.MediaStartSec, ActualDurSec: prevSeg.ActualDurSec}
