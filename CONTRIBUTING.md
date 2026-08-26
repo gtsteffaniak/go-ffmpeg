@@ -1,5 +1,7 @@
 # Contributing to go-ffmpeg
 
+go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep callers on typed options and `Service` methods while the library owns ffmpeg flags, capability gating, and hardware fallback. See the README "Why go-ffmpeg" section for the product goals.
+
 ## Repository layout
 
 | Path | Purpose |

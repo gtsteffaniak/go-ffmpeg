@@ -1,5 +1,7 @@
 # Hardware acceleration
 
+go-ffmpeg detects which encoders and decode/encode backends your ffmpeg build actually exposes, optionally runs HW smoke tests, and picks the best path per task. When hardware is missing, disabled (`GPU` empty), or unsuitable for a profile, encode falls back to software without changing your call site.
+
 ## Backends
 
 | Backend | Typical platform |

@@ -1,5 +1,7 @@
 # FFmpeg versions
 
+Different ffmpeg builds ship different encoders and flags. go-ffmpeg gates version-specific options automatically (e.g. `-readrate_catchup` on 8+) and surfaces what's available via capability detection and the `go-ffmpeg` report CLI — so you don't maintain a support matrix by hand.
+
 ## Minimum
 
 Library default: **ffmpeg 5.0.0** (`capabilities.MinSupportedVersion`). Older builds are rejected at detection.

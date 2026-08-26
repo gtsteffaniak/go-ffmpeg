@@ -1,8 +1,11 @@
 // Package ffmpeg is a config-driven Go wrapper around the FFmpeg and FFprobe CLIs.
 //
 // Callers describe high-level tasks (probe, screenshot, transcode, HLS, timelapse,
-// convert, subtitles) with typed options; the library selects encoders, hardware
-// acceleration, and version-safe ffmpeg flags. Requires ffmpeg 5.0+ on the host.
+// convert, subtitles) with typed options instead of raw argv. The library handles
+// capability detection with seamless fallback, task-optimized ffmpeg flags,
+// hardware-aware encoder selection, and version-safe options. HLS and transcode
+// paths target Plex/Jellyfin-class browser streaming (fMP4 segments, timeline
+// alignment, continuous cache jobs). Requires ffmpeg 5.0+ on the host.
 //
 // Install:
 //

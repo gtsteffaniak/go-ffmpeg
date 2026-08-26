@@ -1,14 +1,23 @@
 # go-ffmpeg
 
-A Go **task wrapper** around FFmpeg and FFprobe. Pass configurations (`VideoProfile`, probe options, HLS settings); the library owns ffmpeg flags, codec selection, hardware fallback, and version-safe options.
+A Go **task wrapper** around FFmpeg and FFprobe. Describe what you want (probe, transcode, HLS segment, screenshot); the library picks encoders, flags, hardware paths, and fallbacks. You focus on the job — not argv archaeology.
 
-**Not** a fluent argv builder, not libav/CGO bindings, not HLS-only.
+**Not** a fluent argv builder or libav/CGO bindings.
+
+## Why go-ffmpeg
+
+Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-control presets, and hardware quirks. go-ffmpeg is a **friendly dev interface** for common media tasks:
+
+1. **Seamless capability support with fallback** — Startup (or lazy) detection learns what the host ffmpeg actually supports. Unsupported codecs, missing HW encoders, or stripped distro builds degrade gracefully instead of failing opaquely at runtime.
+2. **Task-optimized flags** — Each operation (`Transcode`, `HLSSegment`, `Screenshot`, …) maps typed options to the right ffmpeg flags for that job. No hand-rolling `-movflags`, `-readrate`, or fMP4 fragment options per call site.
+3. **Hardware-aware command selection** — Full encoder/backend detection (NVENC, QSV, VAAPI, VideoToolbox, AMF, …) plus optional smoke tests. The library matches the best encode/decode path for the task and falls back to software when HW is unavailable or unsuitable.
+4. **Support matrix, reports, and testing** — `go-ffmpeg` CLI emits human or JSON capability reports. CI runs unit, race, integration, and HLS fixture matrices across software and hardware paths so behavior stays pinned.
+5. **Plex-class transcoding and HLS** — Deep support for browser MSE playback: fMP4 segment timelines, `tfdt` alignment, continuous disk-cache HLS, remux/copy/transcode pipelines, and watch-while-transcode pacing — the features streaming servers need, without mastering ffmpeg internals.
 
 ## Tasks
 
 - Probe streams, duration, dimensions, subtitles
 - Screenshots and MJPEG previews
-- Convert (HEIC → JPEG; more formats over time)
 - Transcode, segmented record, live fMP4 to `io.Writer`
 - **HLS** for browser playback (on-demand fMP4 segments + continuous disk cache) — Plex/Jellyfin-class depth
 - Timelapse compile
@@ -61,6 +70,8 @@ Set `GPU` in `Config` to enable hardware acceleration (`"dgpu"`, `"igpu"`, rende
 
 ## Compatibility CLI
 
+Inspect what your host ffmpeg supports before you ship — encoder matrix, HW backends, enabled operations, and version-gated flags:
+
 ```bash
 go-ffmpeg                    # human-readable capability report
 go-ffmpeg -json -o report.json
@@ -80,10 +91,10 @@ make report            # capability report in terminal
 ## Documentation
 
 - API: [pkg.go.dev](https://pkg.go.dev/github.com/gtsteffaniak/go-ffmpeg)
-- [docs/operations.md](docs/operations.md) — task map
-- [docs/hls.md](docs/hls.md) — on-demand vs continuous HLS
-- [docs/hardware.md](docs/hardware.md) — GPU / backends
-- [docs/ffmpeg-versions.md](docs/ffmpeg-versions.md) — version flags
+- [docs/operations.md](docs/operations.md) — task-focused API and operation map
+- [docs/hls.md](docs/hls.md) — Plex-class on-demand and continuous HLS
+- [docs/hardware.md](docs/hardware.md) — detection, backends, and HW fallback
+- [docs/ffmpeg-versions.md](docs/ffmpeg-versions.md) — version gates and build matrix
 - [docs/security.md](docs/security.md) — caller responsibilities
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to add operations and tests
 

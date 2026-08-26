@@ -1,6 +1,8 @@
 # Operations
 
-High-level tasks exposed on `Service`. All take typed options; the library builds ffmpeg argv.
+go-ffmpeg exposes **tasks**, not ffmpeg primitives. Each method accepts a typed options struct; the library chooses encoders, hardware paths, and the optimized flag set for that operation. When the host lacks a codec or HW backend, capability detection reports why and operations fall back or return `ErrUnsupported` before spawning ffmpeg.
+
+High-level tasks on `Service`:
 
 | Task | Service method | Notes |
 |------|----------------|-------|

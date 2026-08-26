@@ -1,6 +1,6 @@
 # HLS playback
 
-go-ffmpeg targets **browser MSE** playback (Plex/Jellyfin-style), not generic HLS authoring.
+go-ffmpeg targets **browser MSE** playback (Plex/Jellyfin-style), not generic HLS authoring. You pass segment index, timeline offset, and a `VideoProfile`; the library owns fMP4 mux flags, `output_ts_offset`, post-encode `tfdt` alignment, and pipeline selection (remux / video-copy / full transcode). This is the deep ffmpeg knowledge most wrappers leave to you.
 
 ## On-demand segments
 
