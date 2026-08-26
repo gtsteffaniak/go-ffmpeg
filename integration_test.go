@@ -21,11 +21,11 @@ func requireFFmpeg(t *testing.T) (ffmpegBin, ffprobeBin string) {
 	var err error
 	ffmpegBin, err = exec.LookPath("ffmpeg")
 	if err != nil {
-		t.Skip("ffmpeg not in PATH; set GOFFMPEG_FFMPEG_PATH")
+		t.Fatalf("ffmpeg is required: install ffmpeg or set GOFFMPEG_FFMPEG_PATH (%v)", err)
 	}
 	ffprobeBin, err = exec.LookPath("ffprobe")
 	if err != nil {
-		t.Skip("ffprobe not in PATH")
+		t.Fatalf("ffprobe is required: install ffprobe or set GOFFMPEG_FFPROBE_PATH (%v)", err)
 	}
 	return ffmpegBin, ffprobeBin
 }
@@ -65,7 +65,7 @@ func integrationSampleMP4(t *testing.T) string {
 			return rel
 		}
 	}
-	t.Skip("sample not found; set GOFFMPEG_SAMPLE_MP4")
+	t.Fatalf("sample not found: set GOFFMPEG_SAMPLE_MP4 or add test/data/Big_Buck_Bunny_1080_10s_2MB.mp4")
 	return ""
 }
 

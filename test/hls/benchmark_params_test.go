@@ -15,7 +15,7 @@ func TestParamsForVariantH264SoftwareDecode(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	info, err := svc.ProbeFile(ctx, h264FixturePath)
@@ -41,7 +41,7 @@ func TestRunBenchmarkH264SoftwareTranscode(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	variant := testVariant{Mode: "transcode", Accel: capabilities.AccelNone, Label: "transcode/software"}
@@ -61,7 +61,7 @@ func TestRunBenchmarkH264RemuxMultiSegment(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	variant := testVariant{Mode: "remux", Label: "remux"}

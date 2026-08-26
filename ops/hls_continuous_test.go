@@ -144,3 +144,28 @@ func TestBuildHLSContinuousTranscodeUsesHardwareDecode(t *testing.T) {
 		t.Fatalf("transcode should not use output_ts_offset: %s", joined)
 	}
 }
+
+func TestBuildHLSContinuousArgsVideoOnlyOmitsAudio(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	caps := &capabilities.Capabilities{}
+	opts := HLSContinuousOptions{
+		Input:      InputSource{URL: "/media/video.mp4"},
+		OutputDir:  "/cache/job",
+		SegmentSec: 4,
+		Remux:      true,
+		OmitAudio:  true,
+	}
+
+	args, err := buildHLSContinuousArgs(runner, caps, opts)
+	if err != nil {
+		t.Fatalf("buildHLSContinuousArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "0:a:0") {
+		t.Fatalf("video-only should not map audio: %s", joined)
+	}
+	if strings.Contains(joined, "-c:a") {
+		t.Fatalf("video-only should not set audio codec: %s", joined)
+	}
+}

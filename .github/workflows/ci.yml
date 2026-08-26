@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -15,28 +18,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
       - name: go vet
-        run: go vet ./...
+        run: |
+          go vet ./...
+          go vet -C test/hls ./...
       - name: gofmt
-        run: test -z "$(gofmt -s -l .)"
+        run: test -z "$(gofmt -s -l . test/hls)"
 
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Unit tests (requires ffmpeg)
-        run: go test ./... -count=1
+        run: go test -race ./... -count=1
       - name: Build CLI
         run: go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
 
@@ -45,9 +54,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
       - name: Pull ffmpeg image
         run: docker pull gtstef/ffmpeg:8.1.1
@@ -80,9 +91,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
       - name: Pull ffmpeg image
         run: docker pull gtstef/ffmpeg:8.1.1
@@ -104,4 +117,25 @@ jobs:
           test -x "$GOFFMPEG_FFMPEG_PATH"
           test -x "$GOFFMPEG_FFPROBE_PATH"
           make test-hls SEGMENTS=0 FIXTURE_DURATION=32 \
-            FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_eac3_mkv,wmv3_wmapro_wmv
+            FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_eac3_mkv,wmv2_wmapro_wmv
+
+  apt-ffmpeg:
+    name: Apt ffmpeg detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: Install apt ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Detection and version-gated args
+        env:
+          GOFFMPEG_SKIP_HW: "1"
+        run: |
+          go test ./capabilities ./encode -count=1 -run 'TestDetect|TestFeatureFlags|TestAppendReadrate'
+          go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
+          ./bin/go-ffmpeg -skip-hw-tests -json | head -10

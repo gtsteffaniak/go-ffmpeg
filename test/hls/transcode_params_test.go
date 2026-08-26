@@ -11,7 +11,7 @@ func TestTranscodeHLSSegmentParamsSoftwareDecodeOnMac(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 	file := defaultSampleVideo()
 	info, err := svc.ProbeFile(ctx, file)

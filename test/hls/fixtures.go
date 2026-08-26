@@ -54,7 +54,7 @@ func allFixtureSpecs() []FixtureSpec {
 		{Name: "mpeg4_aac_avi", Video: "mpeg4", Audio: "aac", Container: "avi"},
 		{Name: "mpeg4_mp3_avi", Video: "mpeg4", Audio: "mp3", Container: "avi"},
 		// WMV (Windows Media)
-		{Name: "wmv3_wmapro_wmv", Video: "wmv3", Audio: "wmapro", Container: "wmv"},
+		{Name: "wmv2_wmapro_wmv", Video: "wmv2", Audio: "wmapro", Container: "wmv"},
 	}
 }
 
@@ -227,7 +227,7 @@ func videoEncoderArgs(codec string) (enc []string, extra []string, err error) {
 	case "mpeg4":
 		return []string{"-c:v", "mpeg4", "-pix_fmt", "yuv420p", "-g", "30"},
 			[]string{"-q:v", "5"}, nil
-	case "wmv3":
+	case "wmv2", "wmv3":
 		return []string{"-c:v", "wmv2", "-pix_fmt", "yuv420p", "-g", "30"},
 			[]string{"-q:v", "5"}, nil
 	default:

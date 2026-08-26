@@ -16,14 +16,13 @@ import (
 
 // Service is the main entry point for ffmpeg operations.
 type Service struct {
-	cfg        Config
-	runner     *ffexec.Runner
-	caps       *capabilities.Capabilities
-	resolver   *encode.Resolver
-	semaphore  chan struct{}
-	detectOnce sync.Once
-	detectErr  error
-	mu         sync.RWMutex
+	cfg       Config
+	runner    *ffexec.Runner
+	caps      *capabilities.Capabilities
+	resolver  *encode.Resolver
+	semaphore chan struct{}
+	detectMu  sync.Mutex
+	mu        sync.RWMutex
 }
 
 // New creates and optionally detects a Service.
@@ -92,11 +91,14 @@ func splitLines(s string) []string {
 	return lines
 }
 
-// Capabilities returns the detected capability matrix.
+// Capabilities returns a copy of the detected capability matrix.
 func (s *Service) Capabilities() *capabilities.Capabilities {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.caps
+	if s.caps == nil {
+		return nil
+	}
+	return s.caps.Clone()
 }
 
 // SupportedOps returns enabled operation names.
@@ -170,30 +172,59 @@ const (
 
 // ProbeStream validates and probes a stream URL.
 func (s *Service) ProbeStream(ctx context.Context, opts ProbeStreamOptions) (StreamInfo, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return StreamInfo{}, err
+	}
 	if err := s.require("ProbeStream"); err != nil {
 		return StreamInfo{}, err
 	}
-	info, err := probe.ProbeStream(ctx, s.runner, opts)
+	var info StreamInfo
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		info, probeErr = probe.ProbeStream(ctx, s.runner, opts)
+		return probeErr
+	})
 	if err != nil {
-		return info, &OperationError{Op: "ProbeStream", Err: ErrProbeFailed, Stderr: info.Message}
+		stderr := info.Message
+		if stderr == "" {
+			stderr = stderrFromErr(err)
+		}
+		return info, wrapOpWithStderr("ProbeStream", ErrProbeFailed, err, stderr)
 	}
 	return info, nil
 }
 
 // GetMediaDuration returns duration in seconds for a media file.
 func (s *Service) GetMediaDuration(ctx context.Context, path string) (float64, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return 0, err
+	}
 	if err := s.require("GetMediaDuration"); err != nil {
 		return 0, err
 	}
-	return probe.GetMediaDuration(ctx, s.runner, path)
+	var dur float64
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		dur, probeErr = probe.GetMediaDuration(ctx, s.runner, path)
+		return probeErr
+	})
+	return dur, err
 }
 
 // GetImageDimensions returns image/video dimensions.
 func (s *Service) GetImageDimensions(ctx context.Context, path string) (width, height int, err error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return 0, 0, err
+	}
 	if err := s.require("GetImageDimensions"); err != nil {
 		return 0, 0, err
 	}
-	return probe.GetImageDimensions(ctx, s.runner, path)
+	err = s.runWithSlot(ctx, func() error {
+		var probeErr error
+		width, height, probeErr = probe.GetImageDimensions(ctx, s.runner, path)
+		return probeErr
+	})
+	return width, height, err
 }
 
 // ScreenshotOptions configures screenshot capture.
@@ -204,13 +235,15 @@ type InputSource = ops.InputSource
 
 // Screenshot captures a single frame to a file.
 func (s *Service) Screenshot(ctx context.Context, opts ScreenshotOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("Screenshot"); err != nil {
 		return err
 	}
-	if err := ops.Screenshot(ctx, s.runner, opts); err != nil {
-		return &OperationError{Op: "Screenshot", Err: ErrEncodeFailed, Stderr: err.Error()}
-	}
-	return nil
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("Screenshot", ErrEncodeFailed, ops.Screenshot(ctx, s.runner, opts))
+	})
 }
 
 // PreviewOptions configures video preview generation.
@@ -218,10 +251,15 @@ type PreviewOptions = ops.PreviewOptions
 
 // VideoPreview writes an MJPEG preview frame to w.
 func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("VideoPreview"); err != nil {
 		return err
 	}
-	return ops.VideoPreview(ctx, s.runner, w, opts)
+	return s.runWithSlot(ctx, func() error {
+		return ops.VideoPreview(ctx, s.runner, w, opts)
+	})
 }
 
 // VideoProfile configures transcoding.
@@ -259,6 +297,9 @@ type TranscodeOptions = ops.TranscodeOptions
 
 // Transcode re-encodes media to a new file.
 func (s *Service) Transcode(ctx context.Context, opts TranscodeOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("Transcode"); err != nil {
 		return err
 	}
@@ -268,10 +309,9 @@ func (s *Service) Transcode(ctx context.Context, opts TranscodeOptions) error {
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	if err := ops.Transcode(ctx, s.runner, caps, opts); err != nil {
-		return &OperationError{Op: "Transcode", Err: ErrEncodeFailed, Stderr: err.Error()}
-	}
-	return nil
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("Transcode", ErrEncodeFailed, ops.Transcode(ctx, s.runner, caps, opts))
+	})
 }
 
 // SegmentRecordOptions configures segmented recording.
@@ -279,6 +319,9 @@ type SegmentRecordOptions = ops.SegmentRecordOptions
 
 // SegmentRecord records input into segmented MP4 files.
 func (s *Service) SegmentRecord(ctx context.Context, opts SegmentRecordOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("SegmentRecord"); err != nil {
 		return err
 	}
@@ -288,7 +331,9 @@ func (s *Service) SegmentRecord(ctx context.Context, opts SegmentRecordOptions) 
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return ops.SegmentRecord(ctx, s.runner, caps, opts)
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("SegmentRecord", ErrEncodeFailed, ops.SegmentRecord(ctx, s.runner, caps, opts))
+	})
 }
 
 // FMP4StreamCopyOptions configures live fMP4 streaming.
@@ -296,10 +341,15 @@ type FMP4StreamCopyOptions = ops.FMP4StreamCopyOptions
 
 // FMP4StreamCopy streams fragmented MP4 to w.
 func (s *Service) FMP4StreamCopy(ctx context.Context, w io.Writer, opts FMP4StreamCopyOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("FMP4StreamCopy"); err != nil {
 		return err
 	}
-	return ops.FMP4StreamCopy(ctx, s.runner, w, opts)
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("FMP4StreamCopy", ErrEncodeFailed, ops.FMP4StreamCopy(ctx, s.runner, w, opts))
+	})
 }
 
 // FMP4TranscodeOptions configures live fMP4 transcoding.
@@ -307,6 +357,9 @@ type FMP4TranscodeOptions = ops.FMP4TranscodeOptions
 
 // FMP4Transcode re-encodes input to fragmented MP4 on w.
 func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4TranscodeOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("FMP4Transcode"); err != nil {
 		return err
 	}
@@ -319,10 +372,9 @@ func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4Trans
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	if err := ops.FMP4Transcode(ctx, s.runner, caps, w, opts); err != nil {
-		return &OperationError{Op: "FMP4Transcode", Err: ErrEncodeFailed, Stderr: err.Error()}
-	}
-	return nil
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("FMP4Transcode", ErrEncodeFailed, ops.FMP4Transcode(ctx, s.runner, caps, w, opts))
+	})
 }
 
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
@@ -463,6 +515,9 @@ func (s *Service) DescribeHLSSegmentPlan(params HLSSegmentParams) string {
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
 func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byte, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.require("HLSSegment"); err != nil {
 		return nil, err
 	}
@@ -475,15 +530,23 @@ func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byt
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	data, err := ops.HLSSegment(ctx, s.runner, caps, opts)
+	var data []byte
+	err := s.runWithSlot(ctx, func() error {
+		var segErr error
+		data, segErr = ops.HLSSegment(ctx, s.runner, caps, opts)
+		return wrapOp("HLSSegment", ErrEncodeFailed, segErr)
+	})
 	if err != nil {
-		return nil, &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
+		return nil, err
 	}
 	return data, nil
 }
 
 // HLSInitAndSegment generates init and media bytes for the first HLS segment.
 func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions) (init, media []byte, err error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, nil, err
+	}
 	if err := s.require("HLSSegment"); err != nil {
 		return nil, nil, err
 	}
@@ -498,15 +561,22 @@ func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions)
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	init, media, err = ops.HLSInitAndSegment(ctx, s.runner, caps, opts)
+	err = s.runWithSlot(ctx, func() error {
+		var segErr error
+		init, media, segErr = ops.HLSInitAndSegment(ctx, s.runner, caps, opts)
+		return wrapOp("HLSSegment", ErrEncodeFailed, segErr)
+	})
 	if err != nil {
-		return nil, nil, &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
+		return nil, nil, err
 	}
 	return init, media, nil
 }
 
 // HLSSegmentMedia writes a media-only fMP4 fragment for an HLS segment request.
 func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegmentOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("HLSSegment"); err != nil {
 		return err
 	}
@@ -521,15 +591,17 @@ func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegm
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	if err := ops.HLSSegmentMedia(ctx, s.runner, caps, w, opts); err != nil {
-		return &OperationError{Op: "HLSSegment", Err: ErrEncodeFailed, Stderr: err.Error()}
-	}
-	return nil
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("HLSSegment", ErrEncodeFailed, ops.HLSSegmentMedia(ctx, s.runner, caps, w, opts))
+	})
 }
 
 // StartHLSContinuous launches ffmpeg -f hls writing fMP4 segments to disk.
 func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOptions) (*HLSContinuousJob, error) {
-	if err := s.require("HLSSegment"); err != nil {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.require("HLSContinuous"); err != nil {
 		return nil, err
 	}
 	if !opts.Remux && !opts.VideoCopy {
@@ -540,30 +612,56 @@ func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOpti
 			return nil, err
 		}
 	}
+	if err := s.acquireSlot(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
 	job, err := ops.StartHLSContinuous(ctx, s.runner, caps, opts)
 	if err != nil {
-		return nil, &OperationError{Op: "HLSContinuous", Err: ErrEncodeFailed, Stderr: err.Error()}
+		s.releaseSlot()
+		return nil, wrapOp("HLSContinuous", ErrEncodeFailed, err)
 	}
+	go func() {
+		_ = job.Wait()
+		s.releaseSlot()
+	}()
 	return job, nil
 }
 
 // ProbeVideoFPS returns the average frame rate of the first video stream.
 func (s *Service) ProbeVideoFPS(ctx context.Context, path string) (float64, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return 0, err
+	}
 	if err := s.require("ProbeStream"); err != nil {
 		return 0, err
 	}
-	return ops.ProbeVideoFPS(ctx, s.runner, path)
+	var fps float64
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		fps, probeErr = ops.ProbeVideoFPS(ctx, s.runner, path)
+		return probeErr
+	})
+	return fps, err
 }
 
 // ProbeVideoKeyframeTimes returns keyframe presentation times in seconds.
 func (s *Service) ProbeVideoKeyframeTimes(ctx context.Context, path string) ([]float64, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.require("ProbeStream"); err != nil {
 		return nil, err
 	}
-	return ops.ProbeVideoKeyframeTimes(ctx, s.runner, path)
+	var times []float64
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		times, probeErr = ops.ProbeVideoKeyframeTimes(ctx, s.runner, path)
+		return probeErr
+	})
+	return times, err
 }
 
 // TimelapseCompileOptions configures timelapse compilation.
@@ -571,6 +669,9 @@ type TimelapseCompileOptions = ops.TimelapseCompileOptions
 
 // TimelapseCompile builds a video from snapshot images.
 func (s *Service) TimelapseCompile(ctx context.Context, opts TimelapseCompileOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("TimelapseCompile"); err != nil {
 		return err
 	}
@@ -580,7 +681,9 @@ func (s *Service) TimelapseCompile(ctx context.Context, opts TimelapseCompileOpt
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return ops.TimelapseCompile(ctx, s.runner, caps, opts)
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("TimelapseCompile", ErrEncodeFailed, ops.TimelapseCompile(ctx, s.runner, caps, opts))
+	})
 }
 
 // SubtitleTrack describes an embedded subtitle.
@@ -588,18 +691,36 @@ type SubtitleTrack = probe.SubtitleTrack
 
 // DetectSubtitles lists embedded subtitle tracks.
 func (s *Service) DetectSubtitles(ctx context.Context, path string) ([]SubtitleTrack, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.require("DetectSubtitles"); err != nil {
 		return nil, err
 	}
-	return probe.DetectEmbeddedSubtitles(ctx, s.runner, path)
+	var tracks []SubtitleTrack
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		tracks, probeErr = probe.DetectEmbeddedSubtitles(ctx, s.runner, path)
+		return probeErr
+	})
+	return tracks, err
 }
 
 // ExtractSubtitle extracts a subtitle stream as WebVTT.
 func (s *Service) ExtractSubtitle(ctx context.Context, path string, streamIndex int) (string, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return "", err
+	}
 	if err := s.require("ExtractSubtitle"); err != nil {
 		return "", err
 	}
-	return probe.ExtractSubtitle(ctx, s.runner, path, streamIndex)
+	var out string
+	err := s.runWithSlot(ctx, func() error {
+		var probeErr error
+		out, probeErr = probe.ExtractSubtitle(ctx, s.runner, path, streamIndex)
+		return probeErr
+	})
+	return out, err
 }
 
 // ConvertHEICOptions configures HEIC conversion.
@@ -607,10 +728,15 @@ type ConvertHEICOptions = ops.ConvertHEICOptions
 
 // ConvertHEIC converts HEIC/HEIF images to JPEG.
 func (s *Service) ConvertHEIC(ctx context.Context, opts ConvertHEICOptions) error {
+	if err := s.ensureDetected(ctx); err != nil {
+		return err
+	}
 	if err := s.require("ConvertHEIC"); err != nil {
 		return err
 	}
-	return ops.ConvertHEIC(ctx, s.runner, opts)
+	return s.runWithSlot(ctx, func() error {
+		return wrapOp("ConvertHEIC", ErrEncodeFailed, ops.ConvertHEIC(ctx, s.runner, opts))
+	})
 }
 
 // VideoDecoderArgs returns resolved input-side decode arguments for a profile.

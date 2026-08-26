@@ -1,4 +1,4 @@
-.PHONY: build test test-integration test-hls serve-report lint format report
+.PHONY: build test test-race test-integration test-hls serve-report lint format report
 
 ifeq ($(OS),Windows_NT)
 BIN := bin/go-ffmpeg.exe
@@ -44,13 +44,16 @@ endif
 test:
 	go test ./... -count=1
 
+test-race:
+	go test -race ./... -count=1
+
 test-integration:
 	@test -f "$(SAMPLE)" || (echo "missing sample video: $(SAMPLE)" >&2; exit 1)
 	GOFFMPEG_SAMPLE_MP4="$(SAMPLE)" GOFFMPEG_SKIP_HW="$${GOFFMPEG_SKIP_HW:-1}" \
-		go test -tags=integration ./... -run Integration -count=1
+		go test -tags=integration ./... -run "Integration|ContinuousSoftware" -count=1
 
 # Minimum fixtures for go test -tags=integration (encode/remux checks in test/hls).
-HLS_INTEGRATION_FIXTURES := h264_aac_mp4,wmv3_wmapro_wmv
+HLS_INTEGRATION_FIXTURES := h264_aac_mp4,wmv2_wmapro_wmv
 # Fixtures generated before go test: full FIXTURE_NAMES when set, else integration minimum.
 HLS_TEST_FIXTURES := $(if $(strip $(FIXTURE_NAMES)),$(FIXTURE_NAMES),$(HLS_INTEGRATION_FIXTURES))
 

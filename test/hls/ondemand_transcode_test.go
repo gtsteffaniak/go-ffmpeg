@@ -8,13 +8,14 @@ import (
 
 	goffmpeg "github.com/gtsteffaniak/go-ffmpeg"
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/mp4"
 )
 
 func TestOnDemandSoftwareTranscodeSegment(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
 	file := ".fixtures/h264_aac_mp4.mp4"
@@ -44,16 +45,26 @@ func TestOnDemandSoftwareTranscodeSegment(t *testing.T) {
 	if len(init) == 0 || len(media) == 0 {
 		t.Fatalf("init=%d media=%d", len(init), len(media))
 	}
+	trackTimescales := mp4.TrackTimescalesFromInit(init)
+	issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
+		Index:            0,
+		MediaStartSec:    0,
+		ExpectedStartSec: 0,
+		ExpectedDurSec:   goffmpeg.DefaultHLSSegmentDurationSec,
+	}, mp4.DefaultHLSTimeToleranceSec, trackTimescales)
+	if len(issues) > 0 {
+		t.Fatalf("timeline issues: %+v", issues)
+	}
 }
 
 func TestOnDemandSoftwareTranscodeWMVSegment(t *testing.T) {
 	ctx := context.Background()
 	svc, err := initFFmpeg(ctx, false)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 
-	file := ".fixtures/wmv3_wmapro_wmv.wmv"
+	file := ".fixtures/wmv2_wmapro_wmv.wmv"
 	info, err := svc.ProbeFile(ctx, file)
 	if err != nil {
 		t.Fatalf("probe %s: %v", file, err)
@@ -70,5 +81,15 @@ func TestOnDemandSoftwareTranscodeWMVSegment(t *testing.T) {
 	}
 	if len(init) == 0 || len(media) == 0 {
 		t.Fatalf("init=%d media=%d", len(init), len(media))
+	}
+	trackTimescales := mp4.TrackTimescalesFromInit(init)
+	issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
+		Index:            0,
+		MediaStartSec:    0,
+		ExpectedStartSec: 0,
+		ExpectedDurSec:   goffmpeg.DefaultHLSSegmentDurationSec,
+	}, mp4.DefaultHLSTimeToleranceSec, trackTimescales)
+	if len(issues) > 0 {
+		t.Fatalf("timeline issues: %+v", issues)
 	}
 }

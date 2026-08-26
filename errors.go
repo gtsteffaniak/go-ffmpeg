@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 )
@@ -31,11 +32,15 @@ var (
 	ErrVersionTooOld = errors.New("ffmpeg: version too old")
 )
 
+// FailureKind categorizes ffmpeg stderr for callers (HTTP mapping, retry policy).
+type FailureKind = encode.FailureKind
+
 // OperationError wraps an operation failure with context and optional stderr.
 type OperationError struct {
 	Op     string
 	Err    error
 	Stderr string
+	Kind   FailureKind
 }
 
 func (e *OperationError) Error() string {
@@ -47,6 +52,46 @@ func (e *OperationError) Error() string {
 
 func (e *OperationError) Unwrap() error {
 	return e.Err
+}
+
+var failureClassifier encode.FailureClassifier
+
+func wrapOp(op string, sentinel error, err error) error {
+	return wrapOpWithStderr(op, sentinel, err, "")
+}
+
+func wrapOpWithStderr(op string, sentinel error, err error, stderr string) error {
+	if err == nil {
+		return nil
+	}
+	if stderr == "" {
+		stderr = stderrFromErr(err)
+	}
+	classified := failureClassifier.Classify(stderr)
+	return &OperationError{
+		Op:     op,
+		Err:    sentinel,
+		Stderr: stderr,
+		Kind:   classified.Kind,
+	}
+}
+
+func stderrFromErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	var opErr *OperationError
+	if errors.As(err, &opErr) && opErr.Stderr != "" {
+		return opErr.Stderr
+	}
+	msg := err.Error()
+	if i := strings.LastIndex(msg, ": "); i >= 0 {
+		tail := strings.TrimSpace(msg[i+2:])
+		if tail != "" && !strings.HasPrefix(tail, "exit status") {
+			return tail
+		}
+	}
+	return msg
 }
 
 // UnsupportedError describes why an operation is unavailable.

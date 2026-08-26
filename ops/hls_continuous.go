@@ -38,6 +38,13 @@ type HLSContinuousOptions struct {
 	Pacing HLSContinuousPacing
 	// Throttle, when non-nil, overrides Pacing — including Enabled: false.
 	Throttle *encode.ThrottleConfig
+	// OmitAudio drops audio streams from the output (VideoOnly() reports this flag).
+	OmitAudio bool
+}
+
+// VideoOnly reports whether audio is omitted from the continuous HLS output.
+func (o HLSContinuousOptions) VideoOnly() bool {
+	return o.OmitAudio
 }
 
 // HLSContinuousJob runs ffmpeg until EOF, cancellation, or error.
@@ -297,10 +304,6 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	}
 	args = append(args, "ffmpeg.m3u8")
 	return args, nil
-}
-
-func (o HLSContinuousOptions) VideoOnly() bool {
-	return false
 }
 
 const continuousStderrTailMax = 64 << 10

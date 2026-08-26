@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"context"
 	"log/slog"
+	"os/exec"
 	"sync"
 	"testing"
 )
@@ -92,12 +93,19 @@ func TestServiceLoggerAccessor(t *testing.T) {
 }
 
 func TestServiceReloadUsesInjectedLogger(t *testing.T) {
-	t.Skip("requires ffmpeg binary; covered by integration tests")
-
 	capture := &captureLogger{}
 	ctx := context.Background()
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Fatalf("ffmpeg is required: %v", err)
+	}
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Fatalf("ffprobe is required: %v", err)
+	}
 	svc, err := New(ctx, Config{
-		FFmpegPath:   "/usr/bin",
+		FFmpegPath:   ffmpegPath,
+		FFprobePath:  ffprobePath,
 		Logger:       capture,
 		DetectOnInit: boolPtr(false),
 	})

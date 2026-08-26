@@ -18,14 +18,14 @@ func requireFFmpegRunner(t *testing.T) *ffexec.Runner {
 		var err error
 		ffmpegBin, err = exec.LookPath("ffmpeg")
 		if err != nil {
-			t.Fatalf("ffmpeg is required for unit tests: install ffmpeg or set GOFFMPEG_FFMPEG_PATH (%v)", err)
+			t.Fatalf("ffmpeg is required: install ffmpeg or set GOFFMPEG_FFMPEG_PATH (%v)", err)
 		}
 	}
 	if ffprobeBin == "" {
 		var err error
 		ffprobeBin, err = exec.LookPath("ffprobe")
 		if err != nil {
-			t.Fatalf("ffprobe is required for unit tests: install ffprobe or set GOFFMPEG_FFPROBE_PATH (%v)", err)
+			t.Fatalf("ffprobe is required: install ffprobe or set GOFFMPEG_FFPROBE_PATH (%v)", err)
 		}
 	}
 	return &ffexec.Runner{FFmpegPath: ffmpegBin, FFprobePath: ffprobeBin}
