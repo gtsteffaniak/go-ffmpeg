@@ -16,7 +16,8 @@ ENV PATH="/usr/local/bin:${PATH}" \
 	GOFFMPEG_SKIP_HW=1 \
 	CGO_ENABLED=0 \
 	GOMODCACHE=/gomodcache \
-	GOCACHE=/tmp/gocache
+	GOCACHE=/tmp/gocache \
+	GOFLAGS=-buildvcs=false
 
 # Pre-download modules at image build (repo mount at run time is read-only).
 COPY go.mod go.sum /gomodsrc/

@@ -16,6 +16,7 @@ docker_test_run() {
 		-e GOFFMPEG_FFPROBE_PATH=/usr/local/bin/ffprobe \
 		-e GOMODCACHE=/gomodcache \
 		-e GOCACHE=/tmp/gocache \
+		-e GOFLAGS=-buildvcs=false \
 		-e GOFFMPEG_SAMPLE_MP4=test/data/Big_Buck_Bunny_1080_10s_2MB.mp4 \
 		"$image" \
 		"$@"

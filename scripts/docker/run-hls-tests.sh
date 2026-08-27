@@ -16,6 +16,7 @@ docker run --rm \
 	-e GOFFMPEG_SKIP_HW=1 \
 	-e GOFFMPEG_FFMPEG_PATH=/usr/local/bin/ffmpeg \
 	-e GOFFMPEG_FFPROBE_PATH=/usr/local/bin/ffprobe \
+	-e GOFLAGS=-buildvcs=false \
 	-e HLS_SOFTWARE_ONLY=1 \
 	"$TEST_IMAGE" \
 	bash -c 'make test-hls SEGMENTS=0 FIXTURE_DURATION=32 \

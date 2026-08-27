@@ -1,5 +1,6 @@
 bin/
 **.txt
+!testdata/*.txt
 compatibility-report.json
 test/hls/.fixtures/
 test/hls/.fixtures-smoke/
