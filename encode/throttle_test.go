@@ -33,6 +33,40 @@ func TestAppendReadrateArgs(t *testing.T) {
 	}
 }
 
+func assertReadrateArgs(t *testing.T, ver capabilities.Version, cfg encode.ThrottleConfig, want []string) {
+	t.Helper()
+	got := encode.AppendReadrateArgs(nil, ver, cfg)
+	if len(got) != len(want) {
+		t.Fatalf("version %v args = %v, want %v", ver, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("version %v args = %v, want %v", ver, got, want)
+		}
+	}
+}
+
+func TestAppendReadrateArgsVersionGates(t *testing.T) {
+	cfg := encode.ThrottleConfig{
+		Enabled:      true,
+		Rate:         1,
+		Catchup:      2,
+		InitialBurst: 30,
+	}
+
+	assertReadrateArgs(t, capabilities.Version{Major: 6, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1"})
+
+	assertReadrateArgs(t, capabilities.Version{Major: 6, Minor: 1, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "30"})
+
+	assertReadrateArgs(t, capabilities.Version{Major: 7, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "30"})
+
+	assertReadrateArgs(t, capabilities.Version{Major: 8, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_catchup", "2", "-readrate_initial_burst", "30"})
+}
+
 func TestFailureClassifier(t *testing.T) {
 	c := encode.FailureClassifier{}
 	tests := []struct {

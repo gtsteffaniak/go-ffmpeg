@@ -1,4 +1,4 @@
-.PHONY: build test test-race test-integration test-hls serve-report lint format report
+.PHONY: build setup test test-race test-integration test-hls test-ffmpeg-matrix serve-report lint format report
 
 ifeq ($(OS),Windows_NT)
 BIN := bin/go-ffmpeg.exe
@@ -88,3 +88,21 @@ lint:
 format:
 	gofmt -s -w .
 	gofmt -s -w $(HLS_DIR)
+
+setup:
+	bash scripts/setup.sh
+
+# Run matrix gate tests for one gtstef/ffmpeg version in docker, e.g. make test-ffmpeg-version VERSION=8.1.2
+test-ffmpeg-version:
+	@test -n "$(VERSION)" || (echo "VERSION required, e.g. VERSION=8.1.2" >&2; exit 1)
+	bash scripts/docker/run-version-tests.sh "$(VERSION)"
+
+# Parallel matrix for all versions in docker/versions (same as pre-push hook / CI ffmpeg-matrix).
+test-ffmpeg-matrix:
+	bash scripts/docker/run-matrix-parallel.sh
+
+test-integration-docker:
+	bash scripts/docker/run-integration-tests.sh
+
+test-hls-docker:
+	bash scripts/docker/run-hls-tests.sh

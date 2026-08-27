@@ -18,16 +18,35 @@ These differ from the library minimum and are omitted on older supported version
 | Input-side BSF | 7.0 |
 | `-readrate_catchup` | 8.0 |
 
+## Supported matrix versions
+
+Pinned in [`docker/versions`](../docker/versions) (regular `gtstef/ffmpeg` images, not `-decode`):
+
+| Version | Image |
+|---------|-------|
+| 5.1.9 | `gtstef/ffmpeg:5.1.9` |
+| 6.1.6 | `gtstef/ffmpeg:6.1.6` |
+| 7.1.5 | `gtstef/ffmpeg:7.1.5` |
+| 8.1.2 | `gtstef/ffmpeg:8.1.2` |
+| 9.0.1 | `gtstef/ffmpeg:9.0.1` |
+
+Tests run **inside** `docker/test.Dockerfile` containers (`golang:1.25-bookworm` + `COPY --from=gtstef/ffmpeg:VERSION /ffmpeg /ffprobe`), matching the filebrowser image pattern.
+
 ## Builds
 
-- **Full static builds** (e.g. docker `gtstef/ffmpeg:8.1.1`): most encoders and ops enabled.
+- **Full static builds** (`gtstef/ffmpeg:X.Y.Z`): most encoders and ops enabled.
 - **Distro apt ffmpeg**: often stripped (no NVENC, missing libx264). Detection reports what's available; operations gate accordingly.
 
 The library cannot invent encoders not compiled into the binary.
 
-## CI
+## CI and local matrix
 
-Integration tests pin a full 8.1.1 image. An apt-ffmpeg job validates detection on stripped builds.
+- **`ffmpeg-matrix`:** one job per version in `docker/versions` — detection, version-gated throttle tests, integration subset, CLI report (all in docker).
+- **Integration / HLS:** default `gtstef/ffmpeg:8.1.2` via `scripts/docker/run-integration-tests.sh` and `run-hls-tests.sh`.
+- **Pre-push hook:** `make test-ffmpeg-matrix` (parallel, same gates as CI matrix).
+- **`apt-ffmpeg`:** stripped distro detection on the host runner.
+
+Set `GOFFMPEG_MATRIX_SKIP_MISSING=1` locally to skip versions whose docker image is not published yet.
 
 ## Go toolchain
 

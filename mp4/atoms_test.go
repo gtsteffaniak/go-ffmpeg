@@ -25,6 +25,26 @@ func TestSplitInitMedia(t *testing.T) {
 	}
 }
 
+func FuzzSplitInitMedia(f *testing.F) {
+	ftyp := makeAtom("ftyp", []byte{0, 0, 0, 1})
+	moov := makeAtom("moov", []byte{1, 2, 3})
+	moof := makeAtom("moof", []byte{4, 5, 6})
+	mdat := makeAtom("mdat", []byte{7, 8, 9})
+	f.Add(append(append(append([]byte{}, ftyp...), moov...), append(moof, mdat...)...))
+	f.Add([]byte{0, 0, 0, 8, 'f', 't', 'y', 'p'})
+	f.Add([]byte{0, 0, 0, 1})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		init, media, err := SplitInitMedia(data)
+		if err != nil {
+			return
+		}
+		if len(init)+len(media) != len(data) {
+			t.Fatalf("split lengths %d+%d != input %d", len(init), len(media), len(data))
+		}
+	})
+}
+
 func makeAtom(typ string, payload []byte) []byte {
 	size := 8 + len(payload)
 	b := make([]byte, size)
