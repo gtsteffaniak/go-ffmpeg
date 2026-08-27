@@ -111,7 +111,9 @@ func (s *Service) SupportedOps() []string {
 	return append([]string(nil), s.caps.EnabledOps...)
 }
 
-// Acquire waits for a concurrency slot.
+// Acquire waits for a concurrency slot (see Config.MaxConcurrent). Use when your
+// application runs ffmpeg outside Service methods and shares the same limit.
+// Service methods acquire slots automatically — do not call Acquire before them.
 func (s *Service) Acquire(ctx context.Context) error {
 	select {
 	case s.semaphore <- struct{}{}:
@@ -121,7 +123,7 @@ func (s *Service) Acquire(ctx context.Context) error {
 	}
 }
 
-// Release frees a concurrency slot.
+// Release frees a slot acquired with Acquire.
 func (s *Service) Release() {
 	<-s.semaphore
 }

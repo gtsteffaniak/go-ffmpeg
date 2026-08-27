@@ -103,3 +103,19 @@ func ExampleService_TimelapseCompile() {
 		panic(err)
 	}
 }
+
+func ExampleService_ConvertHEIC() {
+	ctx := context.Background()
+	svc, err := ffmpeg.New(ctx, ffmpeg.Config{SkipHWTests: true})
+	if err != nil {
+		panic(err)
+	}
+	err = svc.ConvertHEIC(ctx, ffmpeg.ConvertHEICOptions{
+		InputPath:  "photo.heic",
+		OutputPath: "photo.jpg",
+		Quality:    90,
+	})
+	if err != nil {
+		panic(err)
+	}
+}
