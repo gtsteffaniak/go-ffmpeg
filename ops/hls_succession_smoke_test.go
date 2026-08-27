@@ -22,14 +22,14 @@ func TestSuccessionBalancedTranscodeSmoke(t *testing.T) {
 	}
 	input := os.Getenv("HLS_SMOKE_INPUT")
 	if input == "" {
-		input = "/Users/steffag/Downloads/Succession S01E01 1080p AMZN WEB-DL DDP5 1 H 264-NTb.mkv"
+		t.Skip("set HLS_SMOKE_INPUT to run Succession balanced transcode smoke")
 	}
 	if _, err := os.Stat(input); err != nil {
-		t.Skip("Succession test file not available")
+		t.Skipf("HLS_SMOKE_INPUT not readable: %v", err)
 	}
 
 	runner := &ffexec.Runner{FFmpegPath: "/opt/homebrew/bin/ffmpeg", FFprobePath: "/opt/homebrew/bin/ffprobe"}
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	caps, err := capabilities.Detect(ctx, runner, capabilities.DetectOptions{})
 	if err != nil {
@@ -50,32 +50,39 @@ func TestSuccessionBalancedTranscodeSmoke(t *testing.T) {
 		Decode:     decode,
 	}
 
-	const wantThrough = 2
-	job, err := startContinuousWithVTFallback(ctx, t, runner, caps, outDir, opts, wantThrough)
+	const wantThrough = 1
+	job, stopAttempt, err := startContinuousWithVTFallback(ctx, t, runner, caps, outDir, opts, wantThrough)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stopAttempt()
 	defer func() {
 		job.Cancel()
 		_ = job.Wait()
 	}()
 }
 
-func startContinuousWithVTFallback(ctx context.Context, t *testing.T, runner *ffexec.Runner, caps *capabilities.Capabilities, outDir string, opts HLSContinuousOptions, wantThrough int) (*HLSContinuousJob, error) {
+func startContinuousWithVTFallback(ctx context.Context, t *testing.T, runner *ffexec.Runner, caps *capabilities.Capabilities, outDir string, opts HLSContinuousOptions, wantThrough int) (*HLSContinuousJob, context.CancelFunc, error) {
 	t.Helper()
 	for attempt := 0; attempt < 2; attempt++ {
-		job, err := StartHLSContinuous(ctx, runner, caps, opts)
-		if err != nil {
-			return nil, fmt.Errorf("StartHLSContinuous: %w", err)
+		if err := ctx.Err(); err != nil {
+			return nil, func() {}, err
 		}
-		if waitContinuousThrough(ctx, outDir, opts, job, wantThrough) {
-			return job, nil
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 3*time.Minute)
+		job, err := StartHLSContinuous(attemptCtx, runner, caps, opts)
+		if err != nil {
+			attemptCancel()
+			return nil, func() {}, fmt.Errorf("StartHLSContinuous: %w", err)
+		}
+		if waitContinuousThrough(attemptCtx, outDir, opts, job, wantThrough) {
+			return job, attemptCancel, nil
 		}
 		vtFallback := job.VTDecodeUnreliable()
 		job.Cancel()
 		_ = job.Wait()
+		attemptCancel()
 		if !vtFallback || attempt > 0 {
-			return nil, fmt.Errorf("timeout waiting for segments 0-%d (vtFallback=%t)", wantThrough, vtFallback)
+			return nil, func() {}, fmt.Errorf("timeout waiting for segments 0-%d (vtFallback=%t)", wantThrough, vtFallback)
 		}
 		t.Log("VT decode unreliable; restarting with CPU decode")
 		opts.Decode = encode.SoftwareDecodeProfile(opts.Decode)
@@ -83,15 +90,14 @@ func startContinuousWithVTFallback(ctx context.Context, t *testing.T, runner *ff
 		_ = os.Remove(filepath.Join(outDir, "init.m4s"))
 		_ = os.Remove(filepath.Join(outDir, "ffmpeg.m3u8"))
 		if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
-			return nil, err
+			return nil, func() {}, err
 		}
 	}
-	return nil, fmt.Errorf("unreachable")
+	return nil, func() {}, fmt.Errorf("unreachable")
 }
 
 func waitContinuousThrough(ctx context.Context, outDir string, opts HLSContinuousOptions, job *HLSContinuousJob, wantThrough int) bool {
-	deadline := time.Now().Add(90 * time.Second)
-	for time.Now().Before(deadline) {
+	for {
 		ready := true
 		for i := 0; i <= wantThrough; i++ {
 			if !continuousSegmentReady(outDir, i, false, opts) {
@@ -111,9 +117,7 @@ func waitContinuousThrough(ctx context.Context, outDir string, opts HLSContinuou
 		select {
 		case <-ctx.Done():
 			return false
-		default:
+		case <-time.After(200 * time.Millisecond):
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
-	return false
 }

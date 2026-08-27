@@ -31,6 +31,26 @@ func TestParseVersionOutput(t *testing.T) {
 	}
 }
 
+func TestParseVersionOutput901(t *testing.T) {
+	data, err := os.ReadFile("../testdata/ffmpeg-9.0.1-version.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, cfg := capabilities.ParseVersionOutput(string(data))
+	if version != "9.0.1" {
+		t.Fatalf("version = %q", version)
+	}
+	foundWebp := false
+	for _, f := range cfg.LibFlags {
+		if f == "--enable-libwebp" {
+			foundWebp = true
+		}
+	}
+	if !foundWebp {
+		t.Fatal("expected libwebp flag in full 9.0.1 build fixture")
+	}
+}
+
 func TestParseListOutput(t *testing.T) {
 	data, err := os.ReadFile("../testdata/ffmpeg-8.1.1-encoders.txt")
 	if err != nil {

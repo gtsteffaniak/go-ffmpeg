@@ -79,9 +79,13 @@ go-ffmpeg -skip-hw-tests     # CI / headless
 ## Testing
 
 ```bash
+make setup             # pre-commit hooks + dev requirement checks (first-time)
 make test              # unit tests (ffmpeg required on PATH or GOFFMPEG_*_PATH)
 make test-race
-make test-integration  # requires sample video + ffmpeg
+make test-ffmpeg-matrix       # all versions in docker/versions (parallel, matches CI/pre-push)
+make test-integration-docker  # full integration in docker (ffmpeg 8.1.2)
+make test-hls-docker          # HLS harness in docker (ffmpeg 8.1.2)
+make test-integration  # host ffmpeg + sample video
 make test-hls          # HLS harness + fixtures (see test/hls/README.md)
 make report            # capability report in terminal
 ```

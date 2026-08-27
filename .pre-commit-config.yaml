@@ -1,0 +1,51 @@
+# All hooks use language: system (bash + go) — no pip/Python env on install.
+# FFmpeg version matrix runs in docker on pre-push (see docker/versions).
+repos:
+  - repo: local
+    hooks:
+      - id: trailing-whitespace
+        name: trailing whitespace
+        entry: scripts/pre-commit/trailing-whitespace.sh
+        language: system
+        pass_filenames: false
+
+      - id: end-of-file-fixer
+        name: end of file fixer
+        entry: scripts/pre-commit/end-of-file-fixer.sh
+        language: system
+        pass_filenames: false
+
+      - id: check-merge-conflict
+        name: check merge conflict
+        entry: scripts/pre-commit/check-merge-conflict.sh
+        language: system
+        pass_filenames: false
+
+      - id: gofmt
+        name: gofmt (check)
+        entry: scripts/pre-commit/gofmt-check.sh
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: go-vet
+        name: go vet
+        entry: scripts/pre-commit/go-vet.sh
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: go-test-unit
+        name: go test (unit)
+        entry: scripts/pre-commit/run-unit-tests.sh
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: ffmpeg-matrix-docker
+        name: FFmpeg matrix (docker, parallel)
+        entry: scripts/pre-commit/run-ffmpeg-matrix-docker.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

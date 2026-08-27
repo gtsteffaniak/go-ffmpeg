@@ -41,6 +41,44 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 - Tag releases `vX.Y.Z` after LICENSE and changelog exist.
 - Document ffmpeg minimum changes in release notes.
 
+## Pre-commit hooks
+
+We use [pre-commit](https://pre-commit.com/) as the git hook runner. All hooks are **`language: system`** shell/Go scripts — no pip download on setup (works behind corporate TLS inspection).
+
+### Install
+
+```bash
+make setup
+```
+
+This installs pre-commit (via Homebrew or pip if missing), registers **pre-commit** and **pre-push** git hooks, and checks for **go**, **ffmpeg**, **ffprobe**, **docker**, and the sample video under `test/data/`.
+
+### What runs
+
+| Stage | Hooks | Notes |
+|-------|-------|-------|
+| **pre-commit** (parallel) | trailing-whitespace, end-of-file-fixer, check-merge-conflict, gofmt, go vet, `go test ./... -short` | Go hooks run when `.go` files change. Unit tests need **ffmpeg on PATH** or `GOFFMPEG_*_PATH`. Heavy darwin HLS smokes (Succession MKV, VT transcode) skip under `-short`. |
+| **pre-push** | **FFmpeg matrix** (docker, parallel) | All versions in `docker/versions` via `gtstef/ffmpeg` — same gates as CI `ffmpeg-matrix`. Requires Docker and `test/data/Big_Buck_Bunny_1080_10s_2MB.mp4`. |
+
+Target time: pre-commit under ~2 minutes; pre-push runs five docker builds/tests in parallel (slower on first pull).
+
+HLS software matrix and `-race` unit tests are **CI-only** (or `make test-hls-docker` / `make test-race` manually).
+
+### Manual runs
+
+```bash
+pre-commit run --all-files
+pre-commit run --hook-stage pre-push ffmpeg-matrix-docker --all-files
+make test-ffmpeg-matrix                    # parallel matrix (pre-push equivalent)
+make test-ffmpeg-version VERSION=8.1.2   # single version
+make test-integration-docker               # full integration on 8.1.2
+make test-hls-docker                       # HLS harness on 8.1.2
+GOFFMPEG_MATRIX_SKIP_MISSING=1 make test-ffmpeg-matrix   # skip unpublished images
+SKIP=ffmpeg-matrix-docker git push
+```
+
+Docker helpers: `scripts/docker/` (`docker/test.Dockerfile` copies ffmpeg from `gtstef/ffmpeg`, regular tag not `-decode`).
+
 ## Tests
 
 | Layer | Expectation |
@@ -52,12 +90,12 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 
 ## CI / matrix
 
-- PR: lint (root + `test/hls`), unit `-race`, integration on full **8.1.1** docker image, HLS software matrix.
-- **`ffmpeg-matrix`:** 5.1 / 6.1 / 7.1 / 8.1 — detection, version-gated throttle tests, integration subset (detect, duration, screenshot), CLI report.
-- **`apt-ffmpeg`:** stripped distro detection and graceful unsupported ops.
-- `GOFFMPEG_SKIP_HW=1` on GitHub-hosted runners; no GPU jobs without self-hosted runners.
+- PR: lint, unit `-race`, integration + HLS in **docker** (`gtstef/ffmpeg:8.1.2`), **`ffmpeg-matrix`** for every version in `docker/versions`.
+- Matrix tests run inside `docker/test.Dockerfile` (no BtbN tarballs or musl binary extract).
+- **`apt-ffmpeg`:** stripped distro detection on host.
+- `GOFFMPEG_SKIP_HW=1` on GitHub-hosted runners.
 - Do not commit `test/hls/report_site/media/` or generated fixtures.
-- Add a matrix case when introducing a new version-gated ffmpeg flag.
+- Add a version to `docker/versions` when a new `gtstef/ffmpeg` tag ships.
 
 ## Style
 
