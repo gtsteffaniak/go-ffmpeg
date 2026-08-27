@@ -12,6 +12,7 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 | `ops/` | High-level ffmpeg operations |
 | `exec/`, `probe/`, `mp4/`, `platform/` | Process runner, ffprobe, fMP4 atoms, GPU |
 | `cmd/go-ffmpeg` | Standalone capability reporter CLI |
+| `examples/` | Runnable task demos (`go run ./examples/<name>`) |
 | `test/hls/` | Separate module; HLS fixture harness and report site |
 
 `make test` runs the root module. `make test-hls` runs the harness (fixtures + integration + optional full matrix).
@@ -26,7 +27,8 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 6. Return `OperationError` with classified `Kind` via `wrapOp` for encode failures.
 7. Version-gate new ffmpeg flags with `capabilities.FeatureFlags`.
 8. Godoc on options; `Example*` test if user-facing.
-9. Update [docs/operations.md](docs/operations.md) in the same change.
+9. Runnable program under `examples/<task>/` when the workflow is non-trivial.
+10. Update [docs/operations.md](docs/operations.md) in the same change.
 
 ## Backwards compatibility
 

@@ -66,6 +66,21 @@ func main() {
 
 Set `GPU` in `Config` to enable hardware acceleration (`"dgpu"`, `"igpu"`, render node path, or GPU name). Empty `GPU` means software-only encode.
 
+## Examples
+
+Runnable programs under `examples/` (each is `go run ./examples/<name>`):
+
+| Example | Task |
+|---------|------|
+| [`examples/basic`](examples/basic) | Probe + capability report |
+| [`examples/screenshot`](examples/screenshot) | Single-frame JPEG |
+| [`examples/transcode`](examples/transcode) | File transcode to H.264 MP4 |
+| [`examples/hls`](examples/hls) | On-demand fMP4 HLS segment |
+| [`examples/timelapse`](examples/timelapse) | Image sequence → MP4 |
+| [`examples/convert-heic`](examples/convert-heic) | HEIC → JPEG |
+
+Set `GOFFMPEG_FFMPEG_PATH`, `GOFFMPEG_FFPROBE_PATH`, and `GOFFMPEG_SKIP_HW=1` as needed. See each `main.go` for flags and env vars.
+
 ## Compatibility CLI
 
 Inspect what your host ffmpeg supports before you ship — encoder matrix, HW backends, enabled operations, and version-gated flags:

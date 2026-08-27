@@ -5,7 +5,9 @@
 // capability detection with seamless fallback, task-optimized ffmpeg flags,
 // hardware-aware encoder selection, and version-safe options. HLS and transcode
 // paths target Plex/Jellyfin-class browser streaming (fMP4 segments, timeline
-// alignment, continuous cache jobs). Requires ffmpeg 5.0+ on the host.
+// alignment, continuous cache jobs).
+//
+// Requires Go 1.25+, ffmpeg 5.0+, and ffprobe on the host (or explicit paths in Config).
 //
 // Install:
 //
@@ -23,4 +25,5 @@
 //	go-ffmpeg -ffmpeg-path /path/to/ffmpeg
 //
 // See docs/ and CONTRIBUTING.md for HLS playback, hardware, and contributor guidelines.
+// Runnable task examples live under examples/ (screenshot, transcode, hls, timelapse, convert-heic).
 package ffmpeg

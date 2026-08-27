@@ -21,7 +21,11 @@ type Config struct {
 	// DetectTimeout limits how long Detect may run. Default 60s.
 	DetectTimeout time.Duration
 
-	// MaxConcurrent limits parallel ffmpeg processes. Default 4.
+	// MaxConcurrent limits how many ffmpeg/ffprobe subprocesses may run at once
+	// across all Service methods. Each operation acquires a slot for the duration
+	// of the subprocess; StartHLSContinuous holds one slot until Wait completes.
+	// Default 4. Use Acquire/Release only for ffmpeg you start outside Service
+	// methods (do not call Acquire before Service methods — they manage slots).
 	MaxConcurrent int
 
 	// Logger receives diagnostic output. Inject any implementation of Logger
@@ -33,8 +37,11 @@ type Config struct {
 	// When nil or empty, detection uses HierarchyForPlatform (VideoToolbox on macOS, etc.).
 	EncoderHierarchy []capabilities.AccelType
 
-	// GPU selects hardware acceleration. Empty disables HW (software only).
-	// Values: default, igpu, dgpu, a render node (/dev/dri/renderD*), or a device name substring.
+	// GPU selects which device to use for hardware encoder smoke tests and
+	// HW-aware encode/decode resolution. Empty means software-only: detection
+	// still lists compiled HW encoders, but the resolver will not prefer them.
+	// Common values: "dgpu", "igpu", a DRM render node (/dev/dri/renderD128),
+	// or a substring of the GPU name from the capability report.
 	GPU string
 
 	// SkipHWTests skips expensive hardware encoder smoke tests.
@@ -43,7 +50,9 @@ type Config struct {
 	// VerboseFFmpeg streams ffmpeg stderr to os.Stderr and uses -loglevel info.
 	VerboseFFmpeg bool
 
-	// MinVersion is the minimum required ffmpeg version. Defaults to 5.0.0.
+	// MinVersion rejects ffmpeg binaries older than this during New and Reload.
+	// Defaults to capabilities.MinSupportedVersion (5.0.0). Set explicitly when
+	// your deployment standard is newer than the library floor.
 	MinVersion capabilities.Version
 }
 
