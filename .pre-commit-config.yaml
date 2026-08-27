@@ -1,5 +1,5 @@
 # All hooks use language: system (bash + go) — no pip/Python env on install.
-# FFmpeg version matrix runs in docker on pre-push (see docker/versions).
+# FFmpeg version matrix runs in docker on pre-commit (see docker/versions).
 repos:
   - repo: local
     hooks:
@@ -48,4 +48,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-push]

@@ -30,9 +30,8 @@ ensure_pre_commit() {
 echo "==> Installing pre-commit"
 ensure_pre_commit
 
-echo "==> Installing git hooks (pre-commit + pre-push)"
+echo "==> Installing git hooks (pre-commit)"
 pre-commit install
-pre-commit install --hook-type pre-push
 
 echo ""
 echo "==> Checking dev requirements"
@@ -51,19 +50,19 @@ check_cmd() {
 check_cmd go "required to build and test"
 check_cmd ffmpeg "required for unit tests and pre-commit go-test-unit hook"
 check_cmd ffprobe "required for unit tests and pre-commit go-test-unit hook"
-check_cmd docker "required for pre-push ffmpeg matrix (gtstef/ffmpeg, see docker/versions)"
+check_cmd docker "required for pre-commit ffmpeg matrix (gtstef/ffmpeg, see docker/versions)"
 
 sample="test/data/Big_Buck_Bunny_1080_10s_2MB.mp4"
 if [[ -f "$sample" ]]; then
 	echo "  ok: $sample"
 else
-	echo "  missing: $sample — required for pre-push integration hook" >&2
+	echo "  missing: $sample — required for ffmpeg matrix hook" >&2
 	warn=1
 fi
 
 echo ""
 if [[ "$warn" -eq 1 ]]; then
-	echo "Setup complete (hooks installed). Install missing tools above before committing/pushing."
+	echo "Setup complete (hooks installed). Install missing tools above before committing."
 else
-	echo "Setup complete. Hooks will run gofmt/vet/unit tests on commit and docker integration on push."
+	echo "Setup complete. Hooks run on commit: lint, unit tests, and ffmpeg matrix in docker."
 fi

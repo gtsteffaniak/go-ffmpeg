@@ -4,7 +4,7 @@ set -euo pipefail
 
 VERSION="${1:-unknown}"
 echo "==> ffmpeg matrix tests (ffmpeg ${VERSION})"
-ffmpeg -version | head -1
+ffmpeg -version 2>&1 | sed -n '1p'
 
 echo "==> version-gated unit tests"
 go test ./capabilities ./encode -count=1 \
@@ -20,5 +20,7 @@ else
 fi
 
 echo "==> CLI compatibility report"
-go build -o bin/go-ffmpeg ./cmd/go-ffmpeg
-./bin/go-ffmpeg -skip-hw-tests -json | head -10
+cli="$(mktemp /tmp/go-ffmpeg-XXXXXX)"
+go build -o "$cli" ./cmd/go-ffmpeg
+"$cli" -skip-hw-tests -json | sed -n '1,10p'
+rm -f "$cli"

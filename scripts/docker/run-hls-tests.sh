@@ -5,7 +5,7 @@ set -euo pipefail
 VERSION="${GOFFMPEG_MATRIX_VERSION:-8.1.2}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-TEST_IMAGE="$(bash "$REPO_ROOT/scripts/docker/build-test-image.sh" "$VERSION")"
+TEST_IMAGE="$(bash "$REPO_ROOT/scripts/docker/build-test-image.sh" "$VERSION" | tail -n1)"
 if [[ -z "$TEST_IMAGE" ]]; then
 	exit 1
 fi

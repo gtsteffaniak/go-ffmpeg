@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 VERSIONS_FILE="${GOFFMPEG_VERSIONS_FILE:-$REPO_ROOT/docker/versions}"
+LOG_DIR="${GOFFMPEG_MATRIX_LOG_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/go-ffmpeg-matrix-logs.XXXXXX")}"
 
 if [[ ! -f "$VERSIONS_FILE" ]]; then
 	echo "missing versions file: $VERSIONS_FILE" >&2
@@ -26,25 +27,40 @@ if [[ ${#versions[@]} -eq 0 ]]; then
 	exit 1
 fi
 
-echo "ffmpeg matrix (${#versions[@]} versions, parallel): ${versions[*]}"
+echo "ffmpeg matrix (${#versions[@]} versions): ${versions[*]}"
+echo "matrix logs: $LOG_DIR"
 
+echo "==> building test images"
+for version in "${versions[@]}"; do
+	echo "  build $version"
+	if ! bash "$REPO_ROOT/scripts/docker/build-test-image.sh" "$version" >"$LOG_DIR/build-$version.log" 2>&1; then
+		echo "FAILED: build ffmpeg $version" >&2
+		cat "$LOG_DIR/build-$version.log" >&2
+		exit 1
+	fi
+done
+
+echo "==> running tests in parallel"
 pids=()
 names=()
 for version in "${versions[@]}"; do
 	(
-		echo "--- start $version ---"
-		bash "$REPO_ROOT/scripts/docker/run-version-tests.sh" "$version"
-		echo "--- ok $version ---"
-	) &
+		GOFFMPEG_SKIP_IMAGE_BUILD=1 \
+			bash "$REPO_ROOT/scripts/docker/run-version-tests.sh" "$version"
+	) >"$LOG_DIR/test-$version.log" 2>&1 &
 	pids+=($!)
 	names+=("$version")
 done
 
 failed=0
 for i in "${!pids[@]}"; do
+	version="${names[$i]}"
 	if ! wait "${pids[$i]}"; then
-		echo "FAILED: ffmpeg ${names[$i]}" >&2
+		echo "FAILED: ffmpeg $version (see $LOG_DIR/test-$version.log)" >&2
+		cat "$LOG_DIR/test-$version.log" >&2
 		failed=1
+	else
+		echo "ok: ffmpeg $version"
 	fi
 done
 

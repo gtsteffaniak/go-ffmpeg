@@ -9,9 +9,9 @@ TEST_IMAGE="${GOFFMPEG_TEST_IMAGE:-go-ffmpeg-test:${VERSION}}"
 cd "$REPO_ROOT"
 
 if ! docker image inspect "$FFMPEG_IMAGE" &>/dev/null; then
-	if ! docker pull "$FFMPEG_IMAGE"; then
+	if ! docker pull "$FFMPEG_IMAGE" >&2; then
 		if [[ "${GOFFMPEG_MATRIX_SKIP_MISSING:-}" == "1" ]]; then
-			echo "skip: $FFMPEG_IMAGE not available (GOFFMPEG_MATRIX_SKIP_MISSING=1)"
+			echo "skip: $FFMPEG_IMAGE not available (GOFFMPEG_MATRIX_SKIP_MISSING=1)" >&2
 			exit 0
 		fi
 		echo "failed to pull $FFMPEG_IMAGE" >&2
@@ -24,4 +24,5 @@ docker build -f docker/test.Dockerfile \
 	-t "$TEST_IMAGE" \
 	. >&2
 
-echo "$TEST_IMAGE"
+# stdout must be only the image reference (captured by callers).
+printf '%s\n' "$TEST_IMAGE"

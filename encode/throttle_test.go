@@ -33,6 +33,19 @@ func TestAppendReadrateArgs(t *testing.T) {
 	}
 }
 
+func assertReadrateArgs(t *testing.T, ver capabilities.Version, cfg encode.ThrottleConfig, want []string) {
+	t.Helper()
+	got := encode.AppendReadrateArgs(nil, ver, cfg)
+	if len(got) != len(want) {
+		t.Fatalf("version %v args = %v, want %v", ver, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("version %v args = %v, want %v", ver, got, want)
+		}
+	}
+}
+
 func TestAppendReadrateArgsVersionGates(t *testing.T) {
 	cfg := encode.ThrottleConfig{
 		Enabled:      true,
@@ -41,37 +54,17 @@ func TestAppendReadrateArgsVersionGates(t *testing.T) {
 		InitialBurst: 30,
 	}
 
-	v60 := capabilities.Version{Major: 6, Minor: 0, Patch: 0}
-	v60Args := encode.AppendReadrateArgs(nil, v60, cfg)
-	if len(v60Args) != 2 {
-		t.Fatalf("6.0 should omit burst and catchup: %v", v60Args)
-	}
+	assertReadrateArgs(t, capabilities.Version{Major: 6, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1"})
 
-	v61 := capabilities.Version{Major: 6, Minor: 1, Patch: 0}
-	v61Args := encode.AppendReadrateArgs(nil, v61, cfg)
-	if len(v61Args) != 4 || v61Args[2] != "-readrate_initial_burst" {
-		t.Fatalf("6.1 should add initial_burst: %v", v61Args)
-	}
+	assertReadrateArgs(t, capabilities.Version{Major: 6, Minor: 1, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "30"})
 
-	v7 := capabilities.Version{Major: 7, Minor: 0, Patch: 0}
-	v7Args := encode.AppendReadrateArgs(nil, v7, cfg)
-	for _, arg := range v7Args {
-		if arg == "-readrate_catchup" {
-			t.Fatalf("7.0 should not add catchup: %v", v7Args)
-		}
-	}
+	assertReadrateArgs(t, capabilities.Version{Major: 7, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "30"})
 
-	v8 := capabilities.Version{Major: 8, Minor: 0, Patch: 0}
-	v8Args := encode.AppendReadrateArgs(nil, v8, cfg)
-	hasCatchup := false
-	for _, arg := range v8Args {
-		if arg == "-readrate_catchup" {
-			hasCatchup = true
-		}
-	}
-	if !hasCatchup {
-		t.Fatalf("8.0 should add catchup: %v", v8Args)
-	}
+	assertReadrateArgs(t, capabilities.Version{Major: 8, Minor: 0, Patch: 0}, cfg,
+		[]string{"-readrate", "1", "-readrate_catchup", "2", "-readrate_initial_burst", "30"})
 }
 
 func TestFailureClassifier(t *testing.T) {

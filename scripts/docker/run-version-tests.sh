@@ -4,19 +4,21 @@ set -euo pipefail
 
 VERSION="${1:?ffmpeg version required, e.g. 8.1.2}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SCRIPT="$REPO_ROOT/scripts/docker/in-container-matrix-tests.sh"
+CONTAINER_SCRIPT="/src/scripts/docker/in-container-matrix-tests.sh"
+DOCKER_RUN="$REPO_ROOT/scripts/docker/docker-test-run.sh"
 
-TEST_IMAGE="$(bash "$REPO_ROOT/scripts/docker/build-test-image.sh" "$VERSION")"
-if [[ -z "$TEST_IMAGE" ]]; then
-	exit 0
+TEST_IMAGE="${GOFFMPEG_TEST_IMAGE:-go-ffmpeg-test:${VERSION}}"
+
+if [[ "${GOFFMPEG_SKIP_IMAGE_BUILD:-}" != "1" ]]; then
+	TEST_IMAGE="$(bash "$REPO_ROOT/scripts/docker/build-test-image.sh" "$VERSION" | tail -n1)"
+	if [[ -z "$TEST_IMAGE" ]]; then
+		exit 0
+	fi
+elif ! docker image inspect "$TEST_IMAGE" &>/dev/null; then
+	echo "missing test image $TEST_IMAGE (build first)" >&2
+	exit 1
 fi
 
-docker run --rm \
-	-v "$REPO_ROOT:/src" \
-	-w /src \
-	-e GOFFMPEG_SKIP_HW=1 \
-	-e GOFFMPEG_FFMPEG_PATH=/usr/local/bin/ffmpeg \
-	-e GOFFMPEG_FFPROBE_PATH=/usr/local/bin/ffprobe \
-	-e GOFFMPEG_SAMPLE_MP4=test/data/Big_Buck_Bunny_1080_10s_2MB.mp4 \
-	"$TEST_IMAGE" \
-	bash "$SCRIPT" "$VERSION"
+# shellcheck source=/dev/null
+source "$DOCKER_RUN"
+docker_test_run "$TEST_IMAGE" bash "$CONTAINER_SCRIPT" "$VERSION"
