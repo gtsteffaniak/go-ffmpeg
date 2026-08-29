@@ -13,11 +13,11 @@ func TestPreviewScaleFilter(t *testing.T) {
 		want   string
 	}{
 		{
-			name:   "fit decrease",
+			name:   "fit decrease without upscale",
 			width:  640,
 			height: 640,
 			mode:   ScaleFit,
-			want:   "scale=640:640:force_original_aspect_ratio=decrease",
+			want:   "scale=min(640\\,iw):min(640\\,ih):force_original_aspect_ratio=decrease",
 		},
 		{
 			name:   "fill increase and crop",
@@ -30,7 +30,7 @@ func TestPreviewScaleFilter(t *testing.T) {
 			name:   "zero mode defaults to fit",
 			width:  1024,
 			height: 1024,
-			want:   "scale=1024:1024:force_original_aspect_ratio=decrease",
+			want:   "scale=min(1024\\,iw):min(1024\\,ih):force_original_aspect_ratio=decrease",
 		},
 	}
 

@@ -76,7 +76,8 @@ func PreviewScaleFilter(width, height int, mode ScaleMode) string {
 	case ScaleFill:
 		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d", width, height, width, height)
 	default:
-		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", width, height)
+		// Cap at input dimensions so small sources are never upscaled.
+		return fmt.Sprintf("scale=min(%d\\,iw):min(%d\\,ih):force_original_aspect_ratio=decrease", width, height)
 	}
 }
 
