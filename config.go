@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/concurrency"
 )
 
 // Config configures a Service instance.
@@ -21,11 +22,13 @@ type Config struct {
 	// DetectTimeout limits how long Detect may run. Default 60s.
 	DetectTimeout time.Duration
 
-	// MaxConcurrent limits how many ffmpeg/ffprobe subprocesses may run at once
-	// across all Service methods. Each operation acquires a slot for the duration
-	// of the subprocess; StartHLSContinuous holds one slot until Wait completes.
-	// Default 4. Use Acquire/Release only for ffmpeg you start outside Service
-	// methods (do not call Acquire before Service methods — they manage slots).
+	// Concurrency configures per-tier subprocess limits (probe, decode, encode).
+	// Zero fields use defaults in withDefaults().
+	Concurrency Concurrency
+
+	// MaxConcurrent is deprecated: when Concurrency tier fields are unset, maps to
+	// LegacyFromMaxConcurrent (MaxDecode/MaxEncode = MaxConcurrent, higher MaxProbe).
+	// Prefer Concurrency for new integrations.
 	MaxConcurrent int
 
 	// Logger receives diagnostic output. Inject any implementation of Logger
@@ -56,6 +59,21 @@ type Config struct {
 	MinVersion capabilities.Version
 }
 
+// Concurrency configures per-class subprocess limits for Service operations.
+type Concurrency = concurrency.Config
+
+// SlotClass identifies which concurrency tier an operation uses.
+type SlotClass = concurrency.SlotClass
+
+const (
+	// SlotProbe limits ffprobe-style metadata work.
+	SlotProbe = concurrency.SlotProbe
+	// SlotDecode limits short ffmpeg jobs (previews, screenshots, remux).
+	SlotDecode = concurrency.SlotDecode
+	// SlotEncode limits heavy transcode / segment encode jobs.
+	SlotEncode = concurrency.SlotEncode
+)
+
 func (c *Config) withDefaults() Config {
 	out := *c
 	if out.DetectOnInit == nil {
@@ -65,9 +83,7 @@ func (c *Config) withDefaults() Config {
 	if out.DetectTimeout == 0 {
 		out.DetectTimeout = 60 * time.Second
 	}
-	if out.MaxConcurrent == 0 {
-		out.MaxConcurrent = 4
-	}
+	out.Concurrency = out.resolveConcurrency()
 	if out.Logger == nil {
 		out.Logger = defaultLogger()
 	}
@@ -75,4 +91,17 @@ func (c *Config) withDefaults() Config {
 		out.MinVersion = capabilities.MinSupportedVersion
 	}
 	return out
+}
+
+func (c *Config) resolveConcurrency() Concurrency {
+	cc := c.Concurrency
+	hasTier := cc.MaxProbe > 0 || cc.MaxDecode > 0 || cc.MaxEncode > 0 || cc.GlobalMax > 0 ||
+		cc.MaxLargeFile != nil || cc.LargeFileThresholdBytes > 0
+	if !hasTier {
+		if c.MaxConcurrent > 0 {
+			return concurrency.LegacyFromMaxConcurrent(c.MaxConcurrent)
+		}
+		return Concurrency{}.WithDefaults()
+	}
+	return cc.WithDefaults()
 }

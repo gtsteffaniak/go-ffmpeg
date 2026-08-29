@@ -23,7 +23,7 @@ go-ffmpeg is a **task wrapper**, not an argv builder. New work should keep calle
 2. `Service` method on the root package (type aliases as needed).
 3. Register `ops.Operation` with `Requirements` (encoders, filters, protocols, min profile).
 4. Gate with `require()` → `ErrUnsupported` / `ProfileError` before spawning ffmpeg.
-5. Service methods take a **concurrency slot** (`MaxConcurrent`); continuous jobs hold one slot until `Wait` completes.
+5. Service methods take a **concurrency slot** from the matching tier (`Config.Concurrency`); continuous jobs hold one slot until `Wait` completes.
 6. Return `OperationError` with classified `Kind` via `wrapOp` for encode failures.
 7. Version-gate new ffmpeg flags with `capabilities.FeatureFlags`.
 8. Godoc on options; `Example*` test if user-facing.

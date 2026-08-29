@@ -86,6 +86,8 @@ type PreviewOptions struct {
 	Input       string
 	SeekPercent float64
 	SeekSec     float64 // when > 0, seek to this timestamp instead of SeekPercent
+	// DurationSec when > 0 skips the duration ffprobe (caller already probed).
+	DurationSec float64
 	Width       int
 	Height      int
 	ScaleMode   ScaleMode
@@ -93,26 +95,38 @@ type PreviewOptions struct {
 	Timeout     time.Duration
 }
 
-// VideoPreview extracts an MJPEG frame to w.
-func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions) error {
-	dur, err := probe.GetMediaDuration(ctx, runner, opts.Input)
-	if err != nil {
-		return err
-	}
-	var seekSec float64
+// ResolvePreviewSeekSec computes the seek position from duration and options.
+func ResolvePreviewSeekSec(dur float64, opts PreviewOptions) float64 {
 	if opts.SeekSec > 0 {
-		seekSec = opts.SeekSec
+		seekSec := opts.SeekSec
 		if dur > 0 && seekSec > dur {
 			seekSec = dur
 		}
-	} else {
-		seekPct := opts.SeekPercent
-		if seekPct <= 0 || seekPct > 100 {
-			seekPct = 10
-		}
-		seekSec = dur * seekPct / 100
+		return seekSec
 	}
+	seekPct := opts.SeekPercent
+	if seekPct <= 0 || seekPct > 100 {
+		seekPct = 10
+	}
+	return dur * seekPct / 100
+}
 
+// VideoPreview probes duration then extracts an MJPEG frame to w.
+// Prefer Service.VideoPreview, which uses separate probe and decode concurrency slots.
+func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions) error {
+	dur := opts.DurationSec
+	if dur <= 0 {
+		var err error
+		dur, err = probe.GetMediaDuration(ctx, runner, opts.Input)
+		if err != nil {
+			return err
+		}
+	}
+	return VideoPreviewFrame(ctx, runner, w, opts, ResolvePreviewSeekSec(dur, opts))
+}
+
+// VideoPreviewFrame extracts an MJPEG frame to w at seekSec without probing duration.
+func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions, seekSec float64) error {
 	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec), "-i", opts.Input}
 	if opts.Width > 0 && opts.Height > 0 {
 		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))

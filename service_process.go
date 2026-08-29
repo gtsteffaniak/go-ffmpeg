@@ -2,6 +2,8 @@ package ffmpeg
 
 import (
 	"context"
+
+	"github.com/gtsteffaniak/go-ffmpeg/concurrency"
 )
 
 func (s *Service) ensureDetected(ctx context.Context) error {
@@ -25,18 +27,32 @@ func (s *Service) ensureDetected(ctx context.Context) error {
 	return s.Reload(ctx)
 }
 
-func (s *Service) acquireSlot(ctx context.Context) error {
-	return s.Acquire(ctx)
+func (s *Service) acquireLease(ctx context.Context, class concurrency.SlotClass, inputPath string) (*concurrency.Lease, error) {
+	return s.limiter.AcquireLease(ctx, class, inputPath)
 }
 
-func (s *Service) releaseSlot() {
-	s.Release()
+func (s *Service) acquireSlot(ctx context.Context, class concurrency.SlotClass) error {
+	return s.limiter.Acquire(ctx, class)
 }
 
-func (s *Service) runWithSlot(ctx context.Context, fn func() error) error {
-	if err := s.acquireSlot(ctx); err != nil {
-		return err
+func (s *Service) releaseSlot(class concurrency.SlotClass) {
+	s.limiter.Release(class)
+}
+
+func (s *Service) runWithClass(ctx context.Context, class concurrency.SlotClass, inputPath string, fn func() error) error {
+	return s.limiter.Run(ctx, class, inputPath, fn)
+}
+
+func hlsSlotClass(opts HLSSegmentOptions) concurrency.SlotClass {
+	if opts.Remux || opts.VideoCopy {
+		return concurrency.SlotDecode
 	}
-	defer s.releaseSlot()
-	return fn()
+	return concurrency.SlotEncode
+}
+
+func hlsContinuousSlotClass(opts HLSContinuousOptions) concurrency.SlotClass {
+	if opts.Remux || opts.VideoCopy {
+		return concurrency.SlotDecode
+	}
+	return concurrency.SlotEncode
 }

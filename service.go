@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/concurrency"
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 	"github.com/gtsteffaniak/go-ffmpeg/ops"
@@ -16,13 +17,13 @@ import (
 
 // Service is the main entry point for ffmpeg operations.
 type Service struct {
-	cfg       Config
-	runner    *ffexec.Runner
-	caps      *capabilities.Capabilities
-	resolver  *encode.Resolver
-	semaphore chan struct{}
-	detectMu  sync.Mutex
-	mu        sync.RWMutex
+	cfg      Config
+	runner   *ffexec.Runner
+	caps     *capabilities.Capabilities
+	resolver *encode.Resolver
+	limiter  *concurrency.Limiter
+	detectMu sync.Mutex
+	mu       sync.RWMutex
 }
 
 // New creates and optionally detects a Service.
@@ -39,7 +40,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 			FFprobePath:   ffprobePath,
 			VerboseFFmpeg: cfg.VerboseFFmpeg,
 		},
-		semaphore: make(chan struct{}, cfg.MaxConcurrent),
+		limiter: concurrency.NewLimiter(cfg.Concurrency),
 	}
 	if *cfg.DetectOnInit {
 		if err := s.Reload(ctx); err != nil {
@@ -111,21 +112,23 @@ func (s *Service) SupportedOps() []string {
 	return append([]string(nil), s.caps.EnabledOps...)
 }
 
-// Acquire waits for a concurrency slot (see Config.MaxConcurrent). Use when your
-// application runs ffmpeg outside Service methods and shares the same limit.
+// Acquire waits for a concurrency slot. When class is omitted, SlotDecode is used.
 // Service methods acquire slots automatically — do not call Acquire before them.
-func (s *Service) Acquire(ctx context.Context) error {
-	select {
-	case s.semaphore <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+func (s *Service) Acquire(ctx context.Context, class ...SlotClass) error {
+	c := SlotDecode
+	if len(class) > 0 {
+		c = class[0]
 	}
+	return s.limiter.Acquire(ctx, c)
 }
 
-// Release frees a slot acquired with Acquire.
-func (s *Service) Release() {
-	<-s.semaphore
+// Release frees a slot acquired with Acquire. When class is omitted, SlotDecode is used.
+func (s *Service) Release(class ...SlotClass) {
+	c := SlotDecode
+	if len(class) > 0 {
+		c = class[0]
+	}
+	s.limiter.Release(c)
 }
 
 func (s *Service) require(opName string) error {
@@ -181,7 +184,7 @@ func (s *Service) ProbeStream(ctx context.Context, opts ProbeStreamOptions) (Str
 		return StreamInfo{}, err
 	}
 	var info StreamInfo
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotProbe, opts.URL, func() error {
 		var probeErr error
 		info, probeErr = probe.ProbeStream(ctx, s.runner, opts)
 		return probeErr
@@ -205,7 +208,7 @@ func (s *Service) GetMediaDuration(ctx context.Context, path string) (float64, e
 		return 0, err
 	}
 	var dur float64
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
 		var probeErr error
 		dur, probeErr = probe.GetMediaDuration(ctx, s.runner, path)
 		return probeErr
@@ -221,7 +224,7 @@ func (s *Service) GetImageDimensions(ctx context.Context, path string) (width, h
 	if err := s.require("GetImageDimensions"); err != nil {
 		return 0, 0, err
 	}
-	err = s.runWithSlot(ctx, func() error {
+	err = s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
 		var probeErr error
 		width, height, probeErr = probe.GetImageDimensions(ctx, s.runner, path)
 		return probeErr
@@ -243,7 +246,7 @@ func (s *Service) Screenshot(ctx context.Context, opts ScreenshotOptions) error 
 	if err := s.require("Screenshot"); err != nil {
 		return err
 	}
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotDecode, opts.Input.URL, func() error {
 		return wrapOp("Screenshot", ErrEncodeFailed, ops.Screenshot(ctx, s.runner, opts))
 	})
 }
@@ -267,8 +270,24 @@ func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOpt
 	if err := s.require("VideoPreview"); err != nil {
 		return err
 	}
-	return s.runWithSlot(ctx, func() error {
-		return ops.VideoPreview(ctx, s.runner, w, opts)
+
+	var dur float64
+	if opts.DurationSec > 0 {
+		dur = opts.DurationSec
+	} else {
+		err := s.runWithClass(ctx, concurrency.SlotProbe, opts.Input, func() error {
+			var probeErr error
+			dur, probeErr = probe.GetMediaDuration(ctx, s.runner, opts.Input)
+			return probeErr
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	seekSec := ops.ResolvePreviewSeekSec(dur, opts)
+	return s.runWithClass(ctx, concurrency.SlotDecode, opts.Input, func() error {
+		return ops.VideoPreviewFrame(ctx, s.runner, w, opts, seekSec)
 	})
 }
 
@@ -328,7 +347,7 @@ func (s *Service) Transcode(ctx context.Context, opts TranscodeOptions) error {
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotEncode, opts.Input.URL, func() error {
 		return wrapOp("Transcode", ErrEncodeFailed, ops.Transcode(ctx, s.runner, caps, opts))
 	})
 }
@@ -350,7 +369,7 @@ func (s *Service) SegmentRecord(ctx context.Context, opts SegmentRecordOptions) 
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotEncode, opts.Input.URL, func() error {
 		return wrapOp("SegmentRecord", ErrEncodeFailed, ops.SegmentRecord(ctx, s.runner, caps, opts))
 	})
 }
@@ -366,7 +385,7 @@ func (s *Service) FMP4StreamCopy(ctx context.Context, w io.Writer, opts FMP4Stre
 	if err := s.require("FMP4StreamCopy"); err != nil {
 		return err
 	}
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotDecode, opts.Input.URL, func() error {
 		return wrapOp("FMP4StreamCopy", ErrEncodeFailed, ops.FMP4StreamCopy(ctx, s.runner, w, opts))
 	})
 }
@@ -391,7 +410,7 @@ func (s *Service) FMP4Transcode(ctx context.Context, w io.Writer, opts FMP4Trans
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotEncode, opts.Input.URL, func() error {
 		return wrapOp("FMP4Transcode", ErrEncodeFailed, ops.FMP4Transcode(ctx, s.runner, caps, w, opts))
 	})
 }
@@ -550,7 +569,7 @@ func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byt
 	caps := s.caps
 	s.mu.RUnlock()
 	var data []byte
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, hlsSlotClass(opts), opts.Input.URL, func() error {
 		var segErr error
 		data, segErr = ops.HLSSegment(ctx, s.runner, caps, opts)
 		return wrapOp("HLSSegment", ErrEncodeFailed, segErr)
@@ -580,7 +599,7 @@ func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions)
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	err = s.runWithSlot(ctx, func() error {
+	err = s.runWithClass(ctx, hlsSlotClass(opts), opts.Input.URL, func() error {
 		var segErr error
 		init, media, segErr = ops.HLSInitAndSegment(ctx, s.runner, caps, opts)
 		return wrapOp("HLSSegment", ErrEncodeFailed, segErr)
@@ -610,7 +629,7 @@ func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegm
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, hlsSlotClass(opts), opts.Input.URL, func() error {
 		return wrapOp("HLSSegment", ErrEncodeFailed, ops.HLSSegmentMedia(ctx, s.runner, caps, w, opts))
 	})
 }
@@ -631,7 +650,9 @@ func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOpti
 			return nil, err
 		}
 	}
-	if err := s.acquireSlot(ctx); err != nil {
+	slot := hlsContinuousSlotClass(opts)
+	lease, err := s.acquireLease(ctx, slot, opts.Input.URL)
+	if err != nil {
 		return nil, err
 	}
 	s.mu.RLock()
@@ -639,12 +660,12 @@ func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOpti
 	s.mu.RUnlock()
 	job, err := ops.StartHLSContinuous(ctx, s.runner, caps, opts)
 	if err != nil {
-		s.releaseSlot()
+		lease.Release()
 		return nil, wrapOp("HLSContinuous", ErrEncodeFailed, err)
 	}
 	go func() {
 		_ = job.Wait()
-		s.releaseSlot()
+		lease.Release()
 	}()
 	return job, nil
 }
@@ -658,7 +679,7 @@ func (s *Service) ProbeVideoFPS(ctx context.Context, path string) (float64, erro
 		return 0, err
 	}
 	var fps float64
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
 		var probeErr error
 		fps, probeErr = ops.ProbeVideoFPS(ctx, s.runner, path)
 		return probeErr
@@ -675,7 +696,7 @@ func (s *Service) ProbeVideoKeyframeTimes(ctx context.Context, path string) ([]f
 		return nil, err
 	}
 	var times []float64
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
 		var probeErr error
 		times, probeErr = ops.ProbeVideoKeyframeTimes(ctx, s.runner, path)
 		return probeErr
@@ -700,7 +721,7 @@ func (s *Service) TimelapseCompile(ctx context.Context, opts TimelapseCompileOpt
 	s.mu.RLock()
 	caps := s.caps
 	s.mu.RUnlock()
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotEncode, "", func() error {
 		return wrapOp("TimelapseCompile", ErrEncodeFailed, ops.TimelapseCompile(ctx, s.runner, caps, opts))
 	})
 }
@@ -717,7 +738,7 @@ func (s *Service) DetectSubtitles(ctx context.Context, path string) ([]SubtitleT
 		return nil, err
 	}
 	var tracks []SubtitleTrack
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
 		var probeErr error
 		tracks, probeErr = probe.DetectEmbeddedSubtitles(ctx, s.runner, path)
 		return probeErr
@@ -734,7 +755,7 @@ func (s *Service) ExtractSubtitle(ctx context.Context, path string, streamIndex 
 		return "", err
 	}
 	var out string
-	err := s.runWithSlot(ctx, func() error {
+	err := s.runWithClass(ctx, concurrency.SlotDecode, path, func() error {
 		var probeErr error
 		out, probeErr = probe.ExtractSubtitle(ctx, s.runner, path, streamIndex)
 		return probeErr
@@ -753,7 +774,7 @@ func (s *Service) ConvertHEIC(ctx context.Context, opts ConvertHEICOptions) erro
 	if err := s.require("ConvertHEIC"); err != nil {
 		return err
 	}
-	return s.runWithSlot(ctx, func() error {
+	return s.runWithClass(ctx, concurrency.SlotDecode, opts.InputPath, func() error {
 		return wrapOp("ConvertHEIC", ErrEncodeFailed, ops.ConvertHEIC(ctx, s.runner, opts))
 	})
 }
