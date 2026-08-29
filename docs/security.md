@@ -23,7 +23,7 @@ All ffmpeg/ffprobe invocations use `exec.CommandContext` with discrete arguments
 | Decode | `MaxDecode` | 4 | `VideoPreview`, `Screenshot`, `ConvertHEIC`, remux/stream-copy |
 | Encode | `MaxEncode` | 2 | `Transcode`, HLS transcode segments, `TimelapseCompile` |
 | Global | `GlobalMax` | 0 (off) | Optional cap across all tiers |
-| Large file | `MaxLargeFile` | 2 | Extra slot when input exceeds `LargeFileThresholdBytes` |
+| Large file | `MaxLargeFile` | 2 (`*int`, nil = default) | Extra slot when input exceeds `LargeFileThresholdBytes`; `IntPtr(0)` disables |
 
 `Config.MaxConcurrent` is deprecated; when `Concurrency` tier fields are unset it maps to legacy single-pool behavior with a higher probe limit.
 

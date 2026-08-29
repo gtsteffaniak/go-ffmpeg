@@ -34,11 +34,16 @@ type Config struct {
 	LargeFileThresholdBytes int64
 
 	// MaxLargeFile limits concurrent operations on inputs above LargeFileThresholdBytes.
-	// Zero disables the large-file tier.
-	MaxLargeFile int
+	// Nil uses the default limit (2). A non-nil pointer to zero disables the tier.
+	MaxLargeFile *int
 }
 
 const defaultLargeFileThreshold = 500 << 20 // 500 MiB
+
+// IntPtr returns a pointer to n (helper for explicit MaxLargeFile values).
+func IntPtr(n int) *int {
+	return &n
+}
 
 // WithDefaults returns cfg with unset fields populated.
 func (c Config) WithDefaults() Config {
@@ -55,8 +60,9 @@ func (c Config) WithDefaults() Config {
 	if out.LargeFileThresholdBytes <= 0 {
 		out.LargeFileThresholdBytes = defaultLargeFileThreshold
 	}
-	if out.MaxLargeFile <= 0 {
-		out.MaxLargeFile = 2
+	if out.MaxLargeFile == nil {
+		v := 2
+		out.MaxLargeFile = &v
 	}
 	return out
 }
@@ -88,6 +94,32 @@ type Limiter struct {
 	largeOn bool
 }
 
+// Lease holds acquired concurrency slots until Release is called.
+type Lease struct {
+	limiter *Limiter
+	class   SlotClass
+	large   bool
+	global  bool
+	tier    bool
+}
+
+// Release frees all slots held by the lease.
+func (l *Lease) Release() {
+	if l == nil || l.limiter == nil || !l.tier {
+		return
+	}
+	releaseChan(l.limiter.tierChan(l.class))
+	if l.large {
+		releaseChan(l.limiter.large)
+		l.large = false
+	}
+	if l.global {
+		releaseChan(l.limiter.global)
+		l.global = false
+	}
+	l.tier = false
+}
+
 // NewLimiter builds a limiter from cfg (defaults applied).
 func NewLimiter(cfg Config) *Limiter {
 	cfg = cfg.WithDefaults()
@@ -100,14 +132,39 @@ func NewLimiter(cfg Config) *Limiter {
 	if cfg.GlobalMax > 0 {
 		l.global = make(chan struct{}, cfg.GlobalMax)
 	}
-	if cfg.MaxLargeFile > 0 {
-		l.large = make(chan struct{}, cfg.MaxLargeFile)
+	if cfg.MaxLargeFile != nil && *cfg.MaxLargeFile > 0 {
+		l.large = make(chan struct{}, *cfg.MaxLargeFile)
 		l.largeOn = true
 	}
 	return l
 }
 
+// AcquireLease reserves global, optional large-file, and tier slots for inputPath.
+func (l *Limiter) AcquireLease(ctx context.Context, class SlotClass, inputPath string) (*Lease, error) {
+	lease := &Lease{limiter: l, class: class}
+	if l.global != nil {
+		if err := acquireChan(ctx, l.global); err != nil {
+			return nil, err
+		}
+		lease.global = true
+	}
+	if l.largeOn && needsLargeFileSlot(inputPath, l.cfg.LargeFileThresholdBytes) {
+		if err := acquireChan(ctx, l.large); err != nil {
+			lease.Release()
+			return nil, err
+		}
+		lease.large = true
+	}
+	if err := acquireChan(ctx, l.tierChan(class)); err != nil {
+		lease.Release()
+		return nil, err
+	}
+	lease.tier = true
+	return lease, nil
+}
+
 // Acquire waits for a slot in class. Use Release with the same class when done.
+// Acquire does not apply the large-file tier; use AcquireLease or Run for input-aware limits.
 func (l *Limiter) Acquire(ctx context.Context, class SlotClass) error {
 	if l.global != nil {
 		if err := acquireChan(ctx, l.global); err != nil {
@@ -133,25 +190,11 @@ func (l *Limiter) Release(class SlotClass) {
 
 // Run acquires global (if configured), optional large-file, and tier slots for inputPath, then runs fn.
 func (l *Limiter) Run(ctx context.Context, class SlotClass, inputPath string, fn func() error) error {
-	if l.global != nil {
-		if err := acquireChan(ctx, l.global); err != nil {
-			return err
-		}
-		defer releaseChan(l.global)
-	}
-
-	if l.largeOn && needsLargeFileSlot(inputPath, l.cfg.LargeFileThresholdBytes) {
-		if err := acquireChan(ctx, l.large); err != nil {
-			return err
-		}
-		defer releaseChan(l.large)
-	}
-
-	if err := acquireChan(ctx, l.tierChan(class)); err != nil {
+	lease, err := l.AcquireLease(ctx, class, inputPath)
+	if err != nil {
 		return err
 	}
-	defer releaseChan(l.tierChan(class))
-
+	defer lease.Release()
 	return fn()
 }
 

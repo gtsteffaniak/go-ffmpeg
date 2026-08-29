@@ -95,7 +95,8 @@ func (c *Config) withDefaults() Config {
 
 func (c *Config) resolveConcurrency() Concurrency {
 	cc := c.Concurrency
-	hasTier := cc.MaxProbe > 0 || cc.MaxDecode > 0 || cc.MaxEncode > 0 || cc.GlobalMax > 0
+	hasTier := cc.MaxProbe > 0 || cc.MaxDecode > 0 || cc.MaxEncode > 0 || cc.GlobalMax > 0 ||
+		cc.MaxLargeFile != nil || cc.LargeFileThresholdBytes > 0
 	if !hasTier {
 		if c.MaxConcurrent > 0 {
 			return concurrency.LegacyFromMaxConcurrent(c.MaxConcurrent)

@@ -68,3 +68,20 @@ func TestResolveConcurrencyExplicitTiers(t *testing.T) {
 		t.Fatalf("GlobalMax = %d, want 10", cfg.Concurrency.GlobalMax)
 	}
 }
+
+func TestResolveConcurrencyLargeFileSettings(t *testing.T) {
+	threshold := int64(1 << 30)
+	limit := 1
+	cfg := (&Config{
+		Concurrency: Concurrency{
+			MaxLargeFile:            &limit,
+			LargeFileThresholdBytes: threshold,
+		},
+	}).withDefaults()
+	if cfg.Concurrency.LargeFileThresholdBytes != threshold {
+		t.Fatalf("LargeFileThresholdBytes = %d, want %d", cfg.Concurrency.LargeFileThresholdBytes, threshold)
+	}
+	if cfg.Concurrency.MaxLargeFile == nil || *cfg.Concurrency.MaxLargeFile != limit {
+		t.Fatalf("MaxLargeFile = %v, want %d", cfg.Concurrency.MaxLargeFile, limit)
+	}
+}

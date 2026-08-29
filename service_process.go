@@ -27,6 +27,10 @@ func (s *Service) ensureDetected(ctx context.Context) error {
 	return s.Reload(ctx)
 }
 
+func (s *Service) acquireLease(ctx context.Context, class concurrency.SlotClass, inputPath string) (*concurrency.Lease, error) {
+	return s.limiter.AcquireLease(ctx, class, inputPath)
+}
+
 func (s *Service) acquireSlot(ctx context.Context, class concurrency.SlotClass) error {
 	return s.limiter.Acquire(ctx, class)
 }

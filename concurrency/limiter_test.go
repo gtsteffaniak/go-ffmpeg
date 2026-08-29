@@ -19,9 +19,67 @@ func TestLegacyFromMaxConcurrent(t *testing.T) {
 	}
 }
 
+func TestWithDefaultsPreservesExplicitLargeFileDisable(t *testing.T) {
+	t.Parallel()
+	cfg := Config{MaxLargeFile: IntPtr(0)}.WithDefaults()
+	if cfg.MaxLargeFile == nil || *cfg.MaxLargeFile != 0 {
+		t.Fatalf("MaxLargeFile = %v, want explicit 0", cfg.MaxLargeFile)
+	}
+}
+
+func TestNewLimiterRespectsExplicitLargeFileDisable(t *testing.T) {
+	t.Parallel()
+	l := NewLimiter(Config{
+		MaxProbe:     4,
+		MaxDecode:    2,
+		MaxEncode:    1,
+		MaxLargeFile: IntPtr(0),
+	})
+	if l.largeOn {
+		t.Fatal("large-file tier should be disabled when MaxLargeFile is 0")
+	}
+
+	dir := t.TempDir()
+	large := filepath.Join(dir, "large.bin")
+	if err := os.WriteFile(large, make([]byte, 1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	threshold := int64(512)
+	l = NewLimiter(Config{
+		MaxProbe:                4,
+		MaxDecode:               1,
+		MaxEncode:               1,
+		MaxLargeFile:            IntPtr(1),
+		LargeFileThresholdBytes: threshold,
+	})
+	if err := os.WriteFile(large, make([]byte, 2048), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lease1, err := l.AcquireLease(ctx, SlotDecode, large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease1.Release()
+
+	blocked := make(chan error, 1)
+	go func() {
+		_, err := l.AcquireLease(ctx, SlotDecode, large)
+		blocked <- err
+	}()
+
+	select {
+	case err := <-blocked:
+		t.Fatalf("expected large-file cap to block, got err=%v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestLimiterAcquireBlocksSameTier(t *testing.T) {
 	t.Parallel()
-	l := NewLimiter(Config{MaxDecode: 1, MaxProbe: 4, MaxEncode: 1, MaxLargeFile: 0})
+	l := NewLimiter(Config{MaxDecode: 1, MaxProbe: 4, MaxEncode: 1, MaxLargeFile: IntPtr(0)})
 	ctx := context.Background()
 
 	if err := l.Acquire(ctx, SlotDecode); err != nil {
@@ -53,7 +111,7 @@ func TestLimiterAcquireBlocksSameTier(t *testing.T) {
 
 func TestLimiterProbeDoesNotBlockDecode(t *testing.T) {
 	t.Parallel()
-	l := NewLimiter(Config{MaxDecode: 1, MaxProbe: 4, MaxEncode: 1, MaxLargeFile: 0})
+	l := NewLimiter(Config{MaxDecode: 1, MaxProbe: 4, MaxEncode: 1, MaxLargeFile: IntPtr(0)})
 	ctx := context.Background()
 
 	if err := l.Acquire(ctx, SlotDecode); err != nil {
@@ -79,7 +137,7 @@ func TestLimiterProbeDoesNotBlockDecode(t *testing.T) {
 
 func TestLimiterGlobalMax(t *testing.T) {
 	t.Parallel()
-	l := NewLimiter(Config{MaxProbe: 8, MaxDecode: 8, MaxEncode: 8, GlobalMax: 1, MaxLargeFile: 0})
+	l := NewLimiter(Config{MaxProbe: 8, MaxDecode: 8, MaxEncode: 8, GlobalMax: 1, MaxLargeFile: IntPtr(0)})
 	ctx := context.Background()
 
 	if err := l.Acquire(ctx, SlotProbe); err != nil {

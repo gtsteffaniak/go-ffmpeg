@@ -651,7 +651,8 @@ func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOpti
 		}
 	}
 	slot := hlsContinuousSlotClass(opts)
-	if err := s.acquireSlot(ctx, slot); err != nil {
+	lease, err := s.acquireLease(ctx, slot, opts.Input.URL)
+	if err != nil {
 		return nil, err
 	}
 	s.mu.RLock()
@@ -659,12 +660,12 @@ func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOpti
 	s.mu.RUnlock()
 	job, err := ops.StartHLSContinuous(ctx, s.runner, caps, opts)
 	if err != nil {
-		s.releaseSlot(slot)
+		lease.Release()
 		return nil, wrapOp("HLSContinuous", ErrEncodeFailed, err)
 	}
 	go func() {
 		_ = job.Wait()
-		s.releaseSlot(slot)
+		lease.Release()
 	}()
 	return job, nil
 }

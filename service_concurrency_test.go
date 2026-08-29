@@ -15,7 +15,7 @@ func TestMixedProbeDecodeConcurrency(t *testing.T) {
 			MaxProbe:     8,
 			MaxDecode:    1,
 			MaxEncode:    1,
-			MaxLargeFile: 0,
+			MaxLargeFile: concurrency.IntPtr(0),
 		},
 	}).withDefaults()
 	s := &Service{
