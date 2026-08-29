@@ -251,6 +251,14 @@ func (s *Service) Screenshot(ctx context.Context, opts ScreenshotOptions) error 
 // PreviewOptions configures video preview generation.
 type PreviewOptions = ops.PreviewOptions
 
+// ScaleMode controls preview frame scaling.
+type ScaleMode = ops.ScaleMode
+
+const (
+	ScaleFit  = ops.ScaleFit
+	ScaleFill = ops.ScaleFill
+)
+
 // VideoPreview writes an MJPEG preview frame to w.
 func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOptions) error {
 	if err := s.ensureDetected(ctx); err != nil {
