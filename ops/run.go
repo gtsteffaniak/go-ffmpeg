@@ -60,6 +60,27 @@ func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptio
 	return err
 }
 
+// ScaleMode controls how preview frames are scaled to target dimensions.
+type ScaleMode int
+
+const (
+	// ScaleFit scales down to fit within width×height without upscaling (default).
+	ScaleFit ScaleMode = iota
+	// ScaleFill scales up and center-crops to fill width×height.
+	ScaleFill
+)
+
+// PreviewScaleFilter returns the -vf filter for sized preview output.
+func PreviewScaleFilter(width, height int, mode ScaleMode) string {
+	switch mode {
+	case ScaleFill:
+		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d", width, height, width, height)
+	default:
+		// Cap at input dimensions so small sources are never upscaled.
+		return fmt.Sprintf("scale=min(%d\\,iw):min(%d\\,ih):force_original_aspect_ratio=decrease", width, height)
+	}
+}
+
 // PreviewOptions configures MJPEG preview generation.
 type PreviewOptions struct {
 	Input       string
@@ -67,6 +88,7 @@ type PreviewOptions struct {
 	SeekSec     float64 // when > 0, seek to this timestamp instead of SeekPercent
 	Width       int
 	Height      int
+	ScaleMode   ScaleMode
 	Quality     int
 	Timeout     time.Duration
 }
@@ -93,7 +115,7 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 
 	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec), "-i", opts.Input}
 	if opts.Width > 0 && opts.Height > 0 {
-		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", opts.Width, opts.Height))
+		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))
 	}
 	q := opts.Quality
 	if q == 0 {
