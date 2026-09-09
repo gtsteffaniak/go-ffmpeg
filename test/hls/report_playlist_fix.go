@@ -12,11 +12,7 @@ import (
 // finalizeContinuousOutputDir rewrites ffmpeg.m3u8 segment URIs for browser playback.
 // Validation tolerates bare filenames via resolveContinuousSegmentPath; hls.js does not.
 func finalizeContinuousOutputDir(outDir string) error {
-	playlist := filepath.Join(outDir, "ffmpeg.m3u8")
-	if err := ops.FixContinuousPlaylistTargetDuration(playlist); err != nil {
-		return err
-	}
-	return ops.FixContinuousPlaylistSegmentURIs(outDir, playlist)
+	return ops.NormalizeContinuousPlaylist(outDir)
 }
 
 func fixReportContinuousPlaylists(reportDir string) (int, error) {

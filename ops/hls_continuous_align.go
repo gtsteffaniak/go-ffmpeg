@@ -209,10 +209,7 @@ func AlignContinuousHLSSegments(outDir string, opts HLSContinuousOptions) error 
 	if err := alignReadyContinuousSegments(outDir, opts, aligned, jobDone); err != nil {
 		return err
 	}
-	if err := FixContinuousPlaylistTargetDuration(filepath.Join(outDir, "ffmpeg.m3u8")); err != nil {
-		return err
-	}
-	return FixContinuousPlaylistSegmentURIs(outDir, filepath.Join(outDir, "ffmpeg.m3u8"))
+	return NormalizeContinuousPlaylist(outDir)
 }
 
 // FixContinuousPlaylistTargetDuration sets #EXT-X-TARGETDURATION to ceil(max #EXTINF).
@@ -319,8 +316,7 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 			}
 			job.mu.Unlock()
 		}
-		_ = FixContinuousPlaylistTargetDuration(filepath.Join(outDir, "ffmpeg.m3u8"))
-		_ = FixContinuousPlaylistSegmentURIs(outDir, filepath.Join(outDir, "ffmpeg.m3u8"))
+		_ = NormalizeContinuousPlaylist(outDir)
 		if job != nil && job.alignDone != nil {
 			close(job.alignDone)
 		}
