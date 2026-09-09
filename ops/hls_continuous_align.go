@@ -316,7 +316,13 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 			}
 			job.mu.Unlock()
 		}
-		_ = NormalizeContinuousPlaylist(outDir)
+		if err := NormalizeContinuousPlaylist(outDir); err != nil {
+			job.mu.Lock()
+			if job.err == nil {
+				job.err = err
+			}
+			job.mu.Unlock()
+		}
 		if job != nil && job.alignDone != nil {
 			close(job.alignDone)
 		}
