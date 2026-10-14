@@ -83,6 +83,42 @@ func TestVideoFilterArgsVideoToolbox(t *testing.T) {
 	}
 }
 
+func TestVideoFilterArgsVideoToolboxScaledOutputUsesValidWidth(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Filters["scale_vt"] = true
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Available: true, Kind: "videotoolbox"}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Hardware:  map[capabilities.AccelType]string{capabilities.AccelVideoToolbox: "h264_videotoolbox"},
+		Preferred: capabilities.EncoderSelection{Encoder: "h264_videotoolbox", Accel: capabilities.AccelVideoToolbox, Kind: "videotoolbox"},
+		DecodePreferred: capabilities.DecoderSelection{
+			Decoder: "hwaccel:videotoolbox:h264",
+			Accel:   capabilities.AccelVideoToolbox,
+			SWCodec: "h264",
+		},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoFilterArgs(
+		encode.VideoProfile{Codec: encode.CodecH264},
+		encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+		1080,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := joinArgs(args)
+	// scale_vt does not implement the "-2" shorthand; it reads it as a literal
+	// negative width, which fails with "Picture size 4294967294x1080 is invalid".
+	if contains(s, "w=-2") {
+		t.Fatalf("scale_vt must not use the -2 width shorthand: %v", args)
+	}
+	if !contains(s, "h=min(1080\\,ih)") {
+		t.Fatalf("missing height cap: %v", args)
+	}
+	if !contains(s, "trunc(iw*min(1080\\,ih)/ih/2)*2") {
+		t.Fatalf("missing aspect-preserving even width: %v", args)
+	}
+}
+
 func joinArgs(args []string) string {
 	out := ""
 	for _, a := range args {

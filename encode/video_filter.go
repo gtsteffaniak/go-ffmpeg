@@ -39,6 +39,17 @@ func videoFilterScaleOnly(maxHeight int) ([]string, error) {
 	return []string{"-vf", fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight)}, nil
 }
 
+// scaleVTFilter caps the output height while preserving aspect ratio.
+// scale_vt does not implement the "-2" width shorthand (it treats it as a literal
+// negative width, producing "Picture size 4294967294xNNNN is invalid"), so the
+// even width has to be computed explicitly.
+func scaleVTFilter(maxHeight int) string {
+	return fmt.Sprintf(
+		"scale_vt=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)",
+		maxHeight, maxHeight,
+	)
+}
+
 func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
 	parts := []string{}
 	if maxHeight > 0 {
@@ -74,7 +85,7 @@ func (r *Resolver) videotoolboxVideoFilters(decode VideoDecodeProfile, maxHeight
 	switch {
 	case vtDecode && useScaleVT:
 		if maxHeight > 0 {
-			parts = append(parts, fmt.Sprintf("scale_vt=w=-2:h=min(%d\\,ih)", maxHeight))
+			parts = append(parts, scaleVTFilter(maxHeight))
 		}
 	case vtDecode:
 		if maxHeight > 0 {
@@ -83,7 +94,7 @@ func (r *Resolver) videotoolboxVideoFilters(decode VideoDecodeProfile, maxHeight
 	case useScaleVT:
 		parts = append(parts, "format=nv12", "hwupload")
 		if maxHeight > 0 {
-			parts = append(parts, fmt.Sprintf("scale_vt=w=-2:h=min(%d\\,ih)", maxHeight))
+			parts = append(parts, scaleVTFilter(maxHeight))
 		}
 	default:
 		if maxHeight > 0 {
