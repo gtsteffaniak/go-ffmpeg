@@ -263,8 +263,8 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		}
 	default:
 		preset := x265Preset(o.quality)
-		if encoder == "libx265" {
-			return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
+		if encoder == "libvvenc" {
+			preset = vvencPreset(o.quality)
 		}
 		return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
 	}
@@ -304,6 +304,21 @@ func x265Preset(p QualityPreset) string {
 		return "medium"
 	default:
 		return "ultrafast"
+	}
+}
+
+// vvencPreset maps quality presets to libvvenc -preset values.
+// libvvenc only accepts faster/fast/medium/slow/slower (there is no "ultrafast").
+func vvencPreset(p QualityPreset) string {
+	switch p {
+	case PresetUltrafast, PresetVeryfast:
+		return "faster"
+	case PresetFast:
+		return "fast"
+	case PresetMedium:
+		return "medium"
+	default:
+		return "faster"
 	}
 }
 

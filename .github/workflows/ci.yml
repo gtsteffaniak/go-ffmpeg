@@ -12,6 +12,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Static ffmpeg build from https://github.com/gtsteffaniak/ffmpeg/releases
+  FFMPEG_VERSION: "9.0.2"
+
 jobs:
   lint:
     name: Lint
@@ -42,8 +46,8 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg (static release)
+        run: bash scripts/install-ffmpeg.sh
       - name: Unit tests (requires ffmpeg)
         run: go test -race ./... -count=1
       - name: Build CLI
@@ -69,8 +73,8 @@ jobs:
       - name: HLS tests (docker ffmpeg 8.1.2)
         run: bash scripts/docker/run-hls-tests.sh
 
-  apt-ffmpeg:
-    name: Apt ffmpeg detection
+  static-ffmpeg:
+    name: Static ffmpeg detection
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,8 +84,8 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      - name: Install apt ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg (static release)
+        run: bash scripts/install-ffmpeg.sh
       - name: Detection and version-gated args
         env:
           GOFFMPEG_SKIP_HW: "1"

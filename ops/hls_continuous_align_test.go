@@ -16,7 +16,7 @@ func TestAlignContinuousSegmentFileRebasesTimeline(t *testing.T) {
 	if err := os.WriteFile(path, media, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := AlignContinuousSegmentFile(path, 4.167); err != nil {
+	if err := AlignContinuousSegmentFile(path, 4.0); err != nil {
 		t.Fatalf("AlignContinuousSegmentFile: %v", err)
 	}
 	out, err := os.ReadFile(path)
@@ -28,8 +28,31 @@ func TestAlignContinuousSegmentFileRebasesTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	const tol = 0.02
-	if start < 4.167-tol || start > 4.167+tol {
-		t.Fatalf("media start = %.3f, want ~4.167", start)
+	if start < 4.0-tol || start > 4.0+tol {
+		t.Fatalf("media start = %.3f, want ~4.0", start)
+	}
+}
+
+func TestMediaStartForSegmentIndexFixedGrid(t *testing.T) {
+	t.Parallel()
+	opts := HLSContinuousOptions{
+		SegmentSec:       4.0,
+		SegmentDurations: []float64{4, 4, 4, 2.5},
+	}
+	cases := []struct {
+		index int
+		want  float64
+	}{
+		{0, 0},
+		{1, 4},
+		{2, 8},
+		{3, 12},
+	}
+	for _, tc := range cases {
+		got := mediaStartForSegmentIndex(opts, tc.index)
+		if got != tc.want {
+			t.Fatalf("index %d: got %v want %v", tc.index, got, tc.want)
+		}
 	}
 }
 
@@ -122,7 +145,7 @@ func TestContinuousSegmentReadyIgnoresAlignTmp(t *testing.T) {
 		t.Fatal(err)
 	}
 	if continuousSegmentReady(dir, 1, false, opts) {
-		t.Fatal("ffmpeg .tmp should still mean the segment is being muxed")
+		t.Fatal("ffmpeg .tmp should still mean the segment is being muxing")
 	}
 }
 
