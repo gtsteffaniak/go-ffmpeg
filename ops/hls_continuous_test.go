@@ -41,6 +41,57 @@ func TestBuildHLSContinuousArgsUsesRelativeOutputPaths(t *testing.T) {
 	}
 }
 
+func TestBuildHLSContinuousArgsAudioFilterTracksSeekOffset(t *testing.T) {
+	t.Parallel()
+
+	build := func(startSec float64) string {
+		caps := capabilities.NewCapabilities()
+		caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
+		caps.Decoders["h264"] = capabilities.DecoderCapability{Name: "h264", Compiled: true, Available: true, Kind: "software"}
+		caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+			Software:       []string{"libx264"},
+			SoftwareDecode: []string{"h264"},
+			Preferred:      capabilities.EncoderSelection{Encoder: "libx264", Accel: capabilities.AccelNone, Kind: "software"},
+			DecodePreferred: capabilities.DecoderSelection{
+				Decoder: "h264",
+				Accel:   capabilities.AccelNone,
+				Kind:    "software",
+				SWCodec: "h264",
+			},
+		}
+		runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+		opts := HLSContinuousOptions{
+			Input:      InputSource{URL: "/media/video.mkv"},
+			OutputDir:  "/cache/job",
+			SegmentSec: 4,
+			StartSec:   startSec,
+			Profile:    encode.VideoProfile{Codec: encode.CodecH264},
+			Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+		}
+		args, err := buildHLSContinuousArgs(runner, caps, opts)
+		if err != nil {
+			t.Fatalf("buildHLSContinuousArgs: %v", err)
+		}
+		return strings.Join(args, " ")
+	}
+
+	// Starting at the media origin: the audio is normalised to 0.
+	if got := build(0); !strings.Contains(got, "-af aresample=async=1:first_pts=0") {
+		t.Fatalf("expected first_pts=0 without a seek offset: %s", got)
+	}
+
+	// A seeking job keeps source timestamps, so forcing the audio to 0 would open
+	// an A/V gap as long as the offset that the HLS muxer has to write out as
+	// audio-only segments before any video arrives.
+	got := build(720)
+	if strings.Contains(got, "first_pts") {
+		t.Fatalf("must not force the audio to 0 when seeking: %s", got)
+	}
+	if !strings.Contains(got, "-af aresample=async=1") {
+		t.Fatalf("expected the audio filter to be retained: %s", got)
+	}
+}
+
 func TestBuildHLSContinuousArgsReadrateWhenThrottleEnabled(t *testing.T) {
 	t.Parallel()
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
