@@ -71,6 +71,68 @@ func TestContinuousSoftwareTranscodeFullFile(t *testing.T) {
 	}
 }
 
+// A continuous job must publish its playlist as segments complete, not only at
+// EOF. With -hls_playlist_type vod ffmpeg wrote the playlist only when the stream
+// ended, so a long transcode served nothing until it finished - and for a
+// feature-length input that never happened.
+func TestContinuousSoftwarePublishesPlaylistDuringRun(t *testing.T) {
+	ffmpegPath, ffprobePath := integrationFFmpegPaths(t)
+	input := filepath.Join(t.TempDir(), "input.mkv")
+	generateIntegrationH264MKV(t, ffmpegPath, input, 60)
+
+	runner := &ffexec.Runner{FFmpegPath: ffmpegPath, FFprobePath: ffprobePath}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	caps, err := capabilities.Detect(ctx, runner, capabilities.DetectOptions{SkipHWTests: true})
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+
+	outDir := filepath.Join(t.TempDir(), "job")
+	if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := HLSContinuousOptions{
+		Input:      InputSource{URL: input, StreamType: probe.StreamFile},
+		OutputDir:  outDir,
+		SegmentSec: 4,
+		MaxHeight:  720,
+		Profile:    encode.DefaultHLSVideoProfile(720),
+		Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264, Accel: capabilities.AccelNone},
+	}
+	job, err := StartHLSContinuous(ctx, runner, caps, opts)
+	if err != nil {
+		t.Fatalf("StartHLSContinuous: %v", err)
+	}
+	defer func() {
+		job.Cancel()
+		_ = job.Wait()
+	}()
+
+	// Wait for the first completed segment, then require the playlist to already
+	// be published - the job is still transcoding at this point.
+	firstSegment := filepath.Join(outDir, "seg", "00000.m4s")
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, statErr := os.Stat(firstSegment); statErr == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if _, statErr := os.Stat(firstSegment); statErr != nil {
+		t.Fatalf("first segment never completed: %v", statErr)
+	}
+
+	playlistPath := filepath.Join(outDir, "ffmpeg.m3u8")
+	playlist, readErr := os.ReadFile(playlistPath)
+	if readErr != nil {
+		t.Fatalf("playlist not published while the job was still running: %v", readErr)
+	}
+	if !strings.Contains(string(playlist), "00000.m4s") {
+		t.Fatalf("playlist does not list the first segment:\n%s", playlist)
+	}
+}
+
 // A seeking job keeps source timestamps on the video (-copyts), so the audio must
 // not be forced back to the media origin. Doing so leaves the first audio packet
 // at ~0 while the video stays at the seek offset, i.e. an A/V skew as long as the
