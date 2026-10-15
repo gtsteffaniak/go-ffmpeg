@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
@@ -79,6 +80,90 @@ func (c *Capabilities) ReportWithOptions(w io.Writer, opts ReportOptions) error 
 		}
 	}
 	return nil
+}
+
+// HardwareEncoders returns the hardware encoders that passed detection, sorted
+// for stable output. It ignores the encoder preference hierarchy, so detected
+// hardware is still reported when software encoding is preferred.
+func (c *Capabilities) HardwareEncoders() []string {
+	if c == nil {
+		return nil
+	}
+	var names []string
+	for name, enc := range c.Encoders {
+		if enc.Available && isHardwareKind(enc.Kind) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// HardwareDecoders returns the hardware decoders that passed detection, sorted
+// for stable output.
+func (c *Capabilities) HardwareDecoders() []string {
+	if c == nil {
+		return nil
+	}
+	var names []string
+	for name, dec := range c.Decoders {
+		if dec.Available && isHardwareKind(dec.Kind) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func isHardwareKind(kind string) bool {
+	return kind != "" && kind != "software" && kind != "native"
+}
+
+// SummaryLine returns a single-line capability summary for startup logging.
+func (c *Capabilities) SummaryLine() string {
+	if c == nil {
+		return "capability detection unavailable"
+	}
+
+	version := c.FFmpegVersion
+	if version == "" {
+		version = "unknown"
+	}
+	profile := c.BuildProfile
+	if profile == "" {
+		profile = BuildUnknown
+	}
+	parts := []string{fmt.Sprintf("ffmpeg %s (%s)", version, profile)}
+
+	hierarchy := c.EncoderHierarchy
+	if len(hierarchy) == 0 {
+		hierarchy = HierarchyForPlatform(c.Platform)
+	}
+	if labels := accelLabelsFor(hierarchy); len(labels) > 0 {
+		parts = append(parts, "encoder preference: "+strings.Join(labels, " → "))
+	}
+
+	if hw := c.HardwareEncoders(); len(hw) > 0 {
+		parts = append(parts, "hardware encoders: "+strings.Join(hw, ", "))
+	} else {
+		parts = append(parts, "hardware encoders: none")
+	}
+
+	ops := fmt.Sprintf("operations: %d enabled", len(c.EnabledOps))
+	if len(c.DisabledOps) > 0 {
+		ops += fmt.Sprintf(", %d disabled", len(c.DisabledOps))
+	}
+	parts = append(parts, ops)
+
+	return strings.Join(parts, " | ")
+}
+
+func accelLabelsFor(hierarchy []AccelType) []string {
+	labels := make([]string, 0, len(hierarchy))
+	for _, accel := range hierarchy {
+		labels = append(labels, AccelLabel(accel))
+	}
+	return labels
 }
 
 func writeHints(w io.Writer, st reportStyle, msg string) {
