@@ -14,7 +14,7 @@ sample="${GOFFMPEG_SAMPLE_MP4:-test/data/Big_Buck_Bunny_1080_10s_2MB.mp4}"
 if [[ -f "$sample" ]]; then
 	echo "==> integration subset"
 	go test -tags=integration ./... \
-		-run 'TestIntegration(Detect|MediaDuration|Screenshot)' -count=1
+		-run 'TestIntegration(Detect|MediaDuration|Screenshot)|TestContinuousSoftware' -count=1
 else
 	echo "skip integration subset: missing $sample" >&2
 fi
