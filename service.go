@@ -64,10 +64,10 @@ func (s *Service) Reload(ctx context.Context) error {
 	}
 	ops.EvaluateOps(caps)
 	log := WithGroup(s.cfg.Logger, "ffmpeg")
-	log.Info("capability detection complete", "profile", caps.BuildProfile, "version", caps.FFmpegVersion)
+	log.Info(caps.SummaryLine())
 	report := caps.ReportString()
 	for _, line := range splitLines(report) {
-		log.Info(line)
+		log.Debug(line)
 	}
 
 	s.mu.Lock()

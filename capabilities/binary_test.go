@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
 func TestParseVersionOutput(t *testing.T) {
@@ -163,6 +164,29 @@ func TestBuildCodecMatrix(t *testing.T) {
 	}
 }
 
+// A hierarchy of only AccelNone keeps detection results (so hardware
+// availability is still reported) while preferring software encoders. This is
+// how a caller disables hardware acceleration without skipping detection.
+func TestBuildCodecMatrixSoftwareOnlyHierarchy(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Compiled: true, Available: true, Kind: "videotoolbox"}
+	caps.Decoders["h264"] = capabilities.DecoderCapability{Name: "h264", Compiled: true, Available: true, Kind: "software"}
+
+	capabilities.BuildCodecMatrix(caps, []capabilities.AccelType{capabilities.AccelNone})
+
+	support := caps.CodecMatrix[capabilities.CodecH264]
+	if support.Preferred.Encoder != "libx264" || support.Preferred.Accel != capabilities.AccelNone {
+		t.Fatalf("preferred encode = %+v, want software libx264", support.Preferred)
+	}
+	if len(support.Hardware) != 0 {
+		t.Fatalf("hardware encoders = %v, want none preferred", support.Hardware)
+	}
+	if !caps.Encoders["h264_videotoolbox"].Available {
+		t.Fatal("hardware encoder availability should be preserved for reporting")
+	}
+}
+
 func TestBuildCodecMatrixDarwinVideoToolbox(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Platform.OS = "darwin"
@@ -264,5 +288,69 @@ func TestReportString(t *testing.T) {
 	report := caps.ReportString()
 	if report == "" {
 		t.Fatal("empty report")
+	}
+}
+
+func TestReportSystemPlatformVideoToolbox(t *testing.T) {
+	darwin := capabilities.NewCapabilities()
+	darwin.Platform.OS = "darwin"
+	darwin.Platform.Arch = "arm64"
+	darwin.Platform.VideoToolbox = true
+	if report := darwin.ReportString(); !strings.Contains(report, "Apple VideoToolbox: yes") {
+		t.Fatalf("expected Apple VideoToolbox platform row to report yes, got:\n%s", report)
+	}
+
+	linux := capabilities.NewCapabilities()
+	linux.Platform.OS = "linux"
+	if report := linux.ReportString(); !strings.Contains(report, "Apple VideoToolbox: no") {
+		t.Fatalf("expected Apple VideoToolbox platform row to report no, got:\n%s", report)
+	}
+}
+
+func TestReportSelectedGPUAppleVideoToolbox(t *testing.T) {
+	choice := platform.GPUChoice{Enabled: true, Vendor: "apple", Name: "VideoToolbox"}
+	caps := capabilities.NewCapabilities()
+	caps.Platform = platform.ScopedPlatform(platform.Info{OS: "darwin", Arch: "arm64", VideoToolbox: true}, choice)
+	caps.SelectedGPU = &choice
+	if report := caps.ReportString(); !strings.Contains(report, "Apple VideoToolbox: yes") {
+		t.Fatalf("expected scoped Apple VideoToolbox gate to report yes, got:\n%s", report)
+	}
+}
+
+func TestSummaryLine(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.FFmpegVersion = "7.1.5"
+	caps.BuildProfile = capabilities.BuildFull
+	caps.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelVideoToolbox}
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Kind: "software", Compiled: true, Available: true}
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Kind: "videotoolbox", Compiled: true, Available: true}
+	caps.EnabledOps = []string{"Transcode", "HLSSegment"}
+
+	line := caps.SummaryLine()
+	for _, want := range []string{
+		"ffmpeg 7.1.5 (full)",
+		"encoder preference: Apple VideoToolbox",
+		"hardware encoders: h264_videotoolbox",
+		"operations: 2 enabled",
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("SummaryLine() = %q, want %q", line, want)
+		}
+	}
+	if strings.Contains(line, "libx264") {
+		t.Fatalf("SummaryLine() = %q, must not list software encoders", line)
+	}
+}
+
+func TestSummaryLineNoHardware(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
+
+	line := caps.SummaryLine()
+	if !strings.Contains(line, "encoder preference: Software") {
+		t.Fatalf("SummaryLine() = %q, want software preference", line)
+	}
+	if !strings.Contains(line, "hardware encoders: none") {
+		t.Fatalf("SummaryLine() = %q, want no hardware encoders", line)
 	}
 }

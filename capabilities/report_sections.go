@@ -154,6 +154,7 @@ func writeScopedPlatformGates(w io.Writer, st reportStyle, c *Capabilities) {
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VAAPI")+":"), st.boolLabel(p.VAAPI))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("NVIDIA")+":"), st.boolLabel(p.NVIDIA))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("AMD")+":"), st.boolLabel(p.AMD))
+	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VideoToolbox")+":"), st.boolLabel(p.VideoToolbox))
 }
 
 func writeHardwareBackendSections(w io.Writer, st reportStyle, c *Capabilities) {
@@ -339,5 +340,6 @@ func writeSystemPlatformSummary(w io.Writer, st reportStyle, c *Capabilities) {
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("AMD")+":"), st.boolLabel(p.AMD))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VAAPI")+":"), st.boolLabel(p.VAAPI))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("QSV")+":"), st.boolLabel(p.QSV))
+	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VideoToolbox")+":"), st.boolLabel(p.VideoToolbox))
 	fmt.Fprintln(w, st.dim("  Runtime rows below show smoke-test results for every hardware backend detected on this system."))
 }

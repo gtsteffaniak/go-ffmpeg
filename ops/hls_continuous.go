@@ -262,12 +262,22 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		}
 		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", segDur))
 		if !opts.VideoOnly() {
+			// Only force the audio to the media origin when the job starts at 0.
+			// A job that seeks keeps source timestamps (-copyts), so forcing
+			// first_pts=0 would open an A/V gap as long as the seek offset: ffmpeg
+			// rewinds the audio to 0 regardless of the value given, and the HLS
+			// muxer then has to write the whole gap as audio-only segments before
+			// any video arrives.
+			audioFilter := "aresample=async=1"
+			if opts.StartSec <= 0 {
+				audioFilter = "aresample=async=1:first_pts=0"
+			}
 			args = append(args,
 				"-c:a", "aac",
 				"-ar", "48000",
 				"-ac", "2",
 				"-profile:a", "aac_low",
-				"-af", "aresample=async=1:first_pts=0",
+				"-af", audioFilter,
 			)
 		}
 	}
@@ -295,7 +305,11 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		"-hls_fmp4_init_filename", "init.m4s",
 		"-hls_segment_filename", "seg/%05d.m4s",
 		"-start_number", fmt.Sprintf("%d", opts.StartIndex),
-		"-hls_playlist_type", "vod",
+		// event, not vod: ffmpeg only writes a vod playlist when the stream ends,
+		// so a continuous job over a long input published no playlist at all until
+		// the transcode finished. An event playlist is written as each segment
+		// completes and gains #EXT-X-ENDLIST at EOF.
+		"-hls_playlist_type", "event",
 		"-hls_list_size", "0",
 		"-hls_flags", hlsFlags,
 	)

@@ -43,6 +43,7 @@ func ScopedPlatform(base Info, choice GPUChoice) Info {
 		scoped.QSVRuntime = false
 		scoped.VAAPI = false
 		scoped.D3D12 = false
+		scoped.VideoToolbox = true
 	}
 	return scoped
 }
