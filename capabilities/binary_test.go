@@ -163,6 +163,29 @@ func TestBuildCodecMatrix(t *testing.T) {
 	}
 }
 
+// A hierarchy of only AccelNone keeps detection results (so hardware
+// availability is still reported) while preferring software encoders. This is
+// how a caller disables hardware acceleration without skipping detection.
+func TestBuildCodecMatrixSoftwareOnlyHierarchy(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
+	caps.Encoders["h264_videotoolbox"] = capabilities.EncoderCapability{Name: "h264_videotoolbox", Compiled: true, Available: true, Kind: "videotoolbox"}
+	caps.Decoders["h264"] = capabilities.DecoderCapability{Name: "h264", Compiled: true, Available: true, Kind: "software"}
+
+	capabilities.BuildCodecMatrix(caps, []capabilities.AccelType{capabilities.AccelNone})
+
+	support := caps.CodecMatrix[capabilities.CodecH264]
+	if support.Preferred.Encoder != "libx264" || support.Preferred.Accel != capabilities.AccelNone {
+		t.Fatalf("preferred encode = %+v, want software libx264", support.Preferred)
+	}
+	if len(support.Hardware) != 0 {
+		t.Fatalf("hardware encoders = %v, want none preferred", support.Hardware)
+	}
+	if !caps.Encoders["h264_videotoolbox"].Available {
+		t.Fatal("hardware encoder availability should be preserved for reporting")
+	}
+}
+
 func TestBuildCodecMatrixDarwinVideoToolbox(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Platform.OS = "darwin"

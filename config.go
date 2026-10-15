@@ -38,11 +38,15 @@ type Config struct {
 
 	// EncoderHierarchy overrides hardware acceleration preference order.
 	// When nil or empty, detection uses HierarchyForPlatform (VideoToolbox on macOS, etc.).
+	// To disable hardware acceleration without skipping detection, pass
+	// []capabilities.AccelType{capabilities.AccelNone}: hardware encoders are
+	// still detected and reported, but the resolver prefers software.
 	EncoderHierarchy []capabilities.AccelType
 
 	// GPU selects which device to use for hardware encoder smoke tests and
-	// HW-aware encode/decode resolution. Empty means software-only: detection
-	// still lists compiled HW encoders, but the resolver will not prefer them.
+	// HW-aware encode/decode resolution. Empty means no GPU scoping: the
+	// platform default hierarchy applies and hardware encoders are preferred
+	// when available (use EncoderHierarchy to prefer software instead).
 	// Common values: "dgpu", "igpu", a DRM render node (/dev/dri/renderD128),
 	// or a substring of the GPU name from the capability report.
 	GPU string
