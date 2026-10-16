@@ -123,13 +123,13 @@ func TestCodecEncoderMapD3D12(t *testing.T) {
 
 func TestHierarchyForPlatform(t *testing.T) {
 	linux := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "linux", Intel: true, VAAPI: true})
-	if len(linux) != 4 || linux[0] != capabilities.AccelNVENC || linux[1] != capabilities.AccelVAAPI ||
-		linux[2] != capabilities.AccelQSV || linux[3] != capabilities.AccelAMF {
-		t.Fatalf("Linux hierarchy = %v, want NVENC→VAAPI→QSV→AMF", linux)
+	if len(linux) != 4 || linux[0] != capabilities.AccelVAAPI || linux[1] != capabilities.AccelQSV ||
+		linux[2] != capabilities.AccelNVENC || linux[3] != capabilities.AccelAMF {
+		t.Fatalf("Linux hierarchy = %v, want VAAPI→QSV→NVENC→AMF", linux)
 	}
 	windows := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "windows", Intel: true, QSV: true})
-	if len(windows) != 3 || windows[0] != capabilities.AccelNVENC || windows[1] != capabilities.AccelQSV || windows[2] != capabilities.AccelAMF {
-		t.Fatalf("Windows hierarchy = %v, want NVENC→QSV→AMF", windows)
+	if len(windows) != 3 || windows[0] != capabilities.AccelQSV || windows[1] != capabilities.AccelNVENC || windows[2] != capabilities.AccelAMF {
+		t.Fatalf("Windows hierarchy = %v, want QSV→NVENC→AMF", windows)
 	}
 	for _, accel := range windows {
 		if accel == capabilities.AccelVAAPI {
@@ -137,9 +137,9 @@ func TestHierarchyForPlatform(t *testing.T) {
 		}
 	}
 	wsl := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "linux", WSL: true, D3D12: true})
-	if len(wsl) != 4 || wsl[0] != capabilities.AccelNVENC || wsl[1] != capabilities.AccelD3D12 ||
-		wsl[2] != capabilities.AccelVAAPI || wsl[3] != capabilities.AccelQSV {
-		t.Fatalf("WSL hierarchy = %v, want NVENC→D3D12→VAAPI→QSV", wsl)
+	if len(wsl) != 4 || wsl[0] != capabilities.AccelVAAPI || wsl[1] != capabilities.AccelQSV ||
+		wsl[2] != capabilities.AccelD3D12 || wsl[3] != capabilities.AccelNVENC {
+		t.Fatalf("WSL hierarchy = %v, want VAAPI→QSV→D3D12→NVENC", wsl)
 	}
 	darwin := capabilities.HierarchyForPlatform(capabilities.PlatformInfo{OS: "darwin"})
 	if len(darwin) != 1 || darwin[0] != capabilities.AccelVideoToolbox {
@@ -151,15 +151,19 @@ func TestBuildCodecMatrix(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
 	caps.Encoders["h264_nvenc"] = capabilities.EncoderCapability{Name: "h264_nvenc", Compiled: true, Available: true, Kind: "nvenc"}
+	caps.Encoders["h264_vaapi"] = capabilities.EncoderCapability{Name: "h264_vaapi", Compiled: true, Available: true, Kind: "vaapi"}
 	caps.Decoders["h264"] = capabilities.DecoderCapability{Name: "h264", Compiled: true, Available: true, Kind: "software"}
 	caps.Decoders["h264_cuvid"] = capabilities.DecoderCapability{Name: "h264_cuvid", Compiled: true, Available: true, Kind: "nvenc"}
+	caps.Decoders["hwaccel:vaapi:h264"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:h264", Compiled: true, Available: true, Kind: "vaapi"}
+	caps.Platform.OS = "linux"
 	caps.Platform.NVIDIA = true
+	caps.Platform.VAAPI = true
 	capabilities.BuildCodecMatrix(caps, capabilities.DefaultHierarchy())
 	support := caps.CodecMatrix[capabilities.CodecH264]
-	if support.Preferred.Encoder != "h264_nvenc" {
+	if support.Preferred.Encoder != "h264_vaapi" {
 		t.Fatalf("preferred encode = %q", support.Preferred.Encoder)
 	}
-	if support.DecodePreferred.Decoder != "h264_cuvid" {
+	if support.DecodePreferred.Decoder != "hwaccel:vaapi:h264" {
 		t.Fatalf("preferred decode = %q", support.DecodePreferred.Decoder)
 	}
 }

@@ -334,8 +334,10 @@ func HierarchyForPlatform(plat capabilities.PlatformInfo) []capabilities.AccelTy
 type EncoderPreference = capabilities.EncoderPreference
 
 const (
-	// EncoderPreferencePowerSave prefers integrated GPU paths (VAAPI/QSV) on hybrid systems.
+	// EncoderPreferencePowerSave matches the platform iGPU-first default (VAAPI on Linux, QSV on Windows).
 	EncoderPreferencePowerSave = capabilities.EncoderPreferencePowerSave
+	// EncoderPreferencePerformance prefers discrete GPU backends (NVENC before VAAPI on Linux).
+	EncoderPreferencePerformance = capabilities.EncoderPreferencePerformance
 )
 
 // ParseEncoderPreference parses Config.EncoderPreference values.
@@ -346,6 +348,11 @@ func ParseEncoderPreference(s string) (EncoderPreference, error) {
 // HierarchyForPowerSave returns the power-saving encoder order for a platform.
 func HierarchyForPowerSave(plat capabilities.PlatformInfo) []capabilities.AccelType {
 	return capabilities.HierarchyForPowerSave(plat)
+}
+
+// HierarchyForPerformance returns the discrete-GPU-first encoder order for a platform.
+func HierarchyForPerformance(plat capabilities.PlatformInfo) []capabilities.AccelType {
+	return capabilities.HierarchyForPerformance(plat)
 }
 
 // TranscodeOptions configures transcoding.

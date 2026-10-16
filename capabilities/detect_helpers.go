@@ -198,6 +198,10 @@ func ParseProtocolsOutput(output string) []string {
 }
 
 // BuildCodecMatrix resolves preferred encoders and decoders per codec family.
+// Selection is backend-first and per codec: for each VideoCodec, resolvePreferredEncode
+// walks hierarchy in order and picks the first backend whose encoder passed detection.
+// It does not pick one GPU for all codecs; hybrid hosts can use different devices per codec
+// when multiple backends in the hierarchy are available (ordering determines the winner).
 func BuildCodecMatrix(caps *Capabilities, hierarchy []AccelType) {
 	codecs := []VideoCodec{CodecH264, CodecAV1, CodecVP9, CodecHEVC}
 	for _, codec := range codecs {

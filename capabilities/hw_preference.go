@@ -11,41 +11,50 @@ import (
 type EncoderPreference string
 
 const (
-	// EncoderPreferenceDefault uses HierarchyForPlatform (NVENC before VAAPI on Linux hybrid).
+	// EncoderPreferenceDefault uses HierarchyForPlatform (VAAPI on Linux, QSV on Windows).
 	EncoderPreferenceDefault EncoderPreference = ""
-	// EncoderPreferencePowerSave prefers integrated GPU paths (VAAPI/QSV) over discrete GPUs.
+	// EncoderPreferencePowerSave matches the platform iGPU-first default (alias for clarity).
 	EncoderPreferencePowerSave EncoderPreference = "powersave"
+	// EncoderPreferencePerformance prefers discrete GPU backends (NVENC before VAAPI on Linux).
+	EncoderPreferencePerformance EncoderPreference = "performance"
 )
 
 // ParseEncoderPreference validates a preference string from config.
 func ParseEncoderPreference(s string) (EncoderPreference, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
 	switch s {
-	case "", "default", "performance", "dgpu", "dgpu-first":
+	case "", "default":
 		return EncoderPreferenceDefault, nil
+	case "performance", "dgpu", "dgpu-first":
+		return EncoderPreferencePerformance, nil
 	case "powersave", "power-save", "igpu", "igpu-first", "integrated":
 		return EncoderPreferencePowerSave, nil
 	default:
-		return EncoderPreference(""), fmt.Errorf("unknown encoder preference %q (use default or powersave)", s)
+		return EncoderPreference(""), fmt.Errorf("unknown encoder preference %q (use default, powersave, or performance)", s)
 	}
 }
 
 // HierarchyForPowerSave returns encoder order that favors integrated GPU backends on hybrid systems.
 func HierarchyForPowerSave(plat PlatformInfo) []AccelType {
+	return HierarchyForPlatform(plat)
+}
+
+// HierarchyForPerformance returns encoder order that favors discrete GPU backends when available.
+func HierarchyForPerformance(plat PlatformInfo) []AccelType {
 	switch plat.OS {
 	case "darwin":
 		return HierarchyForPlatform(plat)
 	case "windows":
-		return []AccelType{AccelQSV, AccelNVENC, AccelAMF}
+		return []AccelType{AccelNVENC, AccelQSV, AccelAMF}
 	}
 	if plat.WSL {
-		return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12, AccelNVENC}
+		return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
 	}
-	return []AccelType{AccelVAAPI, AccelQSV, AccelNVENC, AccelAMF}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
 }
 
 // ResolveEncoderHierarchy picks the effective encoder preference order.
-// explicit wins, then GPU vendor scoping, then preference mode, then platform default.
+// Precedence: explicit EncoderHierarchy, then GPU vendor scoping, then EncoderPreference, then platform default.
 func ResolveEncoderHierarchy(explicit []AccelType, pref EncoderPreference, gpu platform.GPUChoice, plat PlatformInfo) []AccelType {
 	if len(explicit) > 0 {
 		return append([]AccelType(nil), explicit...)
@@ -55,8 +64,12 @@ func ResolveEncoderHierarchy(explicit []AccelType, pref EncoderPreference, gpu p
 			return h
 		}
 	}
-	if pref == EncoderPreferencePowerSave {
+	switch pref {
+	case EncoderPreferencePerformance:
+		return HierarchyForPerformance(plat)
+	case EncoderPreferencePowerSave:
 		return HierarchyForPowerSave(plat)
+	default:
+		return HierarchyForPlatform(plat)
 	}
-	return HierarchyForPlatform(plat)
 }

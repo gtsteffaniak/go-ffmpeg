@@ -43,9 +43,9 @@ type Config struct {
 	// still detected and reported, but the resolver prefers software.
 	EncoderHierarchy []capabilities.AccelType
 
-	// EncoderPreference selects backend priority when EncoderHierarchy is unset.
-	// Use "powersave" (aliases: igpu-first, integrated) to prefer VAAPI/QSV over
-	// NVENC on hybrid laptops. Empty or "default" keeps the platform order.
+	// EncoderPreference selects backend priority when EncoderHierarchy is unset and
+	// GPU is empty. Empty or "default": VAAPI-first on Linux, QSV-first on Windows.
+	// "powersave" is an alias for that default. "performance" (dgpu-first) prefers NVENC before VAAPI on Linux.
 	EncoderPreference string
 
 	// GPU selects which device to use for hardware encoder smoke tests and

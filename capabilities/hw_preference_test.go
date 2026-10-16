@@ -7,9 +7,9 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
-func TestHierarchyForPowerSaveHybridLinux(t *testing.T) {
+func TestHierarchyForPlatformHybridLinux(t *testing.T) {
 	plat := capabilities.PlatformInfo{OS: "linux", Intel: true, NVIDIA: true, VAAPI: true}
-	got := capabilities.HierarchyForPowerSave(plat)
+	got := capabilities.HierarchyForPlatform(plat)
 	want := []capabilities.AccelType{capabilities.AccelVAAPI, capabilities.AccelQSV, capabilities.AccelNVENC, capabilities.AccelAMF}
 	if len(got) != len(want) {
 		t.Fatalf("got %v", got)
@@ -21,11 +21,28 @@ func TestHierarchyForPowerSaveHybridLinux(t *testing.T) {
 	}
 }
 
-func TestResolveEncoderHierarchyPreference(t *testing.T) {
+func TestResolveEncoderHierarchyDefaultLinux(t *testing.T) {
 	plat := capabilities.PlatformInfo{OS: "linux", Intel: true, NVIDIA: true}
-	h := capabilities.ResolveEncoderHierarchy(nil, capabilities.EncoderPreferencePowerSave, platform.GPUChoice{}, plat)
+	h := capabilities.ResolveEncoderHierarchy(nil, capabilities.EncoderPreferenceDefault, platform.GPUChoice{}, plat)
 	if h[0] != capabilities.AccelVAAPI || h[2] != capabilities.AccelNVENC {
-		t.Fatalf("powersave order = %v", h)
+		t.Fatalf("default order = %v", h)
+	}
+}
+
+func TestResolveEncoderHierarchyPerformance(t *testing.T) {
+	plat := capabilities.PlatformInfo{OS: "linux", Intel: true, NVIDIA: true}
+	h := capabilities.ResolveEncoderHierarchy(nil, capabilities.EncoderPreferencePerformance, platform.GPUChoice{}, plat)
+	if h[0] != capabilities.AccelNVENC {
+		t.Fatalf("performance order = %v", h)
+	}
+}
+
+func TestResolveEncoderHierarchyGPUOverridesPreference(t *testing.T) {
+	plat := capabilities.PlatformInfo{OS: "linux", Intel: true, NVIDIA: true}
+	gpu := platform.GPUChoice{Enabled: true, Vendor: "nvidia"}
+	h := capabilities.ResolveEncoderHierarchy(nil, capabilities.EncoderPreferencePowerSave, gpu, plat)
+	if len(h) != 1 || h[0] != capabilities.AccelNVENC {
+		t.Fatalf("gpu scope = %v", h)
 	}
 }
 

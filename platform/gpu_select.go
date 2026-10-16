@@ -35,6 +35,30 @@ func ListGPUs() ([]GPUDevice, error) {
 	return listDRMGPUs()
 }
 
+// DefaultRenderNodeForGPUs picks a render node for VAAPI/QSV smoke tests.
+// On hybrid systems (integrated + discrete), the integrated GPU node is preferred.
+func DefaultRenderNodeForGPUs(gpus []GPUDevice) string {
+	if len(gpus) == 0 {
+		return ""
+	}
+	hasIGPU, hasDGPU := false, false
+	for _, g := range gpus {
+		if g.Integrated {
+			hasIGPU = true
+		} else {
+			hasDGPU = true
+		}
+	}
+	if hasIGPU && hasDGPU {
+		for _, g := range gpus {
+			if g.Integrated {
+				return g.RenderNode
+			}
+		}
+	}
+	return gpus[0].RenderNode
+}
+
 // ResolveGPU interprets a gpu config value.
 // Empty input disables hardware acceleration.
 // Supported values: default, igpu, dgpu, a render node path (/dev/dri/renderD*), or a device name substring.

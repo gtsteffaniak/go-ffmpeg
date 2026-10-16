@@ -22,10 +22,6 @@ func (s *Service) buildDetectOptions() capabilities.DetectOptions {
 	}
 	opts.GPU = choice
 	opts.RenderDevice = choice.RenderDevice
-	if len(opts.EncoderHierarchy) == 0 {
-		plat := platform.Detect()
-		opts.EncoderHierarchy = capabilities.HierarchyForGPU(choice.Vendor, plat)
-	}
 	return opts
 }
 

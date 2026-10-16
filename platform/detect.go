@@ -30,7 +30,9 @@ func Detect() Info {
 	info.AMD = amdGPUPresent()
 	info.DRI = driAvailable()
 	if info.DRI {
-		if nodes, err := filepath.Glob("/dev/dri/renderD*"); err == nil && len(nodes) > 0 {
+		if gpus, err := listDRMGPUs(); err == nil && len(gpus) > 0 {
+			info.Details["render_device"] = DefaultRenderNodeForGPUs(gpus)
+		} else if nodes, err := filepath.Glob("/dev/dri/renderD*"); err == nil && len(nodes) > 0 {
 			info.Details["render_device"] = nodes[0]
 		}
 	}
