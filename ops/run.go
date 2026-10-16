@@ -40,7 +40,7 @@ type ScreenshotOptions struct {
 // Screenshot extracts a single frame to OutputPath.
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
+	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
 	args = append(args,
 		"-i", opts.Input.URL,
 		"-frames:v", "1",
@@ -127,7 +127,9 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 
 // VideoPreviewFrame extracts an MJPEG frame to w at seekSec without probing duration.
 func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions, seekSec float64) error {
-	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec), "-i", opts.Input}
+	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec)}
+	args = runner.AppendProtocolWhitelistArgs(args)
+	args = append(args, "-i", opts.Input)
 	if opts.Width > 0 && opts.Height > 0 {
 		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))
 	}
@@ -171,26 +173,51 @@ type TranscodeOptions struct {
 	AudioCodec string
 	RTSP       *RTSPInputOptions
 	Timeout    time.Duration
-	ExtraArgs  []string
+	// ExtraArgs is deprecated: use ExtraOutputArgs (and ExtraInputArgs when needed).
+	// When ExtraInputArgs and ExtraOutputArgs are both empty, ExtraArgs is applied
+	// as ExtraOutputArgs before the output path (legacy callers relied on output-side flags).
+	ExtraArgs       []string
+	ExtraInputArgs  []string
+	ExtraOutputArgs []string
 }
 
-// Transcode re-encodes input to OutputPath.
-func Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts TranscodeOptions) error {
+// BuildTranscodeArgs assembles ffmpeg argv for Transcode (exported for tests).
+func BuildTranscodeArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts TranscodeOptions) ([]string, error) {
 	resolver := encode.NewResolver(caps)
 	vidArgs, err := resolver.VideoEncoderArgs(opts.Profile)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	extraIn := opts.ExtraInputArgs
+	extraOut := opts.ExtraOutputArgs
+	if len(opts.ExtraArgs) > 0 {
+		if len(extraIn) == 0 && len(extraOut) == 0 {
+			extraOut = opts.ExtraArgs
+		} else {
+			extraOut = append(append([]string(nil), extraOut...), opts.ExtraArgs...)
+		}
 	}
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
+	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
+	args = append(args, extraIn...)
 	args = append(args, "-i", opts.Input.URL)
 	args = append(args, vidArgs...)
 	audio := opts.AudioCodec
 	if audio == "" {
 		audio = "aac"
 	}
-	args = append(args, "-c:a", audio, "-y", opts.OutputPath)
-	args = append(args, opts.ExtraArgs...)
+	args = append(args, "-c:a", audio)
+	args = append(args, extraOut...)
+	args = append(args, "-y", opts.OutputPath)
+	return args, nil
+}
+
+// Transcode re-encodes input to OutputPath.
+func Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts TranscodeOptions) error {
+	args, err := BuildTranscodeArgs(runner, caps, opts)
+	if err != nil {
+		return err
+	}
 
 	timeout := opts.Timeout
 	if timeout == 0 {
@@ -239,7 +266,7 @@ func SegmentRecord(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 	}
 
 	args := []string{"-hide_banner", "-nostats", "-fflags", "+genpts", "-correct_ts_overflow", "1"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
+	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
 	args = append(args, opts.ExtraInputArgs...)
 	args = append(args, "-i", opts.Input.URL)
 	args = append(args, vidArgs...)
@@ -289,7 +316,7 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 	}
 
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
+	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
 	args = append(args, decodeArgs...)
 	args = append(args, "-i", opts.Input.URL)
 	if opts.MaxHeight > 0 {
@@ -321,7 +348,7 @@ func FMP4Transcode(ctx context.Context, runner *ffexec.Runner, caps *capabilitie
 // FMP4StreamCopy copies streams to fragmented MP4 on w until ctx cancelled.
 func FMP4StreamCopy(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts FMP4StreamCopyOptions) error {
 	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, opts.Input, opts.RTSP, nil)
+	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
 	args = append(args,
 		"-i", opts.Input.URL,
 		"-c:v", "copy",
@@ -386,11 +413,12 @@ func TimelapseCompile(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	if fps <= 0 {
 		fps = 24
 	}
-	args := []string{
-		"-hide_banner", "-nostats",
+	args := []string{"-hide_banner", "-nostats"}
+	args = runner.AppendProtocolWhitelistArgs(args)
+	args = append(args,
 		"-f", "concat", "-safe", "0",
 		"-i", opts.ConcatListPath,
-	}
+	)
 	if opts.Width > 0 && opts.Height > 0 {
 		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d", opts.Width, opts.Height))
 	}
@@ -413,7 +441,9 @@ type ConvertHEICOptions struct {
 
 // ConvertHEIC converts HEIC/HEIF to JPEG.
 func ConvertHEIC(ctx context.Context, runner *ffexec.Runner, opts ConvertHEICOptions) error {
-	args := []string{"-hide_banner", "-nostats", "-i", opts.InputPath}
+	args := []string{"-hide_banner", "-nostats"}
+	args = runner.AppendProtocolWhitelistArgs(args)
+	args = append(args, "-i", opts.InputPath)
 	if opts.OrientationFilter != "" {
 		args = append(args, "-vf", opts.OrientationFilter)
 	}
@@ -437,7 +467,8 @@ func ConvertHEIC(ctx context.Context, runner *ffexec.Runner, opts ConvertHEICOpt
 	return err
 }
 
-func appendInputFlags(args []string, input InputSource, rtsp *RTSPInputOptions, extra *InputExtraFlags) []string {
+func appendInputFlags(args []string, runner *ffexec.Runner, input InputSource, rtsp *RTSPInputOptions, extra *InputExtraFlags) []string {
+	args = runner.AppendProtocolWhitelistArgs(args)
 	switch strings.ToLower(string(input.StreamType)) {
 	case "rtsp":
 		transport := "tcp"

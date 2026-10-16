@@ -200,7 +200,7 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	if throttle.Enabled {
 		inputExtra = &InputExtraFlags{Throttle: &throttle, Features: caps.FeatureFlags}
 	}
-	args = appendInputFlags(args, opts.Input, nil, inputExtra)
+	args = appendInputFlags(args, runner, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
 		if initArgs := resolver.VideoToolboxPreInputInit(opts.Decode, opts.Profile); len(initArgs) > 0 {

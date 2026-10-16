@@ -237,7 +237,7 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	if !videoCopyPipeline && opts.Throttle.Enabled {
 		inputExtra = &InputExtraFlags{Throttle: &opts.Throttle, Features: caps.FeatureFlags}
 	}
-	args = appendInputFlags(args, opts.Input, nil, inputExtra)
+	args = appendInputFlags(args, runner, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
 		if initArgs := resolver.VideoToolboxPreInputInit(opts.Decode, opts.Profile); len(initArgs) > 0 {
@@ -338,13 +338,14 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 
 // ProbeVideoFPS returns average frame rate from the first video stream, or defaultHLSSegmentFPS.
 func ProbeVideoFPS(ctx context.Context, runner *ffexec.Runner, path string) (float64, error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=avg_frame_rate",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return defaultHLSSegmentFPS, err
 	}

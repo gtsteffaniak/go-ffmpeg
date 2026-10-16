@@ -11,14 +11,15 @@ import (
 
 // ProbeVideoKeyframeTimes returns strictly increasing keyframe presentation times in seconds.
 func ProbeVideoKeyframeTimes(ctx context.Context, runner *ffexec.Runner, path string) ([]float64, error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-skip_frame", "nokey",
 		"-show_entries", "frame=best_effort_timestamp_time",
 		"-of", "csv=p=0",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
