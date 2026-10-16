@@ -3,6 +3,8 @@ package concurrency
 import (
 	"context"
 	"os"
+	"sync"
+	"sync/atomic"
 )
 
 // SlotClass identifies which concurrency tier an operation uses.
@@ -92,6 +94,9 @@ type Limiter struct {
 	global  chan struct{}
 	large   chan struct{}
 	largeOn bool
+
+	// MisreleaseCount increments when Release is called without a matching acquire.
+	MisreleaseCount atomic.Uint64
 }
 
 // Lease holds acquired concurrency slots until Release is called.
@@ -101,23 +106,31 @@ type Lease struct {
 	large   bool
 	global  bool
 	tier    bool
+	once    sync.Once
 }
 
-// Release frees all slots held by the lease.
+// Release frees all slots held by the lease. It is idempotent and safe to call concurrently.
 func (l *Lease) Release() {
-	if l == nil || l.limiter == nil || !l.tier {
+	if l == nil || l.limiter == nil {
 		return
 	}
-	releaseChan(l.limiter.tierChan(l.class))
+	l.once.Do(l.releaseOnce)
+}
+
+func (l *Lease) releaseOnce() {
+	lim := l.limiter
+	if l.tier {
+		lim.releaseTier(l.class)
+		l.tier = false
+	}
 	if l.large {
-		releaseChan(l.limiter.large)
+		lim.releaseLarge()
 		l.large = false
 	}
 	if l.global {
-		releaseChan(l.limiter.global)
+		lim.releaseGlobal()
 		l.global = false
 	}
-	l.tier = false
 }
 
 // NewLimiter builds a limiter from cfg (defaults applied).
@@ -140,6 +153,7 @@ func NewLimiter(cfg Config) *Limiter {
 }
 
 // AcquireLease reserves global, optional large-file, and tier slots for inputPath.
+// SlotProbe does not consume a large-file slot (probes must not compete with continuous encodes).
 func (l *Limiter) AcquireLease(ctx context.Context, class SlotClass, inputPath string) (*Lease, error) {
 	lease := &Lease{limiter: l, class: class}
 	if l.global != nil {
@@ -148,7 +162,7 @@ func (l *Limiter) AcquireLease(ctx context.Context, class SlotClass, inputPath s
 		}
 		lease.global = true
 	}
-	if l.largeOn && needsLargeFileSlot(inputPath, l.cfg.LargeFileThresholdBytes) {
+	if l.largeOn && class != SlotProbe && needsLargeFileSlot(inputPath, l.cfg.LargeFileThresholdBytes) {
 		if err := acquireChan(ctx, l.large); err != nil {
 			lease.Release()
 			return nil, err
@@ -173,7 +187,7 @@ func (l *Limiter) Acquire(ctx context.Context, class SlotClass) error {
 	}
 	if err := acquireChan(ctx, l.tierChan(class)); err != nil {
 		if l.global != nil {
-			releaseChan(l.global)
+			l.releaseGlobal()
 		}
 		return err
 	}
@@ -182,9 +196,27 @@ func (l *Limiter) Acquire(ctx context.Context, class SlotClass) error {
 
 // Release frees a slot acquired with Acquire.
 func (l *Limiter) Release(class SlotClass) {
-	releaseChan(l.tierChan(class))
+	l.releaseTier(class)
 	if l.global != nil {
-		releaseChan(l.global)
+		l.releaseGlobal()
+	}
+}
+
+func (l *Limiter) releaseTier(class SlotClass) {
+	if !tryReleaseChan(l.tierChan(class)) {
+		l.MisreleaseCount.Add(1)
+	}
+}
+
+func (l *Limiter) releaseLarge() {
+	if l.large != nil && !tryReleaseChan(l.large) {
+		l.MisreleaseCount.Add(1)
+	}
+}
+
+func (l *Limiter) releaseGlobal() {
+	if l.global != nil && !tryReleaseChan(l.global) {
+		l.MisreleaseCount.Add(1)
 	}
 }
 
@@ -218,8 +250,17 @@ func acquireChan(ctx context.Context, ch chan struct{}) error {
 	}
 }
 
-func releaseChan(ch chan struct{}) {
-	<-ch
+// tryReleaseChan frees one slot without blocking. It returns false if no slot was held.
+func tryReleaseChan(ch chan struct{}) bool {
+	if ch == nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 func needsLargeFileSlot(path string, threshold int64) bool {
