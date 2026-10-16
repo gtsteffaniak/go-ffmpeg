@@ -10,10 +10,11 @@ import (
 
 // DetectOptions configures capability detection.
 type DetectOptions struct {
-	SkipHWTests      bool
-	EncoderHierarchy []AccelType
-	RenderDevice     string
-	GPU              platform.GPUChoice
+	SkipHWTests       bool
+	EncoderHierarchy  []AccelType
+	EncoderPreference EncoderPreference
+	RenderDevice      string
+	GPU               platform.GPUChoice
 }
 
 // Detect runs the full capability detection pipeline.
@@ -51,15 +52,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		caps.Platform.Details["render_device"] = opts.RenderDevice
 	}
 
-	hierarchy := opts.EncoderHierarchy
-	if len(hierarchy) == 0 {
-		if gpuScoped {
-			hierarchy = HierarchyForGPU(opts.GPU.Vendor, caps.Platform)
-		}
-		if len(hierarchy) == 0 {
-			hierarchy = HierarchyForPlatform(caps.Platform)
-		}
-	}
+	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, opts.GPU, caps.Platform)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
 	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, caps.Platform, hierarchy, gpuScoped)

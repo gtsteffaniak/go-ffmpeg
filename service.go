@@ -330,6 +330,24 @@ func HierarchyForPlatform(plat capabilities.PlatformInfo) []capabilities.AccelTy
 	return capabilities.HierarchyForPlatform(plat)
 }
 
+// EncoderPreference selects backend priority when EncoderHierarchy is unset.
+type EncoderPreference = capabilities.EncoderPreference
+
+const (
+	// EncoderPreferencePowerSave prefers integrated GPU paths (VAAPI/QSV) on hybrid systems.
+	EncoderPreferencePowerSave = capabilities.EncoderPreferencePowerSave
+)
+
+// ParseEncoderPreference parses Config.EncoderPreference values.
+func ParseEncoderPreference(s string) (EncoderPreference, error) {
+	return capabilities.ParseEncoderPreference(s)
+}
+
+// HierarchyForPowerSave returns the power-saving encoder order for a platform.
+func HierarchyForPowerSave(plat capabilities.PlatformInfo) []capabilities.AccelType {
+	return capabilities.HierarchyForPowerSave(plat)
+}
+
 // TranscodeOptions configures transcoding.
 type TranscodeOptions = ops.TranscodeOptions
 

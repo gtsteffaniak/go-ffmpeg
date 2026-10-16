@@ -10,6 +10,9 @@ func (s *Service) buildDetectOptions() capabilities.DetectOptions {
 	if len(s.cfg.EncoderHierarchy) > 0 {
 		opts.EncoderHierarchy = s.cfg.EncoderHierarchy
 	}
+	if pref, err := capabilities.ParseEncoderPreference(s.cfg.EncoderPreference); err == nil {
+		opts.EncoderPreference = pref
+	}
 	if s.cfg.GPU == "" {
 		return opts
 	}

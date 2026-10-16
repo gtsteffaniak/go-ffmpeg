@@ -299,7 +299,7 @@ func writeCodecResolutionSection(w io.Writer, st reportStyle, c *Capabilities) {
 			fmt.Fprintf(w, "    %s %s%s",
 				st.dim("encode ->"),
 				st.encoderLabel(p.Encoder, p.Accel),
-				st.resolutionAccelSuffix(p.Accel),
+				st.resolutionAccelSuffix(c, p.Accel),
 			)
 			if p.Fallback != "" && p.Fallback != p.Encoder {
 				fmt.Fprintf(w, " | %s %s", st.dim("fallback"), st.fallbackLabel(p.Fallback, p.Accel))
@@ -313,7 +313,7 @@ func writeCodecResolutionSection(w io.Writer, st reportStyle, c *Capabilities) {
 			fmt.Fprintf(w, "    %s %s%s",
 				st.dim("decode ->"),
 				st.decoderLabel(d.Decoder, d.Accel),
-				st.resolutionAccelSuffix(d.Accel),
+				st.resolutionAccelSuffix(c, d.Accel),
 			)
 			if d.Fallback != "" && d.Fallback != d.Decoder {
 				fmt.Fprintf(w, " | %s %s", st.dim("fallback"), st.fallbackDecoderLabel(d.Fallback, d.Accel))

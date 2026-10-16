@@ -36,3 +36,11 @@ func TestBuildDetectOptionsForwardsEncoderHierarchy(t *testing.T) {
 		t.Fatalf("no GPU spec should mean no scoping, got %+v", opts.GPU)
 	}
 }
+
+func TestBuildDetectOptionsEncoderPreference(t *testing.T) {
+	svc := &Service{cfg: Config{EncoderPreference: "igpu-first"}}
+	opts := svc.buildDetectOptions()
+	if opts.EncoderPreference != capabilities.EncoderPreferencePowerSave {
+		t.Fatalf("preference = %q", opts.EncoderPreference)
+	}
+}

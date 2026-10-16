@@ -18,13 +18,21 @@ type GPUChoice struct {
 	Name         string `json:"name,omitempty"`
 }
 
-type drmGPU struct {
+// GPUDevice describes one DRM render node and its PCI GPU.
+type GPUDevice struct {
 	RenderNode string
 	VendorID   string
 	Vendor     string
 	Name       string
 	Integrated bool
 	PCIAddress string
+}
+
+type drmGPU = GPUDevice
+
+// ListGPUs returns DRM GPUs sorted by render node name.
+func ListGPUs() ([]GPUDevice, error) {
+	return listDRMGPUs()
 }
 
 // ResolveGPU interprets a gpu config value.

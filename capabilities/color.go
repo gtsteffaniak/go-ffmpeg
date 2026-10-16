@@ -210,11 +210,18 @@ func (s reportStyle) fallbackDecoderLabel(decoder string, _ AccelType) string {
 	return s.dim(DecoderLabel(decoder))
 }
 
-func (s reportStyle) resolutionAccelSuffix(accel AccelType) string {
+func (s reportStyle) resolutionAccelSuffix(c *Capabilities, accel AccelType) string {
 	if accel == AccelNone {
 		return ""
 	}
-	return " (" + s.accelLabel(accel) + ")"
+	path := FormatAccelGPUPath(c, accel)
+	if path == "" {
+		return " (" + s.accelLabel(accel) + ")"
+	}
+	// Color only the backend label inside the parenthesized path.
+	backend := AccelLabel(accel)
+	colored := strings.Replace(path, backend, s.accelLabel(accel), 1)
+	return " " + colored
 }
 
 func (s reportStyle) white(text string) string { return s.wrap(ansiWhite, text) }

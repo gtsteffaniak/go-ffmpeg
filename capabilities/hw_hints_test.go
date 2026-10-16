@@ -34,14 +34,35 @@ func TestHWTroubleshootVP9QSV(t *testing.T) {
 
 func TestHWTroubleshootQSV(t *testing.T) {
 	output := `[QSV] Error creating a MFX session: -9.`
-	primary, hints := hwTroubleshoot("h264_qsv", "qsv", output, platform.Info{Intel: true, QSV: true, VAAPI: true, QSVRuntime: false})
+	plat := platform.Info{
+		Intel: true, QSV: true, VAAPI: true, QSVRuntime: false,
+		Distro: platform.DistroContext{ID: "debian", Family: platform.DistroFamilyDebian},
+	}
+	primary, hints := hwTroubleshoot("h264_qsv", "qsv", output, plat)
 	if !strings.Contains(primary, "[driver]") {
 		t.Fatalf("primary = %q", primary)
 	}
 	if len(hints) < 2 {
 		t.Fatalf("expected multiple hints, got %v", hints)
 	}
-	if !strings.Contains(hints[0], "libmfx-gen1.2") {
+	joined := strings.Join(hints, "\n")
+	if !strings.Contains(joined, "libmfx-gen1.2") {
 		t.Fatalf("expected libmfx-gen hint, got %v", hints)
+	}
+	if !strings.Contains(joined, "apt install") {
+		t.Fatalf("expected apt install hint, got %v", hints)
+	}
+}
+
+func TestHWTroubleshootQSVArch(t *testing.T) {
+	output := `[QSV] Error creating a MFX session: -9.`
+	plat := platform.Info{
+		Intel: true, QSV: true, VAAPI: true, QSVRuntime: false,
+		Distro: platform.DistroContext{ID: "arch", Family: platform.DistroFamilyArch},
+	}
+	_, hints := hwTroubleshoot("h264_qsv", "qsv", output, plat)
+	joined := strings.Join(hints, "\n")
+	if !strings.Contains(joined, "vpl-gpu-rt") || !strings.Contains(joined, "pacman") {
+		t.Fatalf("expected arch packages, got %v", hints)
 	}
 }
