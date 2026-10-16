@@ -7,7 +7,7 @@ import (
 
 func TestBuildHLSSegmentTimelineMergesTinyTail(t *testing.T) {
 	t.Parallel()
-	starts, durs := BuildHLSSegmentTimeline(32.1, nil, DefaultHLSSegmentDurationSec)
+	starts, durs := BuildHLSSegmentTimeline(32.1, nil, DefaultHLSSegmentDurationSec, 0)
 	if len(starts) != 8 {
 		t.Fatalf("starts len = %d, want 8 (tiny tail merged)", len(starts))
 	}
@@ -18,7 +18,7 @@ func TestBuildHLSSegmentTimelineMergesTinyTail(t *testing.T) {
 
 func TestBuildHLSSegmentTimelineFixedGrid(t *testing.T) {
 	t.Parallel()
-	starts, durs := BuildHLSSegmentTimeline(10, nil, DefaultHLSSegmentDurationSec)
+	starts, durs := BuildHLSSegmentTimeline(10, nil, DefaultHLSSegmentDurationSec, 0)
 	if len(starts) != 3 {
 		t.Fatalf("starts len = %d, want 3", len(starts))
 	}
@@ -47,6 +47,20 @@ func TestHLSSegmentGOP(t *testing.T) {
 	gop = HLSSegmentGOP(0, DefaultOnDemandHLSDefaults())
 	if gop != 120 {
 		t.Fatalf("gop = %d, want default 120", gop)
+	}
+}
+
+func TestNormalizeHLSKeyframeTimesAndStartTimeTimeline(t *testing.T) {
+	t.Parallel()
+	const start = 1.459
+	raw := []float64{1.480, 2.480, 3.480}
+	norm := NormalizeHLSKeyframeTimes(raw, start)
+	if len(norm) != 3 || norm[0] < 0.019 || norm[0] > 0.023 {
+		t.Fatalf("normalized keyframes = %v", norm)
+	}
+	starts, _ := BuildHLSSegmentTimeline(30, raw, DefaultHLSSegmentDurationSec, start)
+	if len(starts) == 0 || starts[0] > 0.05 {
+		t.Fatalf("first segment start = %.3f, want near media 0", starts[0])
 	}
 }
 

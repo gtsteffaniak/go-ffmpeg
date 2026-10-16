@@ -39,8 +39,10 @@ type StreamInfo struct {
 	Width        int     `json:"width,omitempty"`
 	Height       int     `json:"height,omitempty"`
 	Duration     float64 `json:"duration,omitempty"`
-	FormatName   string  `json:"formatName,omitempty"`
-	Message      string  `json:"message,omitempty"`
+	// StartTime is the container timeline offset of the first packet (format start_time).
+	StartTime  float64 `json:"startTime,omitempty"`
+	FormatName string  `json:"formatName,omitempty"`
+	Message    string  `json:"message,omitempty"`
 }
 
 // ProbeStream runs ffprobe against a URL or file.
@@ -92,6 +94,7 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 			FormatName string `json:"format_name"`
 			BitRate    string `json:"bit_rate"`
 			Duration   string `json:"duration"`
+			StartTime  string `json:"start_time"`
 		} `json:"format"`
 	}
 	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
@@ -107,6 +110,9 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 	info.FormatName = result.Format.FormatName
 	if d, err := strconv.ParseFloat(result.Format.Duration, 64); err == nil {
 		info.Duration = d
+	}
+	if st, err := strconv.ParseFloat(result.Format.StartTime, 64); err == nil && st > 0 {
+		info.StartTime = st
 	}
 
 	hasVideoBitrate := applyProbeStreams(&info, result.Streams)

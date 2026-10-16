@@ -160,7 +160,7 @@ func TestIntegrationHLSSegmentMPEGTS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	starts, durations := ffmpeg.BuildHLSSegmentTimeline(dur, nil, ffmpeg.DefaultHLSSegmentDurationSec)
+	starts, durations := ffmpeg.BuildHLSSegmentTimeline(dur, nil, ffmpeg.DefaultHLSSegmentDurationSec, info.StartTime)
 	midIndex := len(starts) / 2
 	if midIndex < 1 {
 		midIndex = 1

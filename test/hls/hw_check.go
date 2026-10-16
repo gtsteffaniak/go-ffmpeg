@@ -38,9 +38,10 @@ func runHWCheck(args []string) int {
 		params.Decode.Accel = capabilities.AccelQSV
 	}
 	fmt.Println("plan:", svc.DescribeHLSSegmentPlan(params))
-	starts, durs := goffmpeg.BuildHLSSegmentTimeline(info.Duration, nil, goffmpeg.DefaultHLSSegmentDurationSec)
+	mediaDur := goffmpeg.HLSMediaTimelineDuration(info.Duration, info.StartTime)
+	starts, durs := goffmpeg.BuildHLSSegmentTimeline(mediaDur, nil, goffmpeg.DefaultHLSSegmentDurationSec, 0)
 	kf, _ := svc.ProbeVideoKeyframeTimes(ctx, *file)
-	kfs := goffmpeg.SanitizeHLSKeyframes(kf, info.Duration)
+	kfs, _ := goffmpeg.PrepareHLSMediaTimeline(kf, info.Duration, info.StartTime)
 	opts := goffmpeg.BuildHLSSegmentOptions(*file, 0, params, starts, durs, false, kfs, goffmpeg.DefaultHLSSegmentDurationSec)
 	monitor := newResourceMonitor()
 	monitor.Start()

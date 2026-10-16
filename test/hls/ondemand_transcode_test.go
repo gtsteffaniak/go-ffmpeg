@@ -116,7 +116,7 @@ func TestOnDemandHLSSegmentMPEGTS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	starts, durations := goffmpeg.BuildHLSSegmentTimeline(info.Duration, nil, goffmpeg.DefaultHLSSegmentDurationSec)
+	starts, durations := goffmpeg.BuildHLSSegmentTimeline(info.Duration, nil, goffmpeg.DefaultHLSSegmentDurationSec, info.StartTime)
 	midIndex := len(starts) / 2
 	if midIndex < 1 {
 		midIndex = 1

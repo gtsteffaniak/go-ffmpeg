@@ -9,6 +9,28 @@ import (
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 )
 
+func TestBuildHLSContinuousArgsInputSeekAddsStartTime(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	caps := &capabilities.Capabilities{}
+	opts := HLSContinuousOptions{
+		Input:             InputSource{URL: "/media/video.ts"},
+		OutputDir:         "/cache/job",
+		SegmentSec:        4,
+		Remux:             true,
+		StartSec:          8,
+		InputStartTimeSec: 1.459,
+	}
+	args, err := buildHLSContinuousArgs(runner, caps, opts)
+	if err != nil {
+		t.Fatalf("buildHLSContinuousArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-ss 9.459") {
+		t.Fatalf("expected input seek with start_time offset, got: %s", joined)
+	}
+}
+
 func TestBuildHLSContinuousArgsUsesRelativeOutputPaths(t *testing.T) {
 	t.Parallel()
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}

@@ -77,9 +77,12 @@ type HLSSegmentOptions struct {
 	MaxHeight        int
 	Remux            bool
 	// VideoCopy stream-copies H.264 video and transcodes audio to AAC (e.g. EAC3 in MKV).
-	VideoCopy    bool
+	VideoCopy bool
+	// AccurateSeek is deprecated: input -ss is frame-accurate when transcoding; the field is ignored.
 	AccurateSeek bool
-	GOP          int
+	// InputStartTimeSec is the container start_time offset (see HLSInputSeekSec).
+	InputStartTimeSec float64
+	GOP               int
 	// InputVideoCodec names the source video codec (e.g. "hevc"). On stream-copy
 	// pipelines it selects the fMP4 sample-entry tag browsers require — ffmpeg
 	// defaults HEVC to hev1, which MSE implementations refuse to decode.
@@ -140,13 +143,9 @@ func validateHLSSegmentMedia(media []byte, opts HLSSegmentOptions) error {
 }
 
 func finalizeHLSSegmentMedia(media []byte, opts HLSSegmentOptions) ([]byte, error) {
-	timelineSec := opts.MediaTimelineSec
-	if timelineSec <= 0 && opts.StartSec > 0 {
-		timelineSec = opts.StartSec
-	}
-	patched, err := mp4.AlignFragmentToMediaStartWithTimescales(media, timelineSec, opts.TrackTimescales)
+	patched, err := mp4.AlignFragmentToMediaStartWithTimescales(media, opts.MediaTimelineSec, opts.TrackTimescales)
 	if err != nil {
-		return nil, fmt.Errorf("align segment tfdt at %.3fs: %w", timelineSec, err)
+		return nil, fmt.Errorf("align segment tfdt at %.3fs: %w", opts.MediaTimelineSec, err)
 	}
 	return patched, nil
 }
@@ -186,51 +185,14 @@ func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilit
 }
 
 func runHLSSegmentWithSeekRetry(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]byte, error) {
-	if opts.Remux || opts.VideoCopy || opts.StartSec <= 0 || !opts.AccurateSeek {
-		return runHLSSegmentRaw(ctx, runner, caps, opts, includeInit, mux)
-	}
-
-	// Full re-encode with keyframe-aligned timeline: input-accurate seek for mid-file segments.
-	accurate := opts
-	accurate.AccurateSeek = true
-	raw, err := runHLSSegmentRaw(ctx, runner, caps, accurate, includeInit, mux)
-	if err != nil {
-		return nil, err
-	}
-	if mux == hlsSegmentMuxMPEGTS {
-		if err := validateHLSTS(raw, opts); err != nil {
-			return nil, err
-		}
-		return raw, nil
-	}
-	if !hlsUsesVideoCopyPipeline(opts) {
-		_, media, splitErr := mp4.SplitInitMedia(raw)
-		if splitErr != nil || len(media) == 0 {
-			media = raw
-		}
-		if err := validateHLSSegmentMedia(media, opts); err != nil {
-			return nil, err
-		}
-		return raw, nil
-	}
-	_, media, splitErr := mp4.SplitInitMedia(raw)
-	if splitErr != nil {
-		return nil, splitErr
-	}
-	if len(media) == 0 {
-		media = raw
-	}
-	if err := validateHLSSegmentMedia(media, opts); err != nil {
-		return nil, err
-	}
-	return raw, nil
+	return runHLSSegmentRaw(ctx, runner, caps, opts, includeInit, mux)
 }
 
 func hlsUsesVideoCopyPipeline(opts HLSSegmentOptions) bool {
 	return opts.Remux || opts.VideoCopy
 }
 
-func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]byte, error) {
+func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]string, error) {
 	dur := opts.DurationSec
 	if dur <= 0 {
 		dur = DefaultHLSSegmentDurationSec
@@ -243,9 +205,7 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	args := []string{"-hide_banner", "-nostats", "-loglevel", hlsFFmpegLogLevel(runner), "-y"}
 	videoCopyPipeline := hlsUsesVideoCopyPipeline(opts)
 	if opts.StartSec > 0 {
-		if videoCopyPipeline || !opts.AccurateSeek {
-			args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
-		}
+		args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
 	}
 	if videoCopyPipeline {
 		args = appendHLSInputTimestampFlags(args)
@@ -268,9 +228,6 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		args = append(args, "-fflags", "+discardcorrupt+genpts")
 	}
 	args = append(args, "-i", opts.Input.URL)
-	if !videoCopyPipeline && opts.StartSec > 0 && opts.AccurateSeek {
-		args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
-	}
 	args = append(args, "-map", "0:v:0")
 	if !opts.VideoOnly {
 		args = append(args, "-map", "0:a:0?")
@@ -337,11 +294,7 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		}
 	}
 	args = append(args, "-t", fmt.Sprintf("%.3f", dur))
-	timelineSec := opts.MediaTimelineSec
-	if timelineSec <= 0 && opts.StartSec > 0 {
-		timelineSec = opts.StartSec
-	}
-	args = appendHLSOutputTimestampArgs(args, timelineSec)
+	args = appendHLSOutputTimestampArgs(args, opts.MediaTimelineSec)
 	switch mux {
 	case hlsSegmentMuxMPEGTS:
 		args = append(args, "-f", "mpegts", "-")
@@ -355,7 +308,15 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 			"-",
 		)
 	}
+	_ = includeInit // init+media are always emitted together for on-demand fMP4 today.
+	return args, nil
+}
 
+func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]byte, error) {
+	args, err := buildHLSSegmentFFmpegArgs(runner, caps, opts, includeInit, mux)
+	if err != nil {
+		return nil, err
+	}
 	var buf bytes.Buffer
 	if err := runFMP4ToWriter(ctx, runner, &buf, args); err != nil {
 		return nil, err

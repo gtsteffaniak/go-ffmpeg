@@ -484,9 +484,29 @@ func SanitizeHLSKeyframes(keyframes []float64, durationSec float64) []float64 {
 	return ops.SanitizeHLSKeyframes(keyframes, durationSec)
 }
 
+// HLSMediaTimelineDuration converts format duration to a 0-based media timeline length.
+func HLSMediaTimelineDuration(durationSec, startTimeSec float64) float64 {
+	return ops.HLSMediaTimelineDuration(durationSec, startTimeSec)
+}
+
+// NormalizeHLSKeyframeTimes rebases keyframe times onto a 0-based media timeline.
+func NormalizeHLSKeyframeTimes(keyframes []float64, startTimeSec float64) []float64 {
+	return ops.NormalizeHLSKeyframeTimes(keyframes, startTimeSec)
+}
+
+// HLSInputSeekSec maps a media-timeline position to an ffmpeg input -ss value.
+func HLSInputSeekSec(mediaSec, startTimeSec float64) float64 {
+	return ops.HLSInputSeekSec(mediaSec, startTimeSec)
+}
+
+// PrepareHLSMediaTimeline normalizes keyframes and duration for HLS segment planning.
+func PrepareHLSMediaTimeline(keyframes []float64, durationSec, startTimeSec float64) (sanitizedKeyframes []float64, mediaDurationSec float64) {
+	return ops.PrepareHLSMediaTimeline(keyframes, durationSec, startTimeSec)
+}
+
 // BuildHLSSegmentTimeline returns segment start times and durations.
-func BuildHLSSegmentTimeline(durationSec float64, keyframes []float64, segmentDurationSec float64) (starts, durations []float64) {
-	return ops.BuildHLSSegmentTimeline(durationSec, keyframes, segmentDurationSec)
+func BuildHLSSegmentTimeline(durationSec float64, keyframes []float64, segmentDurationSec float64, startTimeSec float64) (starts, durations []float64) {
+	return ops.BuildHLSSegmentTimeline(durationSec, keyframes, segmentDurationSec, startTimeSec)
 }
 
 // KeyframeSeekBefore returns the largest keyframe time <= sec.
