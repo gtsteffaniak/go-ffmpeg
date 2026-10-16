@@ -162,7 +162,6 @@ func continuousPlaylistHasEndList(outDir string) bool {
 	for scanner.Scan() {
 		if strings.TrimSpace(scanner.Text()) == "#EXT-X-ENDLIST" {
 			found = true
-			break
 		}
 	}
 	// A read error is indistinguishable from a playlist that is still being

@@ -9,7 +9,7 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 )
 
-const hlsCacheSchemaVersion = "v1"
+const hlsCacheSchemaVersion = "v2"
 
 // HLSCacheIdentity describes everything that affects on-demand HLS segment bytes.
 type HLSCacheIdentity struct {
@@ -52,6 +52,8 @@ func appendHLSSegmentParams(b *strings.Builder, p HLSSegmentParams) {
 	fmt.Fprintf(b, "videoCopy=%t\n", p.VideoCopy)
 	fmt.Fprintf(b, "maxH=%d\n", p.MaxHeight)
 	fmt.Fprintf(b, "gop=%d\n", p.GOP)
+	fmt.Fprintf(b, "inputVideoCodec=%s\n", p.InputVideoCodec)
+	fmt.Fprintf(b, "omitAudio=%t\n", p.OmitAudio)
 	appendVideoDecodeProfile(b, p.Decode)
 	appendVideoProfile(b, p.Profile)
 }

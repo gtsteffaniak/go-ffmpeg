@@ -41,6 +41,8 @@ func BuildHLSSegmentOptions(path string, index int, params HLSSegmentParams, sta
 		Remux:            params.Remux,
 		VideoCopy:        params.VideoCopy,
 		GOP:              params.GOP,
+		InputVideoCodec:  params.InputVideoCodec,
+		VideoOnly:        params.OmitAudio,
 		AccurateSeek:     fullTranscode && keyframeTimeline,
 		Throttle:         encode.ThrottleConfig{Enabled: false},
 	}

@@ -15,6 +15,11 @@ type HLSSegmentParams struct {
 	Profile   encode.VideoProfile
 	MaxHeight int
 	GOP       int
+	// InputVideoCodec is the probed source video codec (e.g. "hevc"). It selects fMP4
+	// sample-entry tags on stream-copy paths and participates in cache fingerprints.
+	InputVideoCodec string
+	// OmitAudio drops audio from generated segments (cache fingerprint only when set).
+	OmitAudio bool
 }
 
 // HLSSegmentBuildInput describes remux/copy/transcode path selection for one file.
@@ -45,10 +50,11 @@ func BuildHLSSegmentBuildInput(info probe.StreamInfo, opts HLSPipelineOptions) H
 func BuildHLSSegmentParamsFast(in HLSSegmentBuildInput, defaults OnDemandHLSDefaults) HLSSegmentParams {
 	defaults = defaults.Normalized()
 	params := HLSSegmentParams{
-		Remux:     in.Remux,
-		VideoCopy: in.VideoCopy,
-		MaxHeight: in.MaxHeight,
-		GOP:       defaults.DefaultGOP,
+		Remux:           in.Remux,
+		VideoCopy:       in.VideoCopy,
+		MaxHeight:       in.MaxHeight,
+		GOP:             defaults.DefaultGOP,
+		InputVideoCodec: in.Info.VideoCodec,
 	}
 	if !in.Remux && !in.VideoCopy {
 		params.Decode = in.Decode

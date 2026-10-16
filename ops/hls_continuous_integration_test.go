@@ -129,7 +129,7 @@ func TestContinuousSoftwarePublishesPlaylistDuringRun(t *testing.T) {
 	jobDone := job.Done()
 	var playlist []byte
 	for time.Now().Before(deadline) {
-		if data, readErr := os.ReadFile(playlistPath); readErr == nil {
+		if data, readErr := os.ReadFile(playlistPath); readErr == nil && strings.Contains(string(data), "00000.m4s") {
 			playlist = data
 			break
 		}
