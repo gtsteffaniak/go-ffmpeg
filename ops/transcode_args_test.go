@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
-	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
+	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 	"github.com/gtsteffaniak/go-ffmpeg/ops"
 )
 
