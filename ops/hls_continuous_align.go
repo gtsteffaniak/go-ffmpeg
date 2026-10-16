@@ -158,12 +158,19 @@ func continuousPlaylistHasEndList(outDir string) bool {
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
+	found := false
 	for scanner.Scan() {
 		if strings.TrimSpace(scanner.Text()) == "#EXT-X-ENDLIST" {
-			return true
+			found = true
+			break
 		}
 	}
-	return false
+	// A read error is indistinguishable from a playlist that is still being
+	// written — report "not finished" either way.
+	if err := scanner.Err(); err != nil {
+		return false
+	}
+	return found
 }
 
 func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, aligned map[int]struct{}, jobDone bool) error {

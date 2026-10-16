@@ -34,6 +34,10 @@ type HLSContinuousOptions struct {
 	Remux              bool
 	VideoCopy          bool
 	GOP                int
+	// InputVideoCodec names the source video codec (e.g. "hevc"). On stream-copy
+	// pipelines it selects the fMP4 sample-entry tag browsers require — ffmpeg
+	// defaults HEVC to hev1, which MSE implementations refuse to decode.
+	InputVideoCodec string
 	// Pacing selects cache-fill vs live-paced input when Throttle is nil.
 	Pacing HLSContinuousPacing
 	// Throttle, when non-nil, overrides Pacing — including Enabled: false.
@@ -283,6 +287,9 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	}
 
 	if videoCopyPipeline {
+		if tag := fmp4CopyVideoTag(opts.InputVideoCodec); tag != "" {
+			args = append(args, "-tag:v", tag)
+		}
 		offsetSec := 0.0
 		if opts.StartIndex > 0 || opts.StartSec > 0 {
 			offsetSec = opts.StartSec
@@ -318,6 +325,19 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	}
 	args = append(args, "ffmpeg.m3u8")
 	return args, nil
+}
+
+// fmp4CopyVideoTag returns the fMP4 sample-entry tag required when
+// stream-copying the codec into HLS fMP4. HEVC must be tagged hvc1 — ffmpeg
+// writes hev1 by default and MSE decoders (Safari strictly, most others in
+// practice) reject it. h264 and VP9 already get browser-compatible tags
+// (avc1/vp09) from the muxer.
+func fmp4CopyVideoTag(codec string) string {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "hevc", "h265", "hev1", "hvc1":
+		return "hvc1"
+	}
+	return ""
 }
 
 const continuousStderrTailMax = 64 << 10

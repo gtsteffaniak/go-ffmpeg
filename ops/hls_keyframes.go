@@ -10,12 +10,14 @@ import (
 )
 
 // ProbeVideoKeyframeTimes returns strictly increasing keyframe presentation times in seconds.
+// It scans packet flags instead of decoding frames: a frame-level probe
+// (-skip_frame nokey) must decode every keyframe, which costs tens of seconds
+// of CPU on long files, while packet demuxing is sub-second on the same input.
 func ProbeVideoKeyframeTimes(ctx context.Context, runner *ffexec.Runner, path string) ([]float64, error) {
 	res, err := runner.RunFFprobe(ctx,
 		"-v", "error",
 		"-select_streams", "v:0",
-		"-skip_frame", "nokey",
-		"-show_entries", "frame=best_effort_timestamp_time",
+		"-show_entries", "packet=pts_time,flags",
 		"-of", "csv=p=0",
 		path,
 	)
@@ -25,10 +27,11 @@ func ProbeVideoKeyframeTimes(ctx context.Context, runner *ffexec.Runner, path st
 	var times []float64
 	for line := range strings.SplitSeq(strings.TrimSpace(res.Stdout), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.EqualFold(line, "N/A") {
+		comma := strings.LastIndexByte(line, ',')
+		if comma < 0 || !strings.Contains(line[comma+1:], "K") {
 			continue
 		}
-		t, err := strconv.ParseFloat(line, 64)
+		t, err := strconv.ParseFloat(strings.TrimSpace(line[:comma]), 64)
 		if err != nil || t < 0 {
 			continue
 		}
