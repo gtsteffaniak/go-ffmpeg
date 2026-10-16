@@ -314,6 +314,8 @@ func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir str
 		Remux:            params.Remux,
 		VideoCopy:        params.VideoCopy,
 		GOP:              params.GOP,
+		InputVideoCodec:  params.InputVideoCodec,
+		OmitAudio:        params.OmitAudio,
 	}
 }
 
