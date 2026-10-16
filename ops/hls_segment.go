@@ -82,7 +82,7 @@ type HLSSegmentOptions struct {
 	AccurateSeek bool
 	// InputStartTimeSec is the container start_time offset (see HLSInputSeekSec).
 	InputStartTimeSec float64
-	GOP          int
+	GOP               int
 	// InputVideoCodec names the source video codec (e.g. "hevc"). On stream-copy
 	// pipelines it selects the fMP4 sample-entry tag browsers require — ffmpeg
 	// defaults HEVC to hev1, which MSE implementations refuse to decode.

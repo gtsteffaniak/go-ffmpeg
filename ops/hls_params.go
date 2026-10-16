@@ -52,10 +52,10 @@ func BuildHLSSegmentBuildInput(info probe.StreamInfo, opts HLSPipelineOptions) H
 func BuildHLSSegmentParamsFast(in HLSSegmentBuildInput, defaults OnDemandHLSDefaults) HLSSegmentParams {
 	defaults = defaults.Normalized()
 	params := HLSSegmentParams{
-		Remux:           in.Remux,
-		VideoCopy:       in.VideoCopy,
-		MaxHeight:       in.MaxHeight,
-		GOP:             defaults.DefaultGOP,
+		Remux:             in.Remux,
+		VideoCopy:         in.VideoCopy,
+		MaxHeight:         in.MaxHeight,
+		GOP:               defaults.DefaultGOP,
 		InputVideoCodec:   in.Info.VideoCodec,
 		InputStartTimeSec: in.Info.StartTime,
 	}

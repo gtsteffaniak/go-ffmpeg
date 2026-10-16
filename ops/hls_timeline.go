@@ -6,7 +6,7 @@ const (
 	hlsKeyframeMinGapSec     = 0.5
 	hlsMinSegmentDurationSec = 0.5 // ffmpeg cannot encode shorter on-demand segments reliably
 	// Reject only pathological indexes (e.g. every frame marked as a keyframe at 15+ Hz).
-	hlsKeyframeMaxPerSec = 15.0
+	hlsKeyframeMaxPerSec   = 15.0
 	hlsStartTimeEpsilonSec = 0.001
 )
 
