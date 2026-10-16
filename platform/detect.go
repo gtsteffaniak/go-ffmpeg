@@ -66,23 +66,17 @@ func nvidiaAvailable() bool {
 				return true
 			}
 		}
-		cmd := exec.Command("reg", "query", `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}`, "/s", "/f", "NVIDIA")
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run() == nil
+		return runSilentTimeout("reg", "query", `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}`, "/s", "/f", "NVIDIA") == nil
 	case "linux":
 		for _, device := range []string{"/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm"} {
 			if _, err := os.Stat(device); err == nil {
 				return true
 			}
 		}
-		if out, err := exec.Command("lsmod").Output(); err == nil && strings.Contains(string(out), "nvidia") {
+		if out, err := combinedOutputTimeout("lsmod"); err == nil && strings.Contains(string(out), "nvidia") {
 			return true
 		}
-		cmd := exec.Command("nvidia-smi", "-L")
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run() == nil
+		return runSilentTimeout("nvidia-smi", "-L") == nil
 	}
 	return false
 }
@@ -95,7 +89,7 @@ func amdGPUPresent() bool {
 		return true
 	}
 	if commandAvailable("lspci") {
-		out, err := exec.Command("lspci", "-nn").CombinedOutput()
+		out, err := combinedOutputTimeout("lspci", "-nn")
 		if err == nil {
 			s := strings.ToLower(string(out))
 			if strings.Contains(s, "[1002:") || strings.Contains(s, "amd/ati") {
@@ -136,13 +130,18 @@ func intelFromCPUInfo() bool {
 	if err != nil {
 		return false
 	}
-	cpuInfo := strings.ToLower(string(data))
-	if !strings.Contains(cpuInfo, "intel") {
-		return false
-	}
-	markers := []string{"graphics", "hd graphics", "uhd graphics", "iris", "arc", "lunar", "meteor", "arrow", "raptor"}
-	for _, m := range markers {
-		if strings.Contains(cpuInfo, m) {
+	return intelGPUPresentInCPUInfo(string(data))
+}
+
+func intelGPUPresentInCPUInfo(cpuInfo string) bool {
+	for _, line := range strings.Split(cpuInfo, "\n") {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "model name") {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(line), "intel") {
+			continue
+		}
+		if lineHasIntelGPUMarker(line) {
 			return true
 		}
 	}
@@ -153,25 +152,26 @@ func intelFromPCI() bool {
 	if !commandAvailable("lspci") {
 		return false
 	}
-	out, err := exec.Command("lspci", "-nn").CombinedOutput()
+	out, err := combinedOutputTimeout("lspci", "-nn")
 	if err != nil {
 		return false
 	}
-	s := strings.ToLower(string(out))
-	if !strings.Contains(s, "intel") {
-		return false
-	}
-	markers := []string{
-		"vga", "display", "xe", "arc", "iris", "uhd", "hd graphics",
-		"lunar", "arrow", "meteor", "raptor", "alder", "rocket", "dg",
-	}
-	for _, m := range markers {
-		if strings.Contains(s, m) {
+	for _, line := range strings.Split(string(out), "\n") {
+		lower := strings.ToLower(line)
+		if !strings.Contains(lower, "intel") {
+			continue
+		}
+		if !isDisplayPCILine(line) && !strings.Contains(lower, "[8086:") {
+			continue
+		}
+		if lineHasIntelGPUMarker(line) {
+			return true
+		}
+		if strings.Contains(lower, "[8086:") && isDisplayPCILine(line) {
 			return true
 		}
 	}
-	// Intel vendor id on display class devices
-	return strings.Contains(s, "[8086:")
+	return false
 }
 
 func driAvailable() bool {
@@ -212,14 +212,14 @@ func wslGPUPartitioning() bool {
 		return true
 	}
 	if commandAvailable("lspci") {
-		out, err := exec.Command("lspci").CombinedOutput()
+		out, err := combinedOutputTimeout("lspci")
 		if err == nil {
 			s := string(out)
 			if strings.Contains(s, "Microsoft Corporation Basic Render Driver") {
 				return true
 			}
 		}
-		out, err = exec.Command("lspci", "-nn").CombinedOutput()
+		out, err = combinedOutputTimeout("lspci", "-nn")
 		if err == nil {
 			s := strings.ToLower(string(out))
 			if strings.Contains(s, "microsoft") && strings.Contains(s, "basic render") {
@@ -350,7 +350,7 @@ func detectGPUDescription() string {
 	if !commandAvailable("lspci") {
 		return ""
 	}
-	out, err := exec.Command("lspci", "-nn").CombinedOutput()
+	out, err := combinedOutputTimeout("lspci", "-nn")
 	if err != nil {
 		return ""
 	}

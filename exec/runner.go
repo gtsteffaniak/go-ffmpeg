@@ -21,6 +21,9 @@ type Runner struct {
 	FFmpegPath    string
 	FFprobePath   string
 	VerboseFFmpeg bool
+	// ProtocolWhitelist controls -protocol_whitelist for caller-supplied inputs.
+	// Empty uses DefaultProtocolWhitelist; DisableProtocolWhitelist disables the flag.
+	ProtocolWhitelist string
 }
 
 // FFmpegLogLevel returns the -loglevel value for ffmpeg invocations.

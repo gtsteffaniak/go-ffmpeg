@@ -59,6 +59,7 @@ func ProbeStream(ctx context.Context, runner *ffexec.Runner, opts ProbeStreamOpt
 		"-show_streams",
 		"-show_format",
 	}
+	args = runner.AppendProtocolWhitelistArgs(args)
 	switch strings.ToLower(string(opts.StreamType)) {
 	case "rtsp":
 		args = append(args,
@@ -159,12 +160,13 @@ func applyProbeStreams(info *StreamInfo, streams []probeStreamEntry) (hasVideoBi
 
 // GetMediaDuration returns media duration in seconds.
 func GetMediaDuration(ctx context.Context, runner *ffexec.Runner, path string) (float64, error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -181,13 +183,14 @@ func GetMediaDuration(ctx context.Context, runner *ffexec.Runner, path string) (
 
 // GetImageDimensions returns width and height of the first video stream.
 func GetImageDimensions(ctx context.Context, runner *ffexec.Runner, path string) (width, height int, err error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=width,height",
 		"-of", "csv=p=0",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -216,12 +219,13 @@ type SubtitleTrack struct {
 
 // DetectEmbeddedSubtitles lists embedded subtitle streams.
 func DetectEmbeddedSubtitles(ctx context.Context, runner *ffexec.Runner, path string) ([]SubtitleTrack, error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,13 +257,15 @@ func DetectEmbeddedSubtitles(ctx context.Context, runner *ffexec.Runner, path st
 
 // ExtractSubtitle extracts a subtitle stream to WebVTT text.
 func ExtractSubtitle(ctx context.Context, runner *ffexec.Runner, path string, streamIndex int) (string, error) {
-	res, err := runner.RunFFmpeg(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{"-hide_banner", "-nostats"})
+	args = append(args,
 		"-i", path,
 		"-map", fmt.Sprintf("0:%d", streamIndex),
 		"-c:s", "webvtt",
 		"-f", "webvtt",
 		"-",
 	)
+	res, err := runner.RunFFmpeg(ctx, args...)
 	if err != nil {
 		return "", err
 	}
