@@ -27,6 +27,35 @@ func TestVideoEncoderArgsH264Software(t *testing.T) {
 	}
 }
 
+func TestVideoEncoderArgsHEVCTagsHvc1(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Encoders["libx265"] = capabilities.EncoderCapability{Name: "libx265", Available: true, Kind: "software"}
+	caps.CodecMatrix[capabilities.CodecHEVC] = capabilities.CodecSupport{
+		Software:  []string{"libx265"},
+		Preferred: capabilities.EncoderSelection{Encoder: "libx265", Accel: capabilities.AccelNone, Kind: "software"},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoEncoderArgs(encode.VideoProfile{
+		Codec:   encode.CodecHEVC,
+		Bitrate: encode.BitrateConfig{Target: "4M", Max: "4M", BufSize: "8M", Min: "2M"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsArgPair(args, "-tag:v", "hvc1") {
+		t.Fatalf("args = %v, want -tag:v hvc1", args)
+	}
+}
+
+func containsArgPair(args []string, key, val string) bool {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == key && args[i+1] == val {
+			return true
+		}
+	}
+	return false
+}
+
 func TestVideoEncoderArgsCopy(t *testing.T) {
 	r := encode.NewResolver(capabilities.NewCapabilities())
 	args, err := r.VideoEncoderArgs(encode.VideoProfile{Codec: encode.CodecCopy})

@@ -84,7 +84,27 @@ func TestHLSCacheFingerprintChangesOnEncodePath(t *testing.T) {
 
 func TestHLSCacheSchemaVersion(t *testing.T) {
 	t.Parallel()
-	if HLSCacheSchemaVersion() != "v1" {
+	if HLSCacheSchemaVersion() != "v2" {
 		t.Fatalf("schema = %q", HLSCacheSchemaVersion())
+	}
+}
+
+func TestHLSCacheFingerprintChangesOnInputVideoCodec(t *testing.T) {
+	t.Parallel()
+	id := baseHLSCacheIdentity()
+	base := HLSCacheFingerprint(id)
+	id.Params.InputVideoCodec = "hevc"
+	if got := HLSCacheFingerprint(id); got == base {
+		t.Fatal("expected different fingerprint for input video codec change")
+	}
+}
+
+func TestHLSCacheFingerprintChangesOnOmitAudio(t *testing.T) {
+	t.Parallel()
+	id := baseHLSCacheIdentity()
+	base := HLSCacheFingerprint(id)
+	id.Params.OmitAudio = true
+	if got := HLSCacheFingerprint(id); got == base {
+		t.Fatal("expected different fingerprint for omit audio change")
 	}
 }

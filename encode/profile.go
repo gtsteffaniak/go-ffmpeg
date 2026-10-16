@@ -243,18 +243,19 @@ func vp9Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o en
 }
 
 func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o encodeOpts) []string {
+	var args []string
 	switch accel {
 	case capabilities.AccelNVENC:
-		return []string{
+		args = []string{
 			"-c:v", encoder, "-preset", nvencPreset(o.quality),
 			"-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt,
 		}
 	case capabilities.AccelQSV:
-		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
+		args = qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
+		args = []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
 	case capabilities.AccelVideoToolbox:
-		return []string{
+		args = []string{
 			"-c:v", encoder,
 			"-b:v", b.Target,
 			"-qmin", "-1",
@@ -266,8 +267,14 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		if encoder == "libvvenc" {
 			preset = vvencPreset(o.quality)
 		}
-		return []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
+		args = []string{"-c:v", encoder, "-b:v", b.Target, "-preset", preset, "-pix_fmt", o.pixFmt}
 	}
+	return appendHEVCFMP4CompatArgs(args)
+}
+
+// appendHEVCFMP4CompatArgs tags HEVC bitstreams as hvc1 for fMP4/MSE players that reject hev1.
+func appendHEVCFMP4CompatArgs(args []string) []string {
+	return append(args, "-tag:v", "hvc1")
 }
 
 // qsvEncoderArgs builds Intel QSV encoder flags for oneVPL/FFmpeg 8+ (numeric preset, nv12).

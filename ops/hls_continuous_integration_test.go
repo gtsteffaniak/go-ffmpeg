@@ -109,8 +109,10 @@ func TestContinuousSoftwarePublishesPlaylistDuringRun(t *testing.T) {
 		_ = job.Wait()
 	}()
 
-	// Wait for the first completed segment, then require the playlist to already
-	// be published - the job is still transcoding at this point.
+	// Wait for the first completed segment, then require the playlist to be
+	// published while the job is still running. The .m4s file appears when the
+	// muxer starts a segment but the playlist only lists it once the segment
+	// closes, so poll for the playlist rather than reading it immediately.
 	firstSegment := filepath.Join(outDir, "seg", "00000.m4s")
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
@@ -124,9 +126,21 @@ func TestContinuousSoftwarePublishesPlaylistDuringRun(t *testing.T) {
 	}
 
 	playlistPath := filepath.Join(outDir, "ffmpeg.m3u8")
-	playlist, readErr := os.ReadFile(playlistPath)
-	if readErr != nil {
-		t.Fatalf("playlist not published while the job was still running: %v", readErr)
+	jobDone := job.Done()
+	var playlist []byte
+	for time.Now().Before(deadline) {
+		if data, readErr := os.ReadFile(playlistPath); readErr == nil && strings.Contains(string(data), "00000.m4s") {
+			playlist = data
+			break
+		}
+		select {
+		case err := <-jobDone:
+			t.Fatalf("job finished before publishing a playlist: %v", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if playlist == nil {
+		t.Fatal("playlist not published while the job was still running")
 	}
 	if !strings.Contains(string(playlist), "00000.m4s") {
 		t.Fatalf("playlist does not list the first segment:\n%s", playlist)

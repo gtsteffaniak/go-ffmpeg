@@ -73,8 +73,12 @@ type HLSSegmentOptions struct {
 	VideoCopy    bool
 	AccurateSeek bool
 	GOP          int
-	VideoOnly    bool
-	Throttle     encode.ThrottleConfig
+	// InputVideoCodec names the source video codec (e.g. "hevc"). On stream-copy
+	// pipelines it selects the fMP4 sample-entry tag browsers require — ffmpeg
+	// defaults HEVC to hev1, which MSE implementations refuse to decode.
+	InputVideoCodec string
+	VideoOnly       bool
+	Throttle        encode.ThrottleConfig
 	// TrackTimescales maps init-segment track IDs to mdhd timescales for tfdt alignment.
 	// When empty, HLSInitAndSegment derives timescales from the init segment; callers
 	// encoding later segments should pass the same map from segment 0.
@@ -311,6 +315,11 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 		}
 	}
 
+	if videoCopyPipeline {
+		if tag := fmp4CopyVideoTag(opts.InputVideoCodec); tag != "" {
+			args = append(args, "-tag:v", tag)
+		}
+	}
 	args = append(args, "-t", fmt.Sprintf("%.3f", dur))
 	timelineSec := opts.MediaTimelineSec
 	if timelineSec <= 0 && opts.StartSec > 0 {
