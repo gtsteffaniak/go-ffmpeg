@@ -55,7 +55,7 @@ func TestBuildHLSSegmentTranscodeArgvSingleInputSeek(t *testing.T) {
 		DurationSec:      4,
 		GOP:              120,
 	}
-	args, err := buildHLSSegmentFFmpegArgs(runner, caps, opts, false)
+	args, err := buildHLSSegmentFFmpegArgs(runner, caps, opts, false, hlsSegmentMuxFMP4)
 	if err != nil {
 		t.Fatalf("buildHLSSegmentFFmpegArgs: %v", err)
 	}

@@ -36,9 +36,10 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	s := &Service{
 		cfg: cfg,
 		runner: &ffexec.Runner{
-			FFmpegPath:    ffmpegPath,
-			FFprobePath:   ffprobePath,
-			VerboseFFmpeg: cfg.VerboseFFmpeg,
+			FFmpegPath:        ffmpegPath,
+			FFprobePath:       ffprobePath,
+			VerboseFFmpeg:     cfg.VerboseFFmpeg,
+			ProtocolWhitelist: cfg.ProtocolWhitelist,
 		},
 		limiter: concurrency.NewLimiter(cfg.Concurrency),
 	}

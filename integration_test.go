@@ -4,9 +4,11 @@ package ffmpeg_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -128,5 +130,74 @@ func TestIntegrationScreenshot(t *testing.T) {
 	}
 	if w <= 0 || h <= 0 {
 		t.Fatalf("dimensions = %dx%d", w, h)
+	}
+}
+
+func TestIntegrationHLSSegmentMPEGTS(t *testing.T) {
+	sample := integrationSampleMP4(t)
+	ffmpegBin, ffprobeBin := requireFFmpeg(t)
+	ctx := context.Background()
+	svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+		FFmpegPath:  ffmpegBin,
+		FFprobePath: ffprobeBin,
+		SkipHWTests: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := svc.ProbeFile(ctx, sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildInput := ffmpeg.BuildHLSSegmentBuildInput(info, ffmpeg.HLSPipelineOptions{ForceVideoTranscode: true})
+	params := ffmpeg.BuildHLSSegmentParamsFast(buildInput, ffmpeg.DefaultOnDemandHLSDefaults())
+	if params.Remux || params.VideoCopy {
+		t.Fatalf("params = %+v, want full transcode", params)
+	}
+
+	dur, err := svc.GetMediaDuration(ctx, sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts, durations := ffmpeg.BuildHLSSegmentTimeline(dur, nil, ffmpeg.DefaultHLSSegmentDurationSec, info.StartTime)
+	midIndex := len(starts) / 2
+	if midIndex < 1 {
+		midIndex = 1
+	}
+
+	for _, idx := range []int{0, midIndex} {
+		idx := idx
+		t.Run(fmt.Sprintf("segment_%d", idx), func(t *testing.T) {
+			opts := ffmpeg.BuildHLSSegmentOptions(sample, idx, params, starts, durations, false, nil, ffmpeg.DefaultHLSSegmentDurationSec)
+			data, err := svc.HLSSegment(ctx, opts)
+			if err != nil {
+				t.Fatalf("HLSSegment index %d start %.3fs: %v", idx, opts.StartSec, err)
+			}
+			assertProbeableMPEGTSSegment(t, ffprobeBin, data, idx)
+		})
+	}
+}
+
+func assertProbeableMPEGTSSegment(t *testing.T, ffprobeBin string, data []byte, index int) {
+	t.Helper()
+	if len(data) < 4096 {
+		t.Fatalf("segment %d: too small (%d bytes)", index, len(data))
+	}
+	if data[0] != 0x47 {
+		t.Fatalf("segment %d: missing MPEG-TS sync byte (got 0x%02x)", index, data[0])
+	}
+	path := filepath.Join(t.TempDir(), fmt.Sprintf("seg%d.ts", index))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(ffprobeBin, "-v", "error", "-show_entries", "format=format_name", "-of", "default=nw=1:nk=1", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("segment %d ffprobe: %v\n%s", index, err, out)
+	}
+	format := strings.TrimSpace(string(out))
+	if format == "" || !strings.Contains(format, "mpegts") {
+		t.Fatalf("segment %d: ffprobe format_name = %q, want mpegts", index, format)
 	}
 }

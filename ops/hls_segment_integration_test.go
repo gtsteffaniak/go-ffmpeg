@@ -51,7 +51,7 @@ func TestHLSSegmentTranscodeSeekLatencyNearFlat(t *testing.T) {
 	encodeSegment := func(index int) time.Duration {
 		opts := BuildHLSSegmentOptions(input, index, params, starts, durations, true, keyframeSeekTimes, DefaultHLSSegmentDurationSec)
 		start := time.Now()
-		_, err := runHLSSegmentRaw(ctx, runner, caps, opts, false)
+		_, err := runHLSSegmentRaw(ctx, runner, caps, opts, false, hlsSegmentMuxFMP4)
 		if err != nil {
 			t.Fatalf("segment %d: %v", index, err)
 		}
@@ -105,7 +105,7 @@ func TestHLSSegmentMPEGTSStartTimeMediaOrigin(t *testing.T) {
 	}
 	for _, index := range []int{0, mid} {
 		opts := BuildHLSSegmentOptions(input, index, params, starts, durations, true, keyframeSeekTimes, DefaultHLSSegmentDurationSec)
-		raw, err := runHLSSegmentRaw(ctx, runner, caps, opts, true)
+		raw, err := runHLSSegmentRaw(ctx, runner, caps, opts, true, hlsSegmentMuxFMP4)
 		if err != nil {
 			t.Fatalf("segment %d: %v", index, err)
 		}

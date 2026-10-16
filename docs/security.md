@@ -8,7 +8,7 @@ All ffmpeg/ffprobe invocations use `exec.CommandContext` with discrete arguments
 
 | Risk | Mitigation |
 |------|------------|
-| SSRF via ffmpeg protocols | Validate/limit URLs before `ProbeStream`, transcode, or RTSP inputs |
+| SSRF via ffmpeg protocols | By default, ffmpeg/ffprobe run with `-protocol_whitelist file,pipe` on caller-supplied inputs (`Config.ProtocolWhitelist`, default `file,pipe`). Extend with `http`, `https`, `tcp`, `tls`, `crypto`, `rtsp` when you intentionally read remote media; set `ProtocolWhitelist` to `-` to disable. Still validate URLs at your API boundary. |
 | Path traversal | Validate `OutputPath`, `OutputDir`, and concat list paths |
 | Concat demuxer | `TimelapseCompile` uses `-safe 0`; untrusted concat files can reference arbitrary paths |
 | Resource exhaustion | Use `Config.Concurrency` tier limits; Service methods acquire slots automatically |

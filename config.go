@@ -61,6 +61,13 @@ type Config struct {
 	// Defaults to capabilities.MinSupportedVersion (5.0.0). Set explicitly when
 	// your deployment standard is newer than the library floor.
 	MinVersion capabilities.Version
+
+	// ProtocolWhitelist is passed to ffmpeg/ffprobe as -protocol_whitelist before
+	// caller-supplied media URLs. When empty, defaults to exec.DefaultProtocolWhitelist
+	// ("file,pipe"). Set to exec.DisableProtocolWhitelist ("-") to disable. Extend
+	// with network protocols for HTTP/HLS/RTSP inputs, e.g.
+	// "file,pipe,http,https,tcp,tls,crypto,rtsp".
+	ProtocolWhitelist string
 }
 
 // Concurrency configures per-class subprocess limits for Service operations.

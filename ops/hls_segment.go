@@ -58,6 +58,13 @@ const minHLSSegmentMediaBytes = 8192
 // minHLSTSBytes rejects empty MPEG-TS segments.
 const minHLSTSBytes = 4096
 
+type hlsSegmentMuxer int
+
+const (
+	hlsSegmentMuxFMP4 hlsSegmentMuxer = iota
+	hlsSegmentMuxMPEGTS
+)
+
 // HLSSegmentOptions configures on-demand fMP4 HLS segment generation.
 type HLSSegmentOptions struct {
 	Input    InputSource
@@ -94,7 +101,7 @@ func HLSSegment(ctx context.Context, runner *ffexec.Runner, caps *capabilities.C
 	if hlsUsesVideoCopyPipeline(opts) {
 		return nil, fmt.Errorf("HLSSegment is for full transcode only")
 	}
-	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, false)
+	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, false, hlsSegmentMuxMPEGTS)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +113,7 @@ func HLSSegment(ctx context.Context, runner *ffexec.Runner, caps *capabilities.C
 
 // HLSInitAndSegment generates init bytes and media bytes in one encode pass for segment index 0.
 func HLSInitAndSegment(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions) (init, media []byte, err error) {
-	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, true)
+	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, true, hlsSegmentMuxFMP4)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -155,7 +162,7 @@ func validateHLSTS(data []byte, opts HLSSegmentOptions) error {
 
 // HLSSegmentMedia generates a media-only fMP4 fragment (moof+mdat) for later segment requests.
 func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, w io.Writer, opts HLSSegmentOptions) error {
-	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, false)
+	raw, err := runHLSSegmentWithSeekRetry(ctx, runner, caps, opts, false, hlsSegmentMuxFMP4)
 	if err != nil {
 		return err
 	}
@@ -177,15 +184,15 @@ func HLSSegmentMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilit
 	return err
 }
 
-func runHLSSegmentWithSeekRetry(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool) ([]byte, error) {
-	return runHLSSegmentRaw(ctx, runner, caps, opts, includeInit)
+func runHLSSegmentWithSeekRetry(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]byte, error) {
+	return runHLSSegmentRaw(ctx, runner, caps, opts, includeInit, mux)
 }
 
 func hlsUsesVideoCopyPipeline(opts HLSSegmentOptions) bool {
 	return opts.Remux || opts.VideoCopy
 }
 
-func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool) ([]string, error) {
+func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]string, error) {
 	dur := opts.DurationSec
 	if dur <= 0 {
 		dur = DefaultHLSSegmentDurationSec
@@ -207,7 +214,7 @@ func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabil
 	if !videoCopyPipeline && opts.Throttle.Enabled {
 		inputExtra = &InputExtraFlags{Throttle: &opts.Throttle, Features: caps.FeatureFlags}
 	}
-	args = appendInputFlags(args, opts.Input, nil, inputExtra)
+	args = appendInputFlags(args, runner, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
 		if initArgs := resolver.VideoToolboxPreInputInit(opts.Decode, opts.Profile); len(initArgs) > 0 {
@@ -262,7 +269,10 @@ func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabil
 			args = encode.AppendH264FMP4CompatArgs(args, encSel.Accel, opts.MaxHeight)
 		}
 		x264Only := encErr == nil && (encSel.Accel == capabilities.AccelNone || encSel.Accel == "")
-		args = append(args, "-video_track_timescale", "90000", "-g", fmt.Sprintf("%d", gop), "-keyint_min", fmt.Sprintf("%d", gop))
+		if mux == hlsSegmentMuxFMP4 {
+			args = append(args, "-video_track_timescale", "90000")
+		}
+		args = append(args, "-g", fmt.Sprintf("%d", gop), "-keyint_min", fmt.Sprintf("%d", gop))
 		if x264Only {
 			args = append(args, "-sc_threshold", "0")
 		}
@@ -285,20 +295,25 @@ func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabil
 	}
 	args = append(args, "-t", fmt.Sprintf("%.3f", dur))
 	args = appendHLSOutputTimestampArgs(args, opts.MediaTimelineSec)
-	// empty_moov is required even for media-only segments; without it ffmpeg emits
-	// progressive mp4 (moov+mdat) instead of moof+mdat fragments for hls.js MSE.
-	movFlags := "empty_moov+frag_keyframe+default_base_moof"
-	args = append(args,
-		"-movflags", movFlags,
-		"-f", "mp4",
-		"-",
-	)
+	switch mux {
+	case hlsSegmentMuxMPEGTS:
+		args = append(args, "-f", "mpegts", "-")
+	default:
+		// empty_moov is required even for media-only segments; without it ffmpeg emits
+		// progressive mp4 (moov+mdat) instead of moof+mdat fragments for hls.js MSE.
+		movFlags := "empty_moov+frag_keyframe+default_base_moof"
+		args = append(args,
+			"-movflags", movFlags,
+			"-f", "mp4",
+			"-",
+		)
+	}
 	_ = includeInit // init+media are always emitted together for on-demand fMP4 today.
 	return args, nil
 }
 
-func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool) ([]byte, error) {
-	args, err := buildHLSSegmentFFmpegArgs(runner, caps, opts, includeInit)
+func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSSegmentOptions, includeInit bool, mux hlsSegmentMuxer) ([]byte, error) {
+	args, err := buildHLSSegmentFFmpegArgs(runner, caps, opts, includeInit, mux)
 	if err != nil {
 		return nil, err
 	}
@@ -314,13 +329,14 @@ func runHLSSegmentRaw(ctx context.Context, runner *ffexec.Runner, caps *capabili
 
 // ProbeVideoFPS returns average frame rate from the first video stream, or defaultHLSSegmentFPS.
 func ProbeVideoFPS(ctx context.Context, runner *ffexec.Runner, path string) (float64, error) {
-	res, err := runner.RunFFprobe(ctx,
+	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=avg_frame_rate",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		path,
-	)
+	})
+	args = append(args, path)
+	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
 		return defaultHLSSegmentFPS, err
 	}
