@@ -11,11 +11,11 @@ type DistroFamily string
 
 const (
 	DistroFamilyUnknown DistroFamily = ""
-	DistroFamilyDebian  DistroFamily = "debian"  // apt: Debian, Ubuntu, derivatives
-	DistroFamilyArch    DistroFamily = "arch"    // pacman
-	DistroFamilyRPM     DistroFamily = "rpm"     // dnf/yum: Fedora, RHEL, Alma, etc.
-	DistroFamilySUSE    DistroFamily = "suse"    // zypper: openSUSE, SLE
-	DistroFamilyAlpine  DistroFamily = "alpine"  // apk
+	DistroFamilyDebian  DistroFamily = "debian" // apt: Debian, Ubuntu, derivatives
+	DistroFamilyArch    DistroFamily = "arch"   // pacman
+	DistroFamilyRPM     DistroFamily = "rpm"    // dnf/yum: Fedora, RHEL, Alma, etc.
+	DistroFamilySUSE    DistroFamily = "suse"   // zypper: openSUSE, SLE
+	DistroFamilyAlpine  DistroFamily = "alpine" // apk
 )
 
 // DistroContext records the detected host distribution for package hints.

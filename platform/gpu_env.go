@@ -22,7 +22,7 @@ func defaultGPUResolveEnv() GPUResolveEnv {
 	env := GPUResolveEnv{
 		GOOS:   runtime.GOOS,
 		WSL:    isWSLEnvironment(),
-		Stat: func(p string) error { _, err := os.Stat(p); return err },
+		Stat:   func(p string) error { _, err := os.Stat(p); return err },
 		NVIDIA: nvidiaAvailable(),
 		Intel:  intelGPUPresent(),
 		AMD:    amdGPUPresent(),

@@ -19,4 +19,3 @@ func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
 		return nil
 	}
 }
-

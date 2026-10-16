@@ -9,11 +9,11 @@ import (
 type SelectionKind int
 
 const (
-	SelectionAuto         SelectionKind = 0
-	SelectionIntegrated   SelectionKind = 1
-	SelectionDiscrete     SelectionKind = 2
-	SelectionSoftware     SelectionKind = 3
-	SelectionDevice       SelectionKind = 4
+	SelectionAuto       SelectionKind = 0
+	SelectionIntegrated SelectionKind = 1
+	SelectionDiscrete   SelectionKind = 2
+	SelectionSoftware   SelectionKind = 3
+	SelectionDevice     SelectionKind = 4
 )
 
 // GPURequest is the platform-neutral GPU selection input.

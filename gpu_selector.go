@@ -23,9 +23,9 @@ const (
 
 // GPUSelector is the typed GPU configuration. Zero value is GPUAuto.
 type GPUSelector struct {
-	Kind        GPUKind
-	RenderNode  string // Linux DRM path when Kind == GPUDevice
-	NameMatch   string // substring match when Kind == GPUDevice
+	Kind       GPUKind
+	RenderNode string // Linux DRM path when Kind == GPUDevice
+	NameMatch  string // substring match when Kind == GPUDevice
 }
 
 // GPUStrictness controls behavior when the requested GPU is unavailable.
