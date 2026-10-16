@@ -1,7 +1,5 @@
 package capabilities
 
-import "github.com/gtsteffaniak/go-ffmpeg/platform"
-
 // HierarchyForGPU returns encoder preference order for a selected GPU vendor.
 // Returns nil to fall back to HierarchyForPlatform.
 func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
@@ -22,7 +20,3 @@ func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
 	}
 }
 
-// ResolveGPUChoice resolves a gpu config string using platform detection.
-func ResolveGPUChoice(spec string) (platform.GPUChoice, error) {
-	return platform.ResolveGPU(spec)
-}

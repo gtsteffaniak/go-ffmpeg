@@ -55,7 +55,11 @@ func (s *Service) Reload(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, s.cfg.DetectTimeout)
 	defer cancel()
 
-	caps, err := capabilities.Detect(dctx, s.runner, s.buildDetectOptions())
+	detectOpts, err := s.buildDetectOptions()
+	if err != nil {
+		return err
+	}
+	caps, err := capabilities.Detect(dctx, s.runner, detectOpts)
 	if err != nil {
 		return err
 	}

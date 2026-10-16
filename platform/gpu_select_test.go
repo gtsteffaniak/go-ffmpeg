@@ -6,14 +6,14 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
-func TestResolveGPUDisabledWhenEmpty(t *testing.T) {
+func TestResolveGPUAutoWhenEmpty(t *testing.T) {
 	t.Parallel()
-	choice, err := platform.ResolveGPU("")
+	choice, err := platform.ResolveGPURequestDefaultEnv(platform.GPURequest{Kind: platform.SelectionAuto, Label: "auto"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if choice.Enabled {
-		t.Fatal("expected hardware disabled for empty gpu")
+	if choice.Enabled || !choice.AutoSelect || choice.Mode != platform.GPUModeAuto {
+		t.Fatalf("expected auto, got %+v", choice)
 	}
 }
 

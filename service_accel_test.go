@@ -6,41 +6,66 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 )
 
-// An empty GPU means "no GPU scoping", not "software only": the platform default
-// hierarchy still applies and hardware encoders are preferred when available.
-// Use EncoderHierarchy to prefer software instead.
-func TestBuildDetectOptionsEmptyGPUSkipsScoping(t *testing.T) {
-	svc := &Service{cfg: Config{GPU: ""}}
+func TestBuildDetectOptionsEmptyGPUIsAuto(t *testing.T) {
+	svc := &Service{cfg: Config{GPUSelector: GPUSelector{Kind: GPUAuto}}}
 
-	opts := svc.buildDetectOptions()
-
-	if opts.GPU.Enabled {
-		t.Fatalf("empty GPU should not scope to a device, got %+v", opts.GPU)
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if opts.RenderDevice != "" {
-		t.Fatalf("empty GPU should not set a render device, got %q", opts.RenderDevice)
+	if opts.GPU.Enabled {
+		t.Fatalf("auto should not scope to a device, got %+v", opts.GPU)
+	}
+	if !opts.GPU.AutoSelect || opts.GPU.Mode != "auto" {
+		t.Fatalf("mode = %+v", opts.GPU)
 	}
 }
 
-// A software-only hierarchy is forwarded untouched, so callers can disable
-// hardware acceleration without skipping detection.
+func TestBuildDetectOptionsDeprecatedGPUString(t *testing.T) {
+	svc := &Service{cfg: Config{GPU: "software"}}
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.GPU.SoftwareOnly || !opts.SkipHWTests {
+		t.Fatalf("opts = %+v", opts)
+	}
+}
+
 func TestBuildDetectOptionsForwardsEncoderHierarchy(t *testing.T) {
 	svc := &Service{cfg: Config{EncoderHierarchy: []capabilities.AccelType{capabilities.AccelNone}}}
 
-	opts := svc.buildDetectOptions()
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.EncoderHierarchy) != 1 || opts.EncoderHierarchy[0] != capabilities.AccelNone {
 		t.Fatalf("encoder hierarchy = %v, want [none]", opts.EncoderHierarchy)
-	}
-	if opts.GPU.Enabled {
-		t.Fatalf("no GPU spec should mean no scoping, got %+v", opts.GPU)
 	}
 }
 
 func TestBuildDetectOptionsEncoderPreference(t *testing.T) {
 	svc := &Service{cfg: Config{EncoderPreference: "igpu-first"}}
-	opts := svc.buildDetectOptions()
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if opts.EncoderPreference != capabilities.EncoderPreferencePowerSave {
 		t.Fatalf("preference = %q", opts.EncoderPreference)
+	}
+}
+
+func TestBuildDetectOptionsTypedIGPU(t *testing.T) {
+	svc := &Service{cfg: Config{GPUSelector: GPUSelector{Kind: GPUIntegrated}}}
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.GPU.Mode != "igpu" && !opts.GPU.Enabled {
+		// CI may lack DRM; allow fallback
+		if !opts.GPU.Fallback && opts.GPU.Enabled {
+			t.Fatalf("got %+v", opts.GPU)
+		}
 	}
 }

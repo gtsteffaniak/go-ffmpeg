@@ -1,11 +1,13 @@
 package ffmpeg
 
 import (
+	"fmt"
+
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
-func (s *Service) buildDetectOptions() capabilities.DetectOptions {
+func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 	opts := capabilities.DetectOptions{SkipHWTests: s.cfg.SkipHWTests}
 	if len(s.cfg.EncoderHierarchy) > 0 {
 		opts.EncoderHierarchy = s.cfg.EncoderHierarchy
@@ -13,26 +15,46 @@ func (s *Service) buildDetectOptions() capabilities.DetectOptions {
 	if pref, err := capabilities.ParseEncoderPreference(s.cfg.EncoderPreference); err == nil {
 		opts.EncoderPreference = pref
 	}
-	if s.cfg.GPU == "" {
-		return opts
+
+	sel := s.cfg.effectiveGPUSelector()
+	strict := s.cfg.effectiveGPUStrictness()
+	choice, err := ResolveGPUSelector(sel, strict)
+	if err != nil {
+		return opts, fmt.Errorf("gpu selection: %w", err)
 	}
-	choice, err := capabilities.ResolveGPUChoice(s.cfg.GPU)
-	if err != nil || !choice.Enabled {
-		return opts
+	if choice.Warning != "" && s.cfg.Logger != nil {
+		s.cfg.Logger.Warn(choice.Warning, "gpu", sel.String())
 	}
 	opts.GPU = choice
-	opts.RenderDevice = choice.RenderDevice
-	return opts
+	if choice.RenderDevice != "" {
+		opts.RenderDevice = choice.RenderDevice
+	}
+	if choice.SoftwareOnly {
+		opts.SkipHWTests = true
+		if len(opts.EncoderHierarchy) == 0 {
+			opts.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
+		}
+	}
+	return opts, nil
 }
 
 func (s *Service) gpuChoice() (platform.GPUChoice, error) {
-	if s == nil || s.cfg.GPU == "" {
+	if s == nil {
 		return platform.GPUChoice{}, nil
 	}
-	return capabilities.ResolveGPUChoice(s.cfg.GPU)
+	sel := s.cfg.effectiveGPUSelector()
+	return ResolveGPUSelector(sel, s.cfg.effectiveGPUStrictness())
 }
 
-// GPU returns the configured gpu selection string (empty means software only).
+// GPUSelector returns the configured typed GPU selection.
+func (s *Service) GPUSelector() GPUSelector {
+	if s == nil {
+		return GPUSelector{Kind: GPUAuto}
+	}
+	return s.cfg.effectiveGPUSelector()
+}
+
+// GPU returns the deprecated string GPU config (empty when unset).
 func (s *Service) GPU() string {
 	if s == nil {
 		return ""

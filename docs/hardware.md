@@ -1,10 +1,8 @@
 # Hardware acceleration
 
-go-ffmpeg detects which encoders and decode/encode backends your ffmpeg build exposes, optionally runs HW smoke tests, and picks the best path per task. When hardware is missing or unsuitable, encode falls back to software without changing your call site.
+go-ffmpeg detects which encoders and decode/encode backends your ffmpeg build exposes, optionally runs HW smoke tests, and picks the best path per task.
 
-## Default backend order (no config)
-
-Chosen by `HierarchyForPlatform` — same on hybrid and single-GPU; only **availability** differs per backend after detection.
+## Default backend order (no GPU scoping)
 
 | OS | Default order |
 |----|----------------|
@@ -13,54 +11,72 @@ Chosen by `HierarchyForPlatform` — same on hybrid and single-GPU; only **avail
 | **WSL2** | VAAPI → QSV → D3D12 → NVENC |
 | **macOS** | VideoToolbox |
 
-Hybrid laptops use the same backend list as single-GPU hosts. Selection is **per codec**, not per device: `BuildCodecMatrix` walks the hierarchy and picks the first available backend for each codec (`resolvePreferredEncode` / `resolvePreferredDecode`). Intel iGPU paths (VAAPI/QSV) are ahead of NVENC on Linux by default, so H.264/HEVC prefer the iGPU when those encoders pass smoke tests—even though NVENC is still detected on the dGPU. Only `Config.GPU` scopes detection to one device/vendor. On hybrid Linux, the default DRM render node for VAAPI/QSV smoke tests is the **integrated** GPU when both are present (`DefaultRenderNodeForGPUs`).
+Selection is **per codec**, backend-first: `BuildCodecMatrix` walks the hierarchy and picks the first available encoder/decoder for each codec.
 
-## Override precedence (highest first)
-
-1. **`EncoderHierarchy`** — explicit `[]AccelType` order (or `{AccelNone}` for software-preferred while still detecting HW).
-2. **`GPU`** — scopes to one device (`igpu`, `dgpu`, render node, name substring); sets vendor backends via `HierarchyForGPU` (e.g. NVIDIA → `[NVENC]`, Intel → `[VAAPI, QSV]`).
-3. **`EncoderPreference`** — only when (1) and (2) are unset: `performance` / `dgpu-first` → NVENC-before-VAAPI on Linux; `powersave` / `igpu-first` → same as platform default.
-4. **Platform default** — table above.
-
-Per-request overrides: `VideoProfile.Accel`, `ForceSoftware`.
-
-## Configuration
+## GPU configuration (typed API)
 
 ```go
+import "github.com/gtsteffaniak/go-ffmpeg"
+
+// Autoselect (zero value) — platform default order on all GPUs.
 svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
-    GPU:               "igpu",        // optional device scope
-    EncoderPreference: "performance", // optional; ignored if GPU or EncoderHierarchy set
-    // EncoderHierarchy: []ffmpeg.AccelType{ffmpeg.AccelNVENC, ffmpeg.AccelVAAPI},
+    GPUSelector: ffmpeg.GPUSelector{Kind: ffmpeg.GPUAuto},
+})
+
+// Integrated / discrete / software
+svc, _ = ffmpeg.New(ctx, ffmpeg.Config{
+    GPUSelector: ffmpeg.GPUSelector{Kind: ffmpeg.GPUIntegrated},
+    GPUStrictness: ffmpeg.GPUStrictOnUnavailable, // error if no iGPU; default is fallback to auto
+})
+
+svc, _ = ffmpeg.New(ctx, ffmpeg.Config{
+    GPUSelector: ffmpeg.GPUByRenderNode("/dev/dri/renderD129"),
+})
+
+svc, _ = ffmpeg.New(ctx, ffmpeg.Config{
+    GPUSelector: ffmpeg.GPUByName("RTX 3050"),
+})
+
+svc, _ = ffmpeg.New(ctx, ffmpeg.Config{
+    GPUSelector: ffmpeg.GPUSelector{Kind: ffmpeg.GPUSoftware},
 })
 ```
 
-Empty `GPU` means **no device scoping** — detection probes the full platform; the hierarchy above picks preferred codecs.
+### FileBrowser YAML (string wrapper)
 
-## Detection (all OS)
+FileBrowser can keep a YAML string and map it with the optional parser:
 
-1. **`platform.Detect()`** — OS/arch, vendor flags (NVIDIA/Intel/AMD), VAAPI driver, QSV runtime, DRI nodes, PCI GPU list (display class `0x03xx` only), distro for install hints.
-2. **FFmpeg inventory** — `-encoders` / `-decoders` / filters / protocols from the binary.
-3. **Optional smoke tests** — short lavfi encode per HW encoder; VAAPI uses `platform.RenderDevice` (first render node, or selected GPU’s node). Platform gates skip impossible backends (e.g. QSV without `libmfx-gen`, AMF without AMD).
-4. **GPU scoping** — when `GPU` is set, `ScopedPlatform` narrows vendor flags; encoders/decoders outside the scoped hierarchy are listed but marked skipped (not smoke-tested).
-5. **Codec matrix** — walks the resolved hierarchy; first **available** encoder/decoder per codec becomes `Preferred` / `DecodePreferred`.
+```yaml
+gpu: ""   # default=autoselect
+# gpu: igpu
+# gpu: dgpu
+# gpu: software
+# gpu: /dev/dri/renderD129
+# gpu: "RTX 3050"
+```
 
-## Report
+```go
+sel, err := ffmpeg.ParseGPUSelector(yamlGPU)
+if err != nil { /* handle */ }
+choice, err := ffmpeg.ResolveGPUSelector(sel, ffmpeg.GPUFallbackOnUnavailable)
 
-The capability report lists smoke-test results per backend and, under **Codec resolution**, each codec’s chosen path with backend, GPU name, and DRM render node when known.
+svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
+    GPUSelector: sel,
+    GPUStrictness: ffmpeg.GPUFallbackOnUnavailable,
+})
+```
 
-Skip slow tests: `SkipHWTests` or `GOFFMPEG_SKIP_HW=1`. CLI: `go-ffmpeg -skip-hw-tests`.
+Deprecated: `Config.GPU` string is still accepted when `GPUSelector` is zero.
 
-## Backends
+## Override precedence
 
-| Backend | Typical platform |
-|---------|------------------|
-| NVENC | NVIDIA |
-| AMF | AMD (Windows; limited Linux) |
-| QSV | Intel |
-| VAAPI | Intel/AMD Linux |
-| VideoToolbox | macOS |
-| D3D12 | WSL2 |
+1. **`EncoderHierarchy`**
+2. **`GPUSelector`** (scopes vendor/device; `GPUSoftware` skips HW tests)
+3. **`EncoderPreference`** (`performance` = NVENC-first on Linux)
+4. **Platform default**
 
-## Non-goals (today)
+## Detection
 
-Vulkan encode, RKMPP, V4L2 mem2mem, separate NVDEC vs NVENC policy APIs.
+`platform.Detect()` → FFmpeg inventory → optional smoke tests → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
+
+Skip HW tests: `SkipHWTests`, `GPUSoftware`, or `GOFFMPEG_SKIP_HW=1`.

@@ -64,7 +64,7 @@ func main() {
 }
 ```
 
-Set `GPU` in `Config` to scope detection to one device (`"dgpu"`, `"igpu"`, render node path, or GPU name). Use `EncoderPreference: "powersave"` on hybrid laptops to prefer VAAPI/QSV over NVENC. See [docs/hardware.md](docs/hardware.md).
+Set `GPUSelector` in `Config` (`GPUIntegrated`, `GPUDiscrete`, `GPUByRenderNode`, `GPUSoftware`, or zero for auto). FileBrowser-style YAML strings can use `ParseGPUSelector`. See [docs/hardware.md](docs/hardware.md).
 
 ## Examples
 

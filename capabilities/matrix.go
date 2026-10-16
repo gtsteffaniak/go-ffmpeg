@@ -158,6 +158,7 @@ type Capabilities struct {
 	GeneratedAt      time.Time                    `json:"generatedAt"`
 	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`
 	SelectedGPU      *platform.GPUChoice          `json:"selectedGpu,omitempty"`
+	GPUSelection     *platform.GPUChoice          `json:"gpuSelection,omitempty"`
 }
 
 // NewCapabilities returns an empty capability matrix.

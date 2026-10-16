@@ -312,10 +312,15 @@ func TestReportSystemPlatformVideoToolbox(t *testing.T) {
 }
 
 func TestReportSelectedGPUAppleVideoToolbox(t *testing.T) {
-	choice := platform.GPUChoice{Enabled: true, Vendor: "apple", Name: "VideoToolbox"}
+	choice := platform.GPUChoice{
+		Enabled: true, Vendor: "apple", Name: "VideoToolbox",
+		Mode: platform.GPUModeIGPU, Label: "igpu",
+	}
 	caps := capabilities.NewCapabilities()
 	caps.Platform = platform.ScopedPlatform(platform.Info{OS: "darwin", Arch: "arm64", VideoToolbox: true}, choice)
 	caps.SelectedGPU = &choice
+	caps.GPUSelection = &choice
+	caps.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelVideoToolbox}
 	if report := caps.ReportString(); !strings.Contains(report, "Apple VideoToolbox: yes") {
 		t.Fatalf("expected scoped Apple VideoToolbox gate to report yes, got:\n%s", report)
 	}
