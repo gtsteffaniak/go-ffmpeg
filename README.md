@@ -64,7 +64,7 @@ func main() {
 }
 ```
 
-Set `GPU` in `Config` to enable hardware acceleration (`"dgpu"`, `"igpu"`, render node path, or GPU name). Empty `GPU` means software-only encode.
+Set `GPUSelector` in `Config` (`GPUIntegrated`, `GPUDiscrete`, `GPUByRenderNode`, `GPUSoftware`, or zero for auto). FileBrowser-style YAML strings can use `ParseGPUSelector`. See [docs/hardware.md](docs/hardware.md).
 
 ## Examples
 

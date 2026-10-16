@@ -29,9 +29,9 @@ const (
 	CodecHEVC VideoCodec = "hevc"
 )
 
-// DefaultHierarchy returns Linux-standard order when platform is unknown.
+// DefaultHierarchy returns the Linux-style order when platform is unknown.
 func DefaultHierarchy() []AccelType {
-	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
+	return []AccelType{AccelVAAPI, AccelQSV, AccelNVENC, AccelAMF}
 }
 
 // AllEncoderAccelTypes lists every hardware backend the library understands.
@@ -41,22 +41,23 @@ func AllEncoderAccelTypes() []AccelType {
 
 // HierarchyForPlatform returns encoder preference order for the detected host.
 // Software encoding is chosen automatically when no hardware path is available.
+// Hybrid vs single-GPU does not change this list; availability is decided per backend at detect time.
 //
-//   - Windows:     NVENC → QSV → AMF
-//   - Linux:       NVENC → VAAPI → QSV → AMF
-//   - WSL2:        NVENC → D3D12 → VAAPI → QSV
+//   - Windows:     QSV → NVENC → AMF
+//   - Linux:       VAAPI → QSV → NVENC → AMF
+//   - WSL2:        VAAPI → QSV → D3D12 → NVENC
 //   - macOS:       VideoToolbox only
 func HierarchyForPlatform(plat PlatformInfo) []AccelType {
 	switch plat.OS {
 	case "darwin":
 		return []AccelType{AccelVideoToolbox}
 	case "windows":
-		return []AccelType{AccelNVENC, AccelQSV, AccelAMF}
+		return []AccelType{AccelQSV, AccelNVENC, AccelAMF}
 	}
 	if plat.WSL {
-		return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
+		return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12, AccelNVENC}
 	}
-	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
+	return []AccelType{AccelVAAPI, AccelQSV, AccelNVENC, AccelAMF}
 }
 
 // BuildProfile describes the inferred FFmpeg build type.
@@ -157,6 +158,7 @@ type Capabilities struct {
 	GeneratedAt      time.Time                    `json:"generatedAt"`
 	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`
 	SelectedGPU      *platform.GPUChoice          `json:"selectedGpu,omitempty"`
+	GPUSelection     *platform.GPUChoice          `json:"gpuSelection,omitempty"`
 }
 
 // NewCapabilities returns an empty capability matrix.

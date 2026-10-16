@@ -214,7 +214,7 @@ func platformSkipReason(kind string, plat platform.Info) string {
 		}
 	case "amf":
 		if !plat.AMD {
-			return "[platform] AMF is AMD-only (Intel/NVIDIA GPU detected)"
+			return "[platform] no AMD GPU detected (AMF requires AMD hardware)"
 		}
 	case "qsv":
 		if !plat.Intel {
@@ -224,7 +224,8 @@ func platformSkipReason(kind string, plat platform.Info) string {
 			return "[platform] Intel Quick Sync not detected on this host"
 		}
 		if !plat.VAAPI {
-			return "[driver] Intel Quick Sync requires Intel VAAPI driver\nFix: sudo apt install intel-media-va-driver-non-free"
+			fix := platform.NewPackageHints(plat.Distro).IntelVADriverFix()
+			return "[driver] Intel Quick Sync requires Intel VAAPI driver\nFix: " + fix
 		}
 		if !plat.QSVRuntime {
 			return qsvRuntimeSkipReason(plat)
@@ -232,7 +233,8 @@ func platformSkipReason(kind string, plat platform.Info) string {
 	case "vaapi":
 		if !plat.VAAPI {
 			if plat.Intel {
-				return "[driver] Intel VAAPI driver not installed\nFix: sudo apt install intel-media-va-driver-non-free"
+				fix := platform.NewPackageHints(plat.Distro).IntelVADriverFix()
+				return "[driver] Intel VAAPI driver not installed\nFix: " + fix
 			}
 			return "[platform] no VAAPI driver found for this GPU"
 		}
@@ -241,17 +243,7 @@ func platformSkipReason(kind string, plat platform.Info) string {
 }
 
 func qsvRuntimeSkipReason(plat platform.Info) string {
-	msg := "[driver] Intel oneVPL GPU runtime missing (libmfx-gen) — libvpl2 dispatcher alone cannot create QSV sessions"
-	if hint := plat.Details["qsv_runtime_hint"]; hint != "" {
-		msg += "\nFix: sudo apt install libmfx-gen1.2 intel-media-va-driver-non-free libvpl2 vainfo"
-		msg += "\nNote: " + hint
-	} else {
-		msg += "\nFix: install libmfx-gen / oneVPL GPU runtime for your distro (Ubuntu/Debian: libmfx-gen1.2)"
-	}
-	if plat.VAAPI {
-		msg += "\nWorkaround: VAAPI encode/decode is working — use h264_vaapi/hevc_vaapi/av1_vaapi until QSV runtime is installed"
-	}
-	return msg
+	return platform.NewPackageHints(plat.Distro).QSVRuntimeSkipMessage(plat)
 }
 
 // encoderActuallyCompiled verifies the encoder exists beyond a stale list entry.

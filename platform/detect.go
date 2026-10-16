@@ -15,6 +15,9 @@ func Detect() Info {
 		Arch:    runtime.GOARCH,
 		Details: map[string]string{},
 	}
+	if runtime.GOOS == "linux" {
+		info.Distro = DetectDistro()
+	}
 	info.WSL = isWSLEnvironment()
 	if info.WSL {
 		info.WSLGPUPartitioning = wslGPUPartitioning()
@@ -27,13 +30,16 @@ func Detect() Info {
 	info.AMD = amdGPUPresent()
 	info.DRI = driAvailable()
 	if info.DRI {
-		if nodes, err := filepath.Glob("/dev/dri/renderD*"); err == nil && len(nodes) > 0 {
+		if gpus, err := listDRMGPUs(); err == nil && len(gpus) > 0 {
+			info.Details["render_device"] = DefaultRenderNodeForGPUs(gpus)
+		} else if nodes, err := filepath.Glob("/dev/dri/renderD*"); err == nil && len(nodes) > 0 {
 			info.Details["render_device"] = nodes[0]
 		}
 	}
 	info.VAAPI, info.Details["vaapi_driver"] = vaapiAvailableDetailed()
 	if info.Intel && !info.VAAPI {
-		info.Details["intel_va_hint"] = "install intel-media-va-driver or intel-media-va-driver-non-free for Quick Sync / VAAPI on Intel GPUs"
+		hints := NewPackageHints(info.Distro)
+		info.Details["intel_va_hint"] = "install Intel VAAPI driver (" + strings.Join(hints.Distro.IntelVADriverPackages(), " or ") + ")"
 	}
 	info.QSV = qsvAvailable(info.WSL, info.Intel)
 	if runtime.GOOS == "linux" && info.Intel {
@@ -42,7 +48,7 @@ func Detect() Info {
 			info.Details["vpl_dispatcher"] = dispatcher
 		}
 		if info.QSV && !info.QSVRuntime {
-			info.Details["qsv_runtime_hint"] = "install libmfx-gen1.2 (oneVPL GPU runtime); libvpl2 alone is not sufficient for QSV"
+			info.Details["qsv_runtime_hint"] = info.Distro.QSVRuntimeHint()
 		}
 	} else if runtime.GOOS == "windows" && info.Intel {
 		// Windows bundles runtime with Intel graphics driver; validated at encode time.
@@ -354,13 +360,11 @@ func detectGPUDescription() string {
 	if err != nil {
 		return ""
 	}
-	var gpus []string
+	var lines []string
 	for _, line := range strings.Split(string(out), "\n") {
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "vga") || strings.Contains(lower, "3d") || strings.Contains(lower, "display") {
-			gpus = append(gpus, strings.TrimSpace(line))
-		}
+		lines = append(lines, line)
 	}
+	gpus := FilterDisplayControllerLines(lines)
 	return strings.Join(gpus, "; ")
 }
 

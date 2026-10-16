@@ -20,7 +20,8 @@ func hwTroubleshoot(encoderName, kind, output string, plat platform.Info) (prima
 		}
 		if strings.Contains(output, "error creating a mfx session") || strings.Contains(output, "mfx_err") {
 			if !plat.QSVRuntime {
-				primary = "[driver] Intel oneVPL GPU runtime missing — MFX -9 from libvpl2 without libmfx-gen"
+				runtimePkg := qsvRuntimePackageLabel(plat)
+				primary = "[driver] Intel oneVPL GPU runtime missing — MFX -9 from libvpl2 without " + runtimePkg
 			} else {
 				primary = "[runtime] Intel Quick Sync session failed (MFX -9) — GPU runtime present but session init failed"
 			}
@@ -63,19 +64,22 @@ func hwTroubleshoot(encoderName, kind, output string, plat platform.Info) (prima
 	return primary, nil
 }
 
+func qsvRuntimePackageLabel(plat platform.Info) string {
+	pkgs := platform.NewPackageHints(plat.Distro).Distro.QSVRuntimePackages()
+	if len(pkgs) > 0 {
+		return pkgs[0]
+	}
+	return "libmfx-gen"
+}
+
 func qsvHints(encoderName string, plat platform.Info) []string {
 	if !plat.QSVRuntime {
-		return []string{
-			"Required stack: intel-media-va-driver-non-free + libvpl2 + libmfx-gen1.2",
-			"libvpl2 is the oneVPL dispatcher; libmfx-gen1.2 is the GPU runtime FFmpeg needs for QSV",
-			"Fix: sudo apt install libmfx-gen1.2 intel-media-va-driver-non-free libvpl2 vainfo && sudo reboot",
-			"Verify: ls /usr/lib/x86_64-linux-gnu/libmfx-gen.so.1.2 && vainfo --display drm --device /dev/dri/renderD128",
-		}
+		return platform.NewPackageHints(plat.Distro).QSVRuntimeFix()
 	}
 
 	hints := []string{
 		"Runtime installed but session failed — check driver/runtime version alignment",
-		"Verify: vainfo lists encode profiles; intel-media-va-driver-non-free and libmfx-gen1.2 versions should match",
+		"Verify: vainfo lists encode profiles; Intel VAAPI driver and oneVPL GPU runtime versions should match",
 		"Check: iGPU enabled in BIOS; user in render/video group (groups | grep render)",
 		"Ubuntu FFmpeg uses oneVPL (--enable-libvpl), not legacy libmfx1",
 	}
@@ -86,15 +90,7 @@ func qsvHints(encoderName string, plat platform.Info) []string {
 }
 
 func vaapiDriverHints(plat platform.Info) []string {
-	if plat.Intel {
-		return []string{
-			"Fix: sudo apt install intel-media-va-driver-non-free",
-			"Verify: ls /dev/dri/renderD* and run vainfo",
-		}
-	}
-	return []string{
-		"Fix: install the VAAPI driver for your GPU (Intel: intel-media-va-driver-non-free; AMD: mesa-va-drivers)",
-	}
+	return platform.NewPackageHints(plat.Distro).VAAPIInitFix(plat.Intel)
 }
 
 func qsvVP9EncodeUnsupported(output string) bool {

@@ -124,26 +124,52 @@ func compiledProtocolNames(c *Capabilities) []string {
 }
 
 func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
-	if c.SelectedGPU == nil || !c.SelectedGPU.Enabled {
+	gpu := c.GPUSelection
+	if gpu == nil && c.SelectedGPU != nil {
+		gpu = c.SelectedGPU
+	}
+	if gpu == nil {
 		return
 	}
-	gpu := c.SelectedGPU
-	fmt.Fprintln(w, st.section("Selected GPU:"))
-	fmt.Fprintf(w, "  %s %s\n", st.bold("Device:"), st.cyan(gpu.Name))
-	if gpu.Vendor != "" {
+	fmt.Fprintln(w, st.section("GPU configuration:"))
+	if gpu.Label != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Selector:"), st.cyan(gpu.Label))
+	} else if gpu.RequestedSpec != "" {
+		fmt.Fprintf(w, "  %s %q\n", st.bold("Selector:"), gpu.RequestedSpec)
+	} else {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Selector:"), st.dim("auto"))
+	}
+	fmt.Fprintf(w, "  %s %s\n", st.bold("Resolved mode:"), st.cyan(string(gpu.Mode)))
+	if gpu.SoftwareOnly {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.cyan("CPU only — hardware smoke tests skipped"))
+	} else if gpu.AutoSelect {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.dim("Autoselect — platform default backend order on all detected GPUs"))
+	} else if gpu.Enabled {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.cyan("Scoped to one GPU/vendor"))
+	}
+	if gpu.Fallback && gpu.FallbackReason != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Fallback:"), st.yellow(gpu.FallbackReason))
+	}
+	if gpu.Warning != "" && gpu.Warning != gpu.FallbackReason {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Warning:"), st.yellow(gpu.Warning))
+	}
+	if gpu.Enabled && gpu.Name != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device:"), st.cyan(gpu.Name))
+	}
+	if gpu.Enabled && gpu.Vendor != "" {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Vendor:"), st.cyan(gpu.Vendor))
 	}
-	if dev := c.Platform.Details["render_device"]; dev != "" {
+	if dev := c.Platform.Details["render_device"]; dev != "" && gpu.Enabled {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Render node:"), st.cyan(dev))
 	}
-	if len(c.EncoderHierarchy) > 0 {
+	if c.SelectedGPU != nil && c.SelectedGPU.Enabled && len(c.EncoderHierarchy) > 0 {
 		labels := make([]string, 0, len(c.EncoderHierarchy))
 		for _, accel := range c.EncoderHierarchy {
 			labels = append(labels, AccelLabel(accel))
 		}
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Encoder hierarchy:"), st.dim(strings.Join(labels, " → ")))
+		writeScopedPlatformGates(w, st, c)
 	}
-	writeScopedPlatformGates(w, st, c)
 }
 
 func writeScopedPlatformGates(w io.Writer, st reportStyle, c *Capabilities) {
@@ -299,7 +325,7 @@ func writeCodecResolutionSection(w io.Writer, st reportStyle, c *Capabilities) {
 			fmt.Fprintf(w, "    %s %s%s",
 				st.dim("encode ->"),
 				st.encoderLabel(p.Encoder, p.Accel),
-				st.resolutionAccelSuffix(p.Accel),
+				st.resolutionAccelSuffix(c, p.Accel),
 			)
 			if p.Fallback != "" && p.Fallback != p.Encoder {
 				fmt.Fprintf(w, " | %s %s", st.dim("fallback"), st.fallbackLabel(p.Fallback, p.Accel))
@@ -313,7 +339,7 @@ func writeCodecResolutionSection(w io.Writer, st reportStyle, c *Capabilities) {
 			fmt.Fprintf(w, "    %s %s%s",
 				st.dim("decode ->"),
 				st.decoderLabel(d.Decoder, d.Accel),
-				st.resolutionAccelSuffix(d.Accel),
+				st.resolutionAccelSuffix(c, d.Accel),
 			)
 			if d.Fallback != "" && d.Fallback != d.Decoder {
 				fmt.Fprintf(w, " | %s %s", st.dim("fallback"), st.fallbackDecoderLabel(d.Fallback, d.Accel))

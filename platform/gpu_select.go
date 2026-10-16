@@ -1,24 +1,15 @@
 package platform
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 )
 
-// GPUChoice describes a resolved GPU selection from user config.
-type GPUChoice struct {
-	Enabled      bool   `json:"enabled"`
-	RenderDevice string `json:"renderDevice,omitempty"`
-	Vendor       string `json:"vendor,omitempty"`
-	Name         string `json:"name,omitempty"`
-}
-
-type drmGPU struct {
+// GPUDevice describes one DRM render node and its PCI GPU.
+type GPUDevice struct {
 	RenderNode string
 	VendorID   string
 	Vendor     string
@@ -27,118 +18,35 @@ type drmGPU struct {
 	PCIAddress string
 }
 
-// ResolveGPU interprets a gpu config value.
-// Empty input disables hardware acceleration.
-// Supported values: default, igpu, dgpu, a render node path (/dev/dri/renderD*), or a device name substring.
-func ResolveGPU(spec string) (GPUChoice, error) {
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		return GPUChoice{}, nil
-	}
+type drmGPU = GPUDevice
 
-	switch runtime.GOOS {
-	case "linux":
-		return resolveGPULinux(spec)
-	case "darwin":
-		return GPUChoice{Enabled: true, Vendor: "apple", Name: "VideoToolbox"}, nil
-	case "windows":
-		return resolveGPUWindows(spec)
-	default:
-		return GPUChoice{Enabled: true, Vendor: "unknown", Name: spec}, nil
-	}
+// ListGPUs returns DRM GPUs sorted by render node name.
+func ListGPUs() ([]GPUDevice, error) {
+	return listDRMGPUs()
 }
 
-func resolveGPULinux(spec string) (GPUChoice, error) {
-	devices, err := listDRMGPUs()
-	if err != nil {
-		return GPUChoice{}, err
+// DefaultRenderNodeForGPUs picks a render node for VAAPI/QSV smoke tests.
+// On hybrid systems (integrated + discrete), the integrated GPU node is preferred.
+func DefaultRenderNodeForGPUs(gpus []GPUDevice) string {
+	if len(gpus) == 0 {
+		return ""
 	}
-
-	key := strings.ToLower(spec)
-	switch key {
-	case "default", "igpu":
-		for _, d := range devices {
-			if d.Integrated {
-				return gpuChoiceFromDRM(d), nil
-			}
-		}
-		if len(devices) > 0 {
-			return gpuChoiceFromDRM(devices[0]), nil
-		}
-		return GPUChoice{}, fmt.Errorf("no integrated GPU render node found for gpu=%q", spec)
-	case "dgpu":
-		for _, d := range devices {
-			if !d.Integrated {
-				return gpuChoiceFromDRM(d), nil
-			}
-		}
-		return GPUChoice{}, fmt.Errorf("no discrete GPU render node found for gpu=%q", spec)
-	}
-
-	if strings.HasPrefix(spec, "/dev/") {
-		if _, err := os.Stat(spec); err != nil {
-			return GPUChoice{}, fmt.Errorf("gpu render node %q not accessible: %w", spec, err)
-		}
-		for _, d := range devices {
-			if d.RenderNode == spec {
-				return gpuChoiceFromDRM(d), nil
-			}
-		}
-		vendor := vendorFromRenderNode(spec)
-		return GPUChoice{
-			Enabled:      true,
-			RenderDevice: spec,
-			Vendor:       vendor,
-			Name:         spec,
-		}, nil
-	}
-
-	for _, d := range devices {
-		if nameMatches(d.Name, spec) || nameMatches(d.RenderNode, spec) {
-			return gpuChoiceFromDRM(d), nil
+	hasIGPU, hasDGPU := false, false
+	for _, g := range gpus {
+		if g.Integrated {
+			hasIGPU = true
+		} else {
+			hasDGPU = true
 		}
 	}
-	if desc := detectGPUDescription(); desc != "" {
-		for _, part := range strings.Split(desc, ";") {
-			part = strings.TrimSpace(part)
-			if nameMatches(part, spec) {
-				vendor := vendorFromDescription(part)
-				for _, d := range devices {
-					if d.Vendor == vendor || nameMatches(d.Name, part) {
-						return gpuChoiceFromDRM(d), nil
-					}
-				}
-				return GPUChoice{Enabled: true, Vendor: vendor, Name: part}, nil
+	if hasIGPU && hasDGPU {
+		for _, g := range gpus {
+			if g.Integrated {
+				return g.RenderNode
 			}
 		}
 	}
-	return GPUChoice{}, fmt.Errorf("no GPU matching %q", spec)
-}
-
-func resolveGPUWindows(spec string) (GPUChoice, error) {
-	key := strings.ToLower(strings.TrimSpace(spec))
-	switch key {
-	case "default", "igpu", "dgpu":
-		if nvidiaAvailable() {
-			return GPUChoice{Enabled: true, Vendor: "nvidia", Name: "NVIDIA GPU"}, nil
-		}
-		if intelGPUPresent() {
-			return GPUChoice{Enabled: true, Vendor: "intel", Name: "Intel GPU"}, nil
-		}
-		if amdGPUPresent() {
-			return GPUChoice{Enabled: true, Vendor: "amd", Name: "AMD GPU"}, nil
-		}
-		return GPUChoice{}, fmt.Errorf("no GPU found for gpu=%q", spec)
-	default:
-		desc := detectGPUDescription()
-		if desc != "" && nameMatches(desc, spec) {
-			return GPUChoice{Enabled: true, Vendor: vendorFromDescription(desc), Name: spec}, nil
-		}
-		if nvidiaAvailable() && nameMatches("nvidia", spec) {
-			return GPUChoice{Enabled: true, Vendor: "nvidia", Name: spec}, nil
-		}
-		return GPUChoice{Enabled: true, Vendor: "unknown", Name: spec}, nil
-	}
+	return gpus[0].RenderNode
 }
 
 func gpuChoiceFromDRM(d drmGPU) GPUChoice {

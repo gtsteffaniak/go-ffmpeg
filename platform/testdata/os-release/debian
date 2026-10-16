@@ -1,0 +1,4 @@
+NAME="Debian GNU/Linux"
+ID=debian
+ID_LIKE=debian
+VERSION_ID="12"

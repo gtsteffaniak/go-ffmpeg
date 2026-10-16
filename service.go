@@ -56,7 +56,11 @@ func (s *Service) Reload(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, s.cfg.DetectTimeout)
 	defer cancel()
 
-	caps, err := capabilities.Detect(dctx, s.runner, s.buildDetectOptions())
+	detectOpts, err := s.buildDetectOptions()
+	if err != nil {
+		return err
+	}
+	caps, err := capabilities.Detect(dctx, s.runner, detectOpts)
 	if err != nil {
 		return err
 	}
@@ -329,6 +333,31 @@ const (
 // HierarchyForPlatform returns platform-specific encoder preference order.
 func HierarchyForPlatform(plat capabilities.PlatformInfo) []capabilities.AccelType {
 	return capabilities.HierarchyForPlatform(plat)
+}
+
+// EncoderPreference selects backend priority when EncoderHierarchy is unset.
+type EncoderPreference = capabilities.EncoderPreference
+
+const (
+	// EncoderPreferencePowerSave matches the platform iGPU-first default (VAAPI on Linux, QSV on Windows).
+	EncoderPreferencePowerSave = capabilities.EncoderPreferencePowerSave
+	// EncoderPreferencePerformance prefers discrete GPU backends (NVENC before VAAPI on Linux).
+	EncoderPreferencePerformance = capabilities.EncoderPreferencePerformance
+)
+
+// ParseEncoderPreference parses Config.EncoderPreference values.
+func ParseEncoderPreference(s string) (EncoderPreference, error) {
+	return capabilities.ParseEncoderPreference(s)
+}
+
+// HierarchyForPowerSave returns the power-saving encoder order for a platform.
+func HierarchyForPowerSave(plat capabilities.PlatformInfo) []capabilities.AccelType {
+	return capabilities.HierarchyForPowerSave(plat)
+}
+
+// HierarchyForPerformance returns the discrete-GPU-first encoder order for a platform.
+func HierarchyForPerformance(plat capabilities.PlatformInfo) []capabilities.AccelType {
+	return capabilities.HierarchyForPerformance(plat)
 }
 
 // TranscodeOptions configures transcoding.

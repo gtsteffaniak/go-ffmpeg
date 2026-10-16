@@ -15,5 +15,6 @@ type Info struct {
 	VideoToolbox       bool              `json:"videotoolbox"`
 	WSL                bool              `json:"wsl"`
 	WSLGPUPartitioning bool              `json:"wslGpuPartitioning"`
+	Distro             DistroContext     `json:"distro,omitempty"`
 	Details            map[string]string `json:"details,omitempty"`
 }

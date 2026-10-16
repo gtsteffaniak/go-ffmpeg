@@ -43,12 +43,21 @@ type Config struct {
 	// still detected and reported, but the resolver prefers software.
 	EncoderHierarchy []capabilities.AccelType
 
-	// GPU selects which device to use for hardware encoder smoke tests and
-	// HW-aware encode/decode resolution. Empty means no GPU scoping: the
-	// platform default hierarchy applies and hardware encoders are preferred
-	// when available (use EncoderHierarchy to prefer software instead).
-	// Common values: "dgpu", "igpu", a DRM render node (/dev/dri/renderD128),
-	// or a substring of the GPU name from the capability report.
+	// EncoderPreference selects backend priority when EncoderHierarchy is unset and
+	// GPU is empty. Empty or "default": VAAPI-first on Linux, QSV-first on Windows.
+	// "powersave" is an alias for that default. "performance" (dgpu-first) prefers NVENC before VAAPI on Linux.
+	EncoderPreference string
+
+	// GPUSelector selects which GPU to use. Zero value (GPUAuto) autoselects using
+	// the platform default backend order on all detected GPUs.
+	GPUSelector GPUSelector
+
+	// GPUStrictness controls behavior when the selected GPU is unavailable.
+	// Zero (GPUFallbackOnUnavailable) falls back to auto and records the reason in the capability report.
+	GPUStrictness GPUStrictness
+
+	// GPU is deprecated: use GPUSelector. When GPUSelector is zero and GPU is
+	// non-empty, the string is parsed with ParseGPUSelector (FileBrowser YAML compat).
 	GPU string
 
 	// SkipHWTests skips expensive hardware encoder smoke tests.
