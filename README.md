@@ -64,7 +64,7 @@ func main() {
 }
 ```
 
-Set `GPU` in `Config` to enable hardware acceleration (`"dgpu"`, `"igpu"`, render node path, or GPU name). Empty `GPU` means software-only encode.
+Set `GPU` in `Config` to scope detection to one device (`"dgpu"`, `"igpu"`, render node path, or GPU name). Use `EncoderPreference: "powersave"` on hybrid laptops to prefer VAAPI/QSV over NVENC. See [docs/hardware.md](docs/hardware.md).
 
 ## Examples
 
