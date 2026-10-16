@@ -154,8 +154,8 @@ func runBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fixtureName 
 	result.HW = verifyHWPlan(svc, params, variant.Accel)
 
 	keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, file)
-	keyframeSeekTimes := goffmpeg.SanitizeHLSKeyframes(keyframes, info.Duration)
-	starts, durations := goffmpeg.BuildHLSSegmentTimeline(info.Duration, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
+	keyframeSeekTimes, mediaDur := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
+	starts, durations := goffmpeg.BuildHLSSegmentTimeline(mediaDur, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec, 0)
 	if segCount > len(starts) {
 		segCount = len(starts)
 	}

@@ -114,8 +114,8 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 	}()
 
 	keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, file)
-	keyframeSeekTimes := goffmpeg.SanitizeHLSKeyframes(keyframes, info.Duration)
-	starts, durations := goffmpeg.BuildHLSSegmentTimeline(info.Duration, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
+	keyframeSeekTimes, mediaDur := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
+	starts, durations := goffmpeg.BuildHLSSegmentTimeline(mediaDur, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec, 0)
 	opts := continuousOptions(file, params, outDir, starts, durations, mode == "transcode", startIndex, startSec)
 	start := time.Now()
 	job, err := svc.StartHLSContinuous(ctx, opts)
@@ -314,8 +314,9 @@ func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir str
 		Remux:            params.Remux,
 		VideoCopy:        params.VideoCopy,
 		GOP:              params.GOP,
-		InputVideoCodec:  params.InputVideoCodec,
-		OmitAudio:        params.OmitAudio,
+		InputVideoCodec:   params.InputVideoCodec,
+		InputStartTimeSec: params.InputStartTimeSec,
+		OmitAudio:         params.OmitAudio,
 	}
 }
 

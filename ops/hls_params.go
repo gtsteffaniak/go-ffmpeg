@@ -20,6 +20,8 @@ type HLSSegmentParams struct {
 	InputVideoCodec string
 	// OmitAudio drops audio from generated segments (cache fingerprint only when set).
 	OmitAudio bool
+	// InputStartTimeSec is the probed container start_time (added to media seeks for ffmpeg -ss).
+	InputStartTimeSec float64
 }
 
 // HLSSegmentBuildInput describes remux/copy/transcode path selection for one file.
@@ -54,7 +56,8 @@ func BuildHLSSegmentParamsFast(in HLSSegmentBuildInput, defaults OnDemandHLSDefa
 		VideoCopy:       in.VideoCopy,
 		MaxHeight:       in.MaxHeight,
 		GOP:             defaults.DefaultGOP,
-		InputVideoCodec: in.Info.VideoCodec,
+		InputVideoCodec:   in.Info.VideoCodec,
+		InputStartTimeSec: in.Info.StartTime,
 	}
 	if !in.Remux && !in.VideoCopy {
 		params.Decode = in.Decode

@@ -7,7 +7,55 @@ const (
 	hlsMinSegmentDurationSec = 0.5 // ffmpeg cannot encode shorter on-demand segments reliably
 	// Reject only pathological indexes (e.g. every frame marked as a keyframe at 15+ Hz).
 	hlsKeyframeMaxPerSec = 15.0
+	hlsStartTimeEpsilonSec = 0.001
 )
+
+// HLSMediaTimelineDuration converts ffprobe format duration to a 0-based media timeline length.
+func HLSMediaTimelineDuration(durationSec, startTimeSec float64) float64 {
+	if durationSec <= 0 {
+		return durationSec
+	}
+	if startTimeSec <= hlsStartTimeEpsilonSec {
+		return durationSec
+	}
+	media := durationSec - startTimeSec
+	if media < 0 {
+		return 0
+	}
+	return media
+}
+
+// NormalizeHLSKeyframeTimes rebases container keyframe times onto a 0-based media timeline.
+func NormalizeHLSKeyframeTimes(keyframes []float64, startTimeSec float64) []float64 {
+	if len(keyframes) == 0 || startTimeSec <= hlsStartTimeEpsilonSec {
+		return append([]float64(nil), keyframes...)
+	}
+	out := make([]float64, 0, len(keyframes))
+	for _, t := range keyframes {
+		t -= startTimeSec
+		if t < 0 {
+			t = 0
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// HLSInputSeekSec maps a media-timeline position to an ffmpeg input -ss value in container time.
+func HLSInputSeekSec(mediaSec, startTimeSec float64) float64 {
+	if mediaSec < 0 {
+		mediaSec = 0
+	}
+	return mediaSec + startTimeSec
+}
+
+// PrepareHLSMediaTimeline normalizes keyframes and duration for HLS segment planning.
+func PrepareHLSMediaTimeline(keyframes []float64, durationSec, startTimeSec float64) (sanitizedKeyframes []float64, mediaDurationSec float64) {
+	mediaDurationSec = HLSMediaTimelineDuration(durationSec, startTimeSec)
+	norm := NormalizeHLSKeyframeTimes(keyframes, startTimeSec)
+	sanitizedKeyframes = SanitizeHLSKeyframes(norm, mediaDurationSec)
+	return sanitizedKeyframes, mediaDurationSec
+}
 
 // SanitizeHLSKeyframes filters spurious keyframe probes from corrupt indexes.
 // Returns nil when keyframes are unusable so callers fall back to a fixed grid.
@@ -42,11 +90,18 @@ func SanitizeHLSKeyframes(keyframes []float64, durationSec float64) []float64 {
 	return out
 }
 
-// BuildHLSSegmentTimeline returns segment start times and durations in seconds.
-// segmentDurationSec is the target grid length (typically 4s for on-demand fMP4).
-func BuildHLSSegmentTimeline(durationSec float64, keyframes []float64, segmentDurationSec float64) (starts, durations []float64) {
+// BuildHLSSegmentTimeline returns segment start times and durations in seconds on a
+// 0-based media timeline. When startTimeSec is non-zero, keyframes and duration are
+// normalized by subtracting the container start_time before planning.
+func BuildHLSSegmentTimeline(durationSec float64, keyframes []float64, segmentDurationSec float64, startTimeSec float64) (starts, durations []float64) {
 	if segmentDurationSec <= 0 {
 		segmentDurationSec = DefaultHLSSegmentDurationSec
+	}
+	if startTimeSec > hlsStartTimeEpsilonSec {
+		durationSec = HLSMediaTimelineDuration(durationSec, startTimeSec)
+		if len(keyframes) > 0 {
+			keyframes = NormalizeHLSKeyframeTimes(keyframes, startTimeSec)
+		}
 	}
 	if durationSec <= 0 {
 		durationSec = segmentDurationSec

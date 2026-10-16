@@ -10,7 +10,7 @@ import (
 )
 
 // BuildHLSSegmentOptions builds segment options for segment index n.
-// keyframeTimeline enables accurate seek for transcode segments aligned to keyframes.
+// keyframeTimeline is deprecated and ignored (input -ss is always frame-accurate when transcoding).
 // keyframeSeekTimes, when set, pick an input seek at or before the grid point for stream copy.
 func BuildHLSSegmentOptions(path string, index int, params HLSSegmentParams, starts, durations []float64, keyframeTimeline bool, keyframeSeekTimes []float64, segmentDurationSec float64) HLSSegmentOptions {
 	if segmentDurationSec <= 0 {
@@ -29,22 +29,22 @@ func BuildHLSSegmentOptions(path string, index int, params HLSSegmentParams, sta
 	if len(keyframeSeekTimes) > 0 && (params.Remux || params.VideoCopy) {
 		startSec = KeyframeSeekBefore(keyframeSeekTimes, mediaTimelineSec)
 	}
-	fullTranscode := !params.Remux && !params.VideoCopy
+	inputSeekSec := HLSInputSeekSec(startSec, params.InputStartTimeSec)
 	return HLSSegmentOptions{
-		Input:            InputSource{URL: path, StreamType: probe.StreamFile},
-		StartSec:         startSec,
-		MediaTimelineSec: mediaTimelineSec,
-		DurationSec:      durSec,
-		Decode:           params.Decode,
-		Profile:          params.Profile,
-		MaxHeight:        params.MaxHeight,
-		Remux:            params.Remux,
-		VideoCopy:        params.VideoCopy,
-		GOP:              params.GOP,
-		InputVideoCodec:  params.InputVideoCodec,
-		VideoOnly:        params.OmitAudio,
-		AccurateSeek:     fullTranscode && keyframeTimeline,
-		Throttle:         encode.ThrottleConfig{Enabled: false},
+		Input:             InputSource{URL: path, StreamType: probe.StreamFile},
+		StartSec:          inputSeekSec,
+		MediaTimelineSec:  mediaTimelineSec,
+		DurationSec:       durSec,
+		Decode:            params.Decode,
+		Profile:           params.Profile,
+		MaxHeight:         params.MaxHeight,
+		Remux:             params.Remux,
+		VideoCopy:         params.VideoCopy,
+		GOP:               params.GOP,
+		InputVideoCodec:   params.InputVideoCodec,
+		InputStartTimeSec: params.InputStartTimeSec,
+		VideoOnly:         params.OmitAudio,
+		Throttle:          encode.ThrottleConfig{Enabled: false},
 	}
 }
 

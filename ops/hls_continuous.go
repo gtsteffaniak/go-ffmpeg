@@ -19,7 +19,10 @@ type HLSContinuousOptions struct {
 	Input      InputSource
 	OutputDir  string // cache job directory (init.m4s + seg/%05d.m4s)
 	StartIndex int
-	StartSec   float64
+	// StartSec is the seek position on the 0-based HLS media timeline.
+	StartSec float64
+	// InputStartTimeSec is the container start_time from ffprobe (added for ffmpeg input -ss).
+	InputStartTimeSec float64
 	// SegmentDurations[i] is the #EXTINF duration for segment index i on the HLS media
 	// timeline. When set, fMP4 fragments are aligned to a contiguous decode timeline
 	// (sum of prior durations) instead of source keyframe timestamps.
@@ -141,6 +144,11 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 		return nil, err
 	}
 
+	opts, err = snapContinuousCopyStart(parent, runner, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	args, err := buildHLSContinuousArgs(runner, caps, opts)
 	if err != nil {
 		return nil, err
@@ -184,6 +192,22 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 	return job, nil
 }
 
+func snapContinuousCopyStart(ctx context.Context, runner *ffexec.Runner, opts HLSContinuousOptions) (HLSContinuousOptions, error) {
+	if !opts.Remux && !opts.VideoCopy || opts.StartSec <= hlsStartTimeEpsilonSec {
+		return opts, nil
+	}
+	if runner == nil || strings.TrimSpace(opts.Input.URL) == "" {
+		return opts, nil
+	}
+	keyframes, err := ProbeVideoKeyframeTimes(ctx, runner, opts.Input.URL)
+	if err != nil {
+		return opts, fmt.Errorf("hls continuous: keyframe snap: %w", err)
+	}
+	norm := NormalizeHLSKeyframeTimes(keyframes, opts.InputStartTimeSec)
+	opts.StartSec = KeyframeSeekBefore(norm, opts.StartSec)
+	return opts, nil
+}
+
 func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSContinuousOptions) ([]string, error) {
 	segDur := opts.SegmentSec
 	gop := opts.GOP
@@ -193,8 +217,9 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 
 	args := []string{"-hide_banner", "-nostats", "-loglevel", hlsFFmpegLogLevel(runner), "-y"}
 	videoCopyPipeline := opts.Remux || opts.VideoCopy
-	if opts.StartSec > 0 {
-		args = append(args, "-ss", fmt.Sprintf("%.3f", opts.StartSec))
+	inputSeek := HLSInputSeekSec(opts.StartSec, opts.InputStartTimeSec)
+	if inputSeek > hlsStartTimeEpsilonSec {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", inputSeek))
 	}
 	if videoCopyPipeline {
 		args = appendHLSInputTimestampFlags(args)

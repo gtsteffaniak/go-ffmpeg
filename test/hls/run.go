@@ -119,8 +119,8 @@ func runFullTest(args []string) int {
 
 			if *continuous && variantSupportsContinuous(variant) {
 				keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, path)
-				keyframeSeekTimes := goffmpeg.SanitizeHLSKeyframes(keyframes, info.Duration)
-				starts, _ := goffmpeg.BuildHLSSegmentTimeline(info.Duration, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec)
+				keyframeSeekTimes, mediaDur := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
+				starts, _ := goffmpeg.BuildHLSSegmentTimeline(mediaDur, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec, 0)
 				for _, scenario := range continuousScenarios(starts) {
 					contLabel := fmt.Sprintf("%s/%s/continuous/%s", spec.Name, variant.Label, scenario.Name)
 					cbr, err := runContinuousBenchmark(ctx, svc, path, spec.Name, variant, scenario, *tolerance, mediaDir)
