@@ -35,6 +35,26 @@ func TestAlignContinuousSegmentFileRebasesTimeline(t *testing.T) {
 	}
 }
 
+func TestContinuousPlaylistAbsoluteMediaStarts(t *testing.T) {
+	t.Parallel()
+	playlist := &continuousPlaylist{
+		Segments: []continuousPlaylistSegment{
+			{URI: "raw/00384.m4s", DurSec: 13.472},
+			{URI: "raw/00385.m4s", DurSec: 5.005},
+		},
+	}
+	got := continuousPlaylistAbsoluteMediaStarts(playlist, 1887.0)
+	want := map[int]float64{384: 1887.0, 385: 1887.0 + 13.472}
+	for index, expected := range want {
+		if v := got[index]; v < expected-0.001 || v > expected+0.001 {
+			t.Fatalf("index %d: got %v want %v", index, v, expected)
+		}
+	}
+	if continuousPlaylistAbsoluteMediaStarts(playlist, 0)[384] != 0 {
+		t.Fatal("zero origin must match generation-local starts")
+	}
+}
+
 func TestContinuousPlaylistMediaStartsCumulative(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -90,8 +110,8 @@ func TestPublishContinuousReadySegmentsUsesPlaylistTimeline(t *testing.T) {
 		index int
 		want  float64
 	}{
-		{384, 0},
-		{385, 13.472},
+		{384, 1887.0},
+		{385, 1887.0 + 13.472},
 	}
 	for _, tc := range cases {
 		out, err := os.ReadFile(filepath.Join(dir, "seg", fmt.Sprintf("%05d.m4s", tc.index)))
