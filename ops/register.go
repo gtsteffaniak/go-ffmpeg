@@ -14,6 +14,7 @@ func init() {
 	Register(fmp4TranscodeOp{})
 	Register(hlsSegmentOp{})
 	Register(hlsContinuousOp{})
+	Register(hlsVODOp{})
 	Register(timelapseCompileOp{})
 	Register(extractSubtitleOp{})
 	Register(convertHEICOp{})
@@ -103,6 +104,14 @@ type hlsContinuousOp struct{}
 func (hlsContinuousOp) Name() string { return "HLSContinuous" }
 func (hlsContinuousOp) Requirements() RequirementSet {
 	return RequirementSet{NeedsEncode: true, MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
+}
+
+type hlsVODOp struct{}
+
+func (hlsVODOp) Name() string { return "HLSVOD" }
+func (hlsVODOp) Requirements() RequirementSet {
+	// Remux/video-copy modes must not require NeedsEncode; transcode validation is per-request.
+	return RequirementSet{MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
 }
 
 type timelapseCompileOp struct{}
