@@ -20,6 +20,8 @@ func runMatrix(args []string) int {
 	skipGenerate := fs.Bool("skip-generate", false, "use existing fixtures")
 	fixtureNames := fs.String("fixture-names", "", "comma-separated fixture names (default: all; or HLS_FIXTURE_NAMES when flag omitted)")
 	softwareOnly := fs.Bool("software-only", false, "run remux/copy/transcode/software only (also when GOFFMPEG_SKIP_HW=1)")
+	continuous := fs.Bool("continuous", false, "run the continuous generation contract matrix (full + mid/eof seeks)")
+	outDir := fs.String("out", "", "artifact root for continuous runs (default: temp dir)")
 	_ = fs.Parse(args)
 
 	specs := resolveFixtureNamesFromFlag(fs, *fixtureNames)
@@ -68,6 +70,36 @@ func runMatrix(args []string) int {
 		// Legacy -modes filter: only run variants whose Mode is listed
 		for _, variant := range variants {
 			if !modeAllowed(variant.Mode, modeList) {
+				continue
+			}
+			if *continuous {
+				if !variantSupportsContinuous(variant) {
+					continue
+				}
+				artifactRoot := *outDir
+				if artifactRoot == "" {
+					artifactRoot = os.TempDir()
+				}
+				continuousSegs := resolveSegmentCount(*segments, int(info.Duration))
+				for _, scenario := range continuousScenarios(continuousSegs) {
+					label := fmt.Sprintf("%s/%s/continuous/%s", spec.Name, variant.Label, scenario.Name)
+					cbr, err := runContinuousBenchmark(ctx, svc, path, spec.Name, variant, scenario, 0.12, artifactRoot)
+					if err != nil {
+						fmt.Printf("FAIL %s: %v\n", label, err)
+						failures++
+						continue
+					}
+					if cbr.Skipped {
+						fmt.Printf("SKIP %s (%s)\n", label, cbr.SkipReason)
+						continue
+					}
+					if !cbr.Pass {
+						fmt.Printf("FAIL %s (%s)\n", label, cbr.EncodeError)
+						failures++
+					} else {
+						fmt.Printf("PASS %s\n", label)
+					}
+				}
 				continue
 			}
 			label := fmt.Sprintf("%s/%s", spec.Name, variant.Label)

@@ -26,7 +26,13 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 		toleranceSec = mp4.DefaultHLSTimeToleranceSec
 	}
 	result := ContinuousValidationResult{}
-	playlistPath := filepath.Join(outDir, "ffmpeg.m3u8")
+	// index.m3u8 is the canonical serve artifact — the playlist a client
+	// actually consumes. ffmpeg.m3u8 is the muxer's internal playlist and is
+	// only a fallback for output produced without the publisher.
+	playlistPath := filepath.Join(outDir, continuousServePlaylistName)
+	if _, statErr := os.Stat(playlistPath); statErr != nil {
+		playlistPath = filepath.Join(outDir, "ffmpeg.m3u8")
+	}
 	playlist, err := parseContinuousPlaylist(playlistPath)
 	if err != nil {
 		return result, err
@@ -48,7 +54,7 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 
 	trackTimescales := mp4.TrackTimescalesFromInit(initBytes)
 	transcode := hlsContinuousUsesCopyTimestamps(opts)
-	var prevStart, prevDur float64
+	var prevStart, prevDur, playlistPos float64
 	var prevIndex int
 	for i, plSeg := range playlist.Segments {
 		segPath := resolveContinuousMediaPath(outDir, plSeg.URI, "")
@@ -61,13 +67,13 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 			continue
 		}
 		absIndex := opts.StartIndex + i
-		expectedStart := mediaStartForSegmentIndex(opts, absIndex)
+		// hls.js places each fragment at its cumulative #EXTINF position, so the
+		// playlist — not a predicted segment grid — is the expected start.
+		expectedStart := playlistPos
+		playlistPos += plSeg.DurSec
 		expectedDur := opts.SegmentSec
 		if plSeg.DurSec > 0 {
 			expectedDur = plSeg.DurSec
-		}
-		if transcode {
-			expectedStart = float64(absIndex) * opts.SegmentSec
 		}
 		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
@@ -137,6 +143,7 @@ func filterTranscodeDurationIssues(issues []mp4.TimelineIssue) []mp4.TimelineIss
 
 type continuousPlaylist struct {
 	InitURI    string
+	Header     []string // tag lines before the first segment entry, verbatim
 	Segments   []continuousPlaylistSegment
 	HasEndList bool
 	TargetDur  float64
@@ -174,6 +181,9 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
 			out.InitURI = parseContinuousPlaylistURI(line)
+			if !hasExtInf && len(out.Segments) == 0 {
+				out.Header = append(out.Header, line)
+			}
 			continue
 		}
 		if line == "#EXT-X-ENDLIST" {
@@ -194,6 +204,9 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
+			if !hasExtInf && len(out.Segments) == 0 {
+				out.Header = append(out.Header, line)
+			}
 			continue
 		}
 		if !hasExtInf {

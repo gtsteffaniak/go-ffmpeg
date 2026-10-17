@@ -9,15 +9,17 @@ func ThrottleConfigOff() ThrottleConfig {
 	return ThrottleConfig{Enabled: false}
 }
 
-// ThrottleConfigLivePaced returns ~1x input pacing after an initial unlimited burst.
-// Use for watch-while-transcode sessions. Pair with app-level pause when segments are far ahead of playback.
+// ThrottleConfigLivePaced returns slightly-faster-than-realtime input pacing
+// after an initial unlimited burst. ~1.5x keeps the produced edge ahead of
+// playback (1x reads exactly at consumption speed, so any stall starves the
+// playhead) while the cache still only fills for content that is watched.
 func ThrottleConfigLivePaced(initialBurstSec float64) ThrottleConfig {
 	if initialBurstSec <= 0 {
 		initialBurstSec = DefaultLivePacedBurstSec
 	}
 	return ThrottleConfig{
 		Enabled:      true,
-		Rate:         1.0,
+		Rate:         1.5,
 		Catchup:      2.0,
 		InitialBurst: initialBurstSec,
 	}

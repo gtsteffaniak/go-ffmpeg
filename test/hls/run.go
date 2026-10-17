@@ -118,10 +118,8 @@ func runFullTest(args []string) int {
 			printBenchmarkLine(statusFromResult(br), label, br)
 
 			if *continuous && variantSupportsContinuous(variant) {
-				keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, path)
-				keyframeSeekTimes, mediaDur := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
-				starts, _ := goffmpeg.BuildHLSSegmentTimeline(mediaDur, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec, 0)
-				for _, scenario := range continuousScenarios(starts) {
+				continuousSegs := resolveSegmentCount(*segments, int(info.Duration))
+				for _, scenario := range continuousScenarios(continuousSegs) {
 					contLabel := fmt.Sprintf("%s/%s/continuous/%s", spec.Name, variant.Label, scenario.Name)
 					cbr, err := runContinuousBenchmark(ctx, svc, path, spec.Name, variant, scenario, *tolerance, mediaDir)
 					if err != nil {
@@ -224,12 +222,6 @@ func runReportServe(args []string) int {
 	_ = fs.Parse(args)
 
 	addr := fmt.Sprintf(":%d", *port)
-	if n, err := fixReportContinuousPlaylists(*reportDir); err != nil {
-		fmt.Fprintf(os.Stderr, "fix continuous playlists: %v\n", err)
-		return 1
-	} else if n > 0 {
-		fmt.Printf("Fixed %d continuous ffmpeg.m3u8 playlist(s) for browser playback\n", n)
-	}
 	fmt.Printf("Report site: http://0.0.0.0:%d/\n", *port)
 	return runHTTPServer(addr, reportHandler(*reportDir))
 }

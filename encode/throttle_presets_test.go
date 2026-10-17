@@ -14,7 +14,7 @@ func TestThrottleConfigPresets(t *testing.T) {
 	}
 
 	live := encode.ThrottleConfigLivePaced(0)
-	if !live.Enabled || live.Rate != 1.0 || live.Catchup != 2.0 || live.InitialBurst != encode.DefaultLivePacedBurstSec {
+	if !live.Enabled || live.Rate != 1.5 || live.Catchup != 2.0 || live.InitialBurst != encode.DefaultLivePacedBurstSec {
 		t.Fatalf("ThrottleConfigLivePaced(0) = %+v", live)
 	}
 	live90 := encode.ThrottleConfigLivePaced(90)
@@ -32,7 +32,7 @@ func TestAppendReadrateArgsLivePaced(t *testing.T) {
 	v8 := capabilities.Version{Major: 8, Minor: 0, Patch: 0}
 	cfg := encode.ThrottleConfigLivePaced(60)
 	args := encode.AppendReadrateArgs(nil, v8, cfg)
-	want := []string{"-readrate", "1", "-readrate_catchup", "2", "-readrate_initial_burst", "60"}
+	want := []string{"-readrate", "1.5", "-readrate_catchup", "2", "-readrate_initial_burst", "60"}
 	if len(args) != len(want) {
 		t.Fatalf("args = %v, want %v", args, want)
 	}

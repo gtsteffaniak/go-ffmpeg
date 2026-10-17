@@ -44,7 +44,9 @@ func ResolveContinuousSegmentPath(outDir, name string) (string, error) {
 	return path, nil
 }
 
-// ContinuousSegmentServeReady reports whether a segment is aligned and safe to serve.
+// ContinuousSegmentServeReady reports whether a segment is published — aligned
+// and renamed into seg/ — and therefore safe to serve. The publisher only
+// exposes fragments after timeline validation, so existence means ready.
 func ContinuousSegmentServeReady(outDir, name string) bool {
 	path, err := ResolveContinuousSegmentPath(outDir, name)
 	if err != nil {
@@ -54,10 +56,10 @@ func ContinuousSegmentServeReady(outDir, name string) bool {
 	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
 		return false
 	}
-	if _, err := os.Stat(path + ".tmp"); err == nil {
+	if _, err := os.Stat(path + continuousAlignTmpSuffix); err == nil {
 		return false
 	}
-	return continuousSegmentAligned(path)
+	return true
 }
 
 func assertContinuousPathContained(base, target string) error {

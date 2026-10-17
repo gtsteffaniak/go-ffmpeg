@@ -1,8 +1,10 @@
 package ops
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gtsteffaniak/go-ffmpeg/mp4"
@@ -33,67 +35,155 @@ func TestAlignContinuousSegmentFileRebasesTimeline(t *testing.T) {
 	}
 }
 
-func TestMediaStartForSegmentIndexFixedGrid(t *testing.T) {
+func TestContinuousPlaylistMediaStartsCumulative(t *testing.T) {
 	t.Parallel()
-	opts := HLSContinuousOptions{
-		SegmentSec:       4.0,
-		SegmentDurations: []float64{4, 4, 4, 2.5},
+	dir := t.TempDir()
+	playlistText := "#EXTM3U\n#EXT-X-TARGETDURATION:14\n#EXT-X-MEDIA-SEQUENCE:384\n" +
+		"#EXT-X-MAP:URI=\"init.m4s\"\n" +
+		"#EXTINF:13.472,\nseg/00384.m4s\n" +
+		"#EXTINF:5.005,\nseg/00385.m4s\n" +
+		"#EXTINF:10.010,\nseg/00386.m4s\n"
+	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlistText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	playlist, err := parseContinuousPlaylist(filepath.Join(dir, "ffmpeg.m3u8"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := continuousPlaylistMediaStarts(playlist)
+	want := map[int]float64{384: 0, 385: 13.472, 386: 18.477}
+	for index, expected := range want {
+		if got := starts[index]; got < expected-0.001 || got > expected+0.001 {
+			t.Fatalf("index %d: got %v want %v", index, got, expected)
+		}
+	}
+	if len(starts) != len(want) {
+		t.Fatalf("got %d starts, want %d", len(starts), len(want))
+	}
+}
+
+func TestPublishContinuousReadySegmentsUsesPlaylistTimeline(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// ffmpeg emitted GOP-boundary durations that no planned grid predicts; the
+	// fragment must land on the playlist position, not a precomputed timeline.
+	playlist := "#EXTM3U\n#EXT-X-TARGETDURATION:14\n#EXT-X-MEDIA-SEQUENCE:384\n" +
+		"#EXT-X-MAP:URI=\"init.m4s\"\n" +
+		"#EXTINF:13.472,\nraw/00384.m4s\n" +
+		"#EXTINF:3.378,\nraw/00385.m4s\n"
+	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlist), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{384, 385} {
+		seg := buildTestFragmentWithTFDT(64000)
+		if err := os.WriteFile(continuousRawSegmentPath(dir, index), seg, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := publishContinuousReadySegments(dir, 1887.0, map[int]struct{}{}, true); err != nil {
+		t.Fatalf("publishContinuousReadySegments: %v", err)
 	}
 	cases := []struct {
 		index int
 		want  float64
 	}{
-		{0, 0},
-		{1, 4},
-		{2, 8},
-		{3, 12},
+		{384, 0},
+		{385, 13.472},
 	}
 	for _, tc := range cases {
-		got := mediaStartForSegmentIndex(opts, tc.index)
-		if got != tc.want {
-			t.Fatalf("index %d: got %v want %v", tc.index, got, tc.want)
+		out, err := os.ReadFile(filepath.Join(dir, "seg", fmt.Sprintf("%05d.m4s", tc.index)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		start, err := mp4.FragmentMediaStartSec(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const tol = 0.02
+		if start < tc.want-tol || start > tc.want+tol {
+			t.Fatalf("segment %d media start = %.3f, want ~%.3f", tc.index, start, tc.want)
 		}
 	}
+	// The raw muxer output is consumed by publishing — only the aligned copy remains.
+	for _, index := range []int{384, 385} {
+		if _, err := os.Stat(continuousRawSegmentPath(dir, index)); !os.IsNotExist(err) {
+			t.Fatalf("raw segment %d should be removed after publishing", index)
+		}
+	}
+	status, err := ReadContinuousJobStatus(dir)
+	if err != nil {
+		t.Fatalf("ReadContinuousJobStatus: %v", err)
+	}
+	if status.FirstIndex != 384 || status.LastReadyIndex != 385 || status.StartSec != 1887.0 {
+		t.Fatalf("job status = %+v", status)
+	}
+	if status.Complete {
+		t.Fatal("job.json must not report complete without #EXT-X-ENDLIST")
+	}
+	index, err := os.ReadFile(filepath.Join(dir, "index.m3u8"))
+	if err != nil {
+		t.Fatalf("read index.m3u8: %v", err)
+	}
+	text := string(index)
+	for _, want := range []string{"seg/00384.m4s", "seg/00385.m4s", "#EXT-X-MEDIA-SEQUENCE:384", `#EXT-X-MAP:URI="init.m4s"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("index.m3u8 missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "#EXT-X-ENDLIST") {
+		t.Fatal("index.m3u8 must not end the playlist while the source lacks ENDLIST")
+	}
 }
 
-func TestContinuousSegmentReadyFromPlaylist(t *testing.T) {
+func TestContinuousRawSegmentComplete(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "seg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "raw"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if continuousRawSegmentComplete(dir, 1) {
+		t.Fatal("missing raw file must not be complete")
 	}
 	media := buildTestFragmentWithTFDT(64000)
-	segPath := filepath.Join(dir, "seg", "00001.m4s")
-	if err := os.WriteFile(segPath, media, 0o644); err != nil {
+	rawPath := continuousRawSegmentPath(dir, 1)
+	if err := os.WriteFile(rawPath, media, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	playlist := "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg/00001.m4s\n"
-	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlist), 0o644); err != nil {
+	if !continuousRawSegmentComplete(dir, 1) {
+		t.Fatal("expected complete raw segment")
+	}
+	if err := os.WriteFile(rawPath+".tmp", []byte("muxing"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := HLSContinuousOptions{Remux: true}
-	if !continuousSegmentReady(dir, 1, false, opts) {
-		t.Fatal("expected segment ready when listed in ffmpeg playlist")
+	if continuousRawSegmentComplete(dir, 1) {
+		t.Fatal("a .tmp sibling means the muxer is still writing")
 	}
 }
 
-func TestContinuousSegmentReadyTranscodeWithoutLargeNextSegment(t *testing.T) {
+func TestContinuousSegmentPublished(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "seg"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	seg1 := buildTestFragmentWithTFDT(64000)
-	if err := os.WriteFile(filepath.Join(dir, "seg", "00001.m4s"), seg1, 0o644); err != nil {
+	if continuousSegmentPublished(dir, 1) {
+		t.Fatal("missing seg file must not be published")
+	}
+	segPath := filepath.Join(dir, "seg", "00001.m4s")
+	if err := os.WriteFile(segPath, buildTestFragmentWithTFDT(64000), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Next segment exists but is smaller than MinHLSSegmentMediaBytes (still muxing or short GOP).
-	if err := os.WriteFile(filepath.Join(dir, "seg", "00002.m4s"), []byte("short"), 0o644); err != nil {
+	if !continuousSegmentPublished(dir, 1) {
+		t.Fatal("expected published segment")
+	}
+	if err := os.WriteFile(segPath+continuousAlignTmpSuffix, []byte("in-progress"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := HLSContinuousOptions{Remux: false, VideoCopy: false}
-	if !continuousSegmentReady(dir, 1, false, opts) {
-		t.Fatal("expected transcode segment ready without requiring next segment min size")
+	if continuousSegmentPublished(dir, 1) {
+		t.Fatal("an in-flight atomic rename must not read as published")
 	}
 }
 
@@ -119,33 +209,68 @@ func TestWriteContinuousFileAtomicUsesDistinctTmpSuffix(t *testing.T) {
 	}
 }
 
-func TestContinuousSegmentReadyIgnoresAlignTmp(t *testing.T) {
+func TestServePlaylistEmitsContiguousPublishedPrefix(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "seg"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, sub := range []string{"seg", "raw"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	media := buildTestFragmentWithTFDT(64000)
-	segPath := filepath.Join(dir, "seg", "00001.m4s")
-	if err := os.WriteFile(segPath, media, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(segPath+".align.tmp", []byte("in-progress"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	playlist := "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg/00001.m4s\n"
+	playlist := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n" +
+		"#EXT-X-MAP:URI=\"init.m4s\"\n" +
+		"#EXTINF:4.0,\nraw/00000.m4s\n" +
+		"#EXTINF:4.0,\nraw/00001.m4s\n" +
+		"#EXTINF:4.0,\nraw/00002.m4s\n" +
+		"#EXT-X-ENDLIST\n"
 	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlist), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := HLSContinuousOptions{Remux: true}
-	if !continuousSegmentReady(dir, 1, false, opts) {
-		t.Fatal("aligner .align.tmp must not mark the segment as still muxing")
+	// Only segments 0 and 1 are publishable; 2 is still muxing.
+	for _, index := range []int{0, 1} {
+		if err := os.WriteFile(continuousRawSegmentPath(dir, index), buildTestFragmentWithTFDT(64000), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(segPath+".tmp", []byte("ffmpeg"), 0o644); err != nil {
+	if _, err := publishContinuousReadySegments(dir, 0, map[int]struct{}{}, false); err != nil {
+		t.Fatalf("publishContinuousReadySegments: %v", err)
+	}
+	index, err := os.ReadFile(filepath.Join(dir, "index.m3u8"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if continuousSegmentReady(dir, 1, false, opts) {
-		t.Fatal("ffmpeg .tmp should still mean the segment is being muxing")
+	text := string(index)
+	if strings.Contains(text, "00002.m4s") || strings.Contains(text, "#EXT-X-ENDLIST") {
+		t.Fatalf("serve playlist must withhold unlisted segments and ENDLIST:\n%s", text)
+	}
+	status, err := ReadContinuousJobStatus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.EndList || status.Complete {
+		t.Fatalf("status = %+v, want endlist seen but generation incomplete", status)
+	}
+	// Once the tail publishes, ENDLIST lands on the serve playlist.
+	if err := os.WriteFile(continuousRawSegmentPath(dir, 2), buildTestFragmentWithTFDT(64000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	published := map[int]struct{}{0: {}, 1: {}}
+	if _, err := publishContinuousReadySegments(dir, 0, published, true); err != nil {
+		t.Fatalf("publishContinuousReadySegments final: %v", err)
+	}
+	index, err = os.ReadFile(filepath.Join(dir, "index.m3u8"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), "#EXT-X-ENDLIST") {
+		t.Fatalf("complete generation must emit ENDLIST:\n%s", index)
+	}
+	status, err = ReadContinuousJobStatus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Complete || status.LastReadyIndex != 2 || status.ProducedSec < 11.9 {
+		t.Fatalf("status = %+v, want complete", status)
 	}
 }
 

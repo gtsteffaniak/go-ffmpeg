@@ -28,16 +28,19 @@ func variantSupportsContinuous(v testVariant) bool {
 	}
 }
 
-func continuousScenarios(starts []float64) []continuousScenario {
-	if len(starts) == 0 {
+// continuousScenarios exercises the generation matrix the player hits: from
+// the start, a mid-file reposition, and a resume at the produced edge. Start
+// positions follow the segment grid — the library snaps to real keyframes.
+func continuousScenarios(segmentCount int) []continuousScenario {
+	if segmentCount <= 0 {
 		return nil
 	}
-	last := len(starts) - 1
+	last := segmentCount - 1
 	mid := last / 2
 	return []continuousScenario{
 		{Name: "full", StartIndex: 0, StartSec: 0},
-		{Name: "resume_mid", StartIndex: mid, StartSec: starts[mid]},
-		{Name: "resume_eof", StartIndex: last, StartSec: starts[last]},
+		{Name: "resume_mid", StartIndex: mid, StartSec: float64(mid) * goffmpeg.DefaultHLSSegmentDurationSec},
+		{Name: "resume_eof", StartIndex: last, StartSec: float64(last) * goffmpeg.DefaultHLSSegmentDurationSec},
 	}
 }
 
@@ -79,7 +82,7 @@ func runContinuousBenchmark(ctx context.Context, svc *goffmpeg.Service, file, fi
 	result.ArtifactDir = artifactDir
 	result.PlaybackURL = "/media/" + filepath.ToSlash(filepath.Join(fixtureName,
 		fmt.Sprintf("%s_%s_continuous_%s", variant.Mode, accelLabel(variant.Accel), scenario.Name),
-		"ffmpeg.m3u8"))
+		"index.m3u8"))
 
 	monitor := newResourceMonitor()
 	monitor.Start()

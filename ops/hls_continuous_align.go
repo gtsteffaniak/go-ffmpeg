@@ -1,8 +1,8 @@
 package ops
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -27,7 +27,43 @@ func lockContinuousAlign(outDir string) func() {
 const (
 	continuousAlignPollInterval = 50 * time.Millisecond
 	continuousAlignTmpSuffix    = ".align.tmp"
+	continuousRawSegmentDir     = "raw"
+	continuousServePlaylistName = "index.m3u8"
+	continuousJobStatusName     = "job.json"
 )
+
+// ContinuousJobStatus is the published state of a continuous HLS generation,
+// written atomically to job.json whenever a segment is published or the job
+// finishes. Consumers read it instead of parsing playlists for coverage.
+type ContinuousJobStatus struct {
+	// StartSec is the generation's effective media start — the snapped keyframe
+	// for stream-copy seeks, the requested position otherwise.
+	StartSec float64 `json:"startSec"`
+	// FirstIndex is the lowest listed segment index; -1 when nothing is listed.
+	FirstIndex int `json:"firstIndex"`
+	// LastReadyIndex is the highest published segment index; -1 when nothing is.
+	LastReadyIndex int `json:"lastReadyIndex"`
+	// ProducedSec is the servable media duration (sum of published #EXTINF).
+	ProducedSec float64 `json:"producedSec"`
+	// EndList reports whether the source playlist reached #EXT-X-ENDLIST.
+	EndList bool `json:"endList"`
+	// Complete reports a finished generation: ENDLIST and every listed segment published.
+	Complete bool `json:"complete"`
+}
+
+// ReadContinuousJobStatus loads job.json from a generation directory. A
+// missing file yields an error — treat the generation as not ready.
+func ReadContinuousJobStatus(outDir string) (ContinuousJobStatus, error) {
+	var status ContinuousJobStatus
+	data, err := os.ReadFile(filepath.Join(outDir, continuousJobStatusName))
+	if err != nil {
+		return status, err
+	}
+	if err := json.Unmarshal(data, &status); err != nil {
+		return status, err
+	}
+	return status, nil
+}
 
 // AlignContinuousSegmentFile rebases fMP4 decode timestamps to mediaStartSec on the HLS timeline.
 // Init-segment timescales are loaded from init.m4s next to the segment or in the job directory.
@@ -40,17 +76,36 @@ func alignContinuousSegmentFile(path string, mediaStartSec float64, trackTimesca
 	if err != nil {
 		return err
 	}
-	if len(data) < mp4.MinHLSSegmentMediaBytes {
-		return fmt.Errorf("segment too small (%d bytes)", len(data))
-	}
-	aligned, err := mp4.AlignFragmentToMediaStartWithTimescales(data, mediaStartSec, trackTimescales)
+	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales)
 	if err != nil {
 		return err
 	}
-	if err := writeContinuousFileAtomic(path, aligned); err != nil {
+	return writeContinuousFileAtomic(path, aligned)
+}
+
+func alignedContinuousSegment(data []byte, mediaStartSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
+	if len(data) < mp4.MinHLSSegmentMediaBytes {
+		return nil, fmt.Errorf("segment too small (%d bytes)", len(data))
+	}
+	return mp4.AlignFragmentToMediaStartWithTimescales(data, mediaStartSec, trackTimescales)
+}
+
+// alignContinuousSegmentInto validates and rebases the raw muxer output at
+// rawPath, publishes it at dstPath via atomic rename, and removes the raw
+// file — the published copy is the only fragment copy kept on disk.
+func alignContinuousSegmentInto(rawPath, dstPath string, mediaStartSec float64, trackTimescales map[uint32]uint32) error {
+	data, err := os.ReadFile(rawPath)
+	if err != nil {
 		return err
 	}
-	return markContinuousSegmentReady(path)
+	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales)
+	if err != nil {
+		return err
+	}
+	if err := writeContinuousFileAtomic(dstPath, aligned); err != nil {
+		return err
+	}
+	return os.Remove(rawPath)
 }
 
 func trackTimescalesForSegmentFile(path string) map[uint32]uint32 {
@@ -74,145 +129,212 @@ func loadContinuousInitTimescales(initPath string) map[uint32]uint32 {
 	return mp4.TrackTimescalesFromInit(data)
 }
 
-func markContinuousSegmentReady(path string) error {
-	return os.WriteFile(path+".ready", []byte("1"), 0o644)
-}
-
-func continuousSegmentAligned(path string) bool {
-	_, err := os.Stat(path + ".ready")
-	return err == nil
-}
-
-func mediaStartForSegmentIndex(opts HLSContinuousOptions, index int) float64 {
-	if len(opts.SegmentDurations) > 0 {
-		var sum float64
-		for i := 0; i < index && i < len(opts.SegmentDurations); i++ {
-			if opts.SegmentDurations[i] > 0 {
-				sum += opts.SegmentDurations[i]
-			}
+// continuousPlaylistMediaStarts returns each listed segment's media start on the
+// playlist timeline — the cumulative #EXTINF position hls.js uses to place the
+// fragment — keyed by segment index. The emitted playlist is the timeline
+// authority: a predicted segment grid cannot reproduce the muxer's GOP-boundary
+// splits (after a long GOP, ffmpeg emits short catch-up segments), and a seek
+// job anchors its grid at the first packet rather than media 0.
+func continuousPlaylistMediaStarts(playlist *continuousPlaylist) map[int]float64 {
+	if playlist == nil {
+		return nil
+	}
+	starts := make(map[int]float64, len(playlist.Segments))
+	var pos float64
+	for _, seg := range playlist.Segments {
+		if index, ok := continuousSegmentIndexFromURI(seg.URI); ok {
+			starts[index] = pos
 		}
-		return sum
+		pos += seg.DurSec
 	}
-	if index < len(opts.SegmentMediaStarts) {
-		return opts.SegmentMediaStarts[index]
+	return starts
+}
+
+func continuousSegmentIndexFromURI(uri string) (int, bool) {
+	name := filepath.Base(strings.TrimSpace(uri))
+	if !continuousSegmentNamePattern.MatchString(name) {
+		return 0, false
 	}
-	return float64(index) * opts.SegmentSec
+	index, err := strconv.Atoi(strings.TrimSuffix(name, ".m4s"))
+	return index, err == nil
+}
+
+func continuousRawSegmentPath(outDir string, index int) string {
+	return filepath.Join(outDir, continuousRawSegmentDir, fmt.Sprintf("%05d.m4s", index))
 }
 
 func continuousSegmentPath(outDir string, index int) string {
 	return filepath.Join(outDir, "seg", fmt.Sprintf("%05d.m4s", index))
 }
 
-func continuousSegmentReady(outDir string, index int, jobDone bool, opts HLSContinuousOptions) bool {
+// continuousSegmentPublished reports whether the segment was already aligned
+// into the servable seg/ directory.
+func continuousSegmentPublished(outDir string, index int) bool {
 	path := continuousSegmentPath(outDir, index)
 	st, err := os.Stat(path)
 	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
 		return false
 	}
-	// hls_flags temp_file writes to .m4s.tmp and renames when complete; a present
-	// .tmp means this index is still being muxed.
+	_, err = os.Stat(path + continuousAlignTmpSuffix)
+	return err != nil && os.IsNotExist(err)
+}
+
+// continuousRawSegmentComplete reports whether the raw muxer output for a
+// playlist-listed segment is finished: non-trivial size and no in-flight
+// temp_file rename. The muxer only lists segments it has closed, so a listed
+// raw file that survives these checks is safe to align.
+func continuousRawSegmentComplete(outDir string, index int) bool {
+	path := continuousRawSegmentPath(outDir, index)
+	st, err := os.Stat(path)
+	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
+		return false
+	}
 	if _, err := os.Stat(path + ".tmp"); err == nil {
 		return false
 	}
-	if continuousPlaylistListsSegment(outDir, index) {
-		return true
-	}
-	nextPath := continuousSegmentPath(outDir, index+1)
-	if st, err := os.Stat(nextPath); err == nil && st.Size() > 0 {
-		return true
-	}
-	if _, err := os.Stat(nextPath + ".tmp"); err == nil {
-		return true
-	}
-	if jobDone {
-		return true
-	}
-	return continuousPlaylistHasEndList(outDir)
-}
-
-func continuousPlaylistListsSegment(outDir string, index int) bool {
-	data, err := os.ReadFile(filepath.Join(outDir, "ffmpeg.m3u8"))
-	if err != nil {
-		return false
-	}
-	text := string(data)
-	for _, name := range []string{
-		fmt.Sprintf("seg/%05d.m4s", index),
-		fmt.Sprintf("%05d.m4s", index),
-	} {
-		if strings.Contains(text, name) {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func hlsContinuousUsesCopyTimestamps(opts HLSContinuousOptions) bool {
 	return !opts.Remux && !opts.VideoCopy
 }
 
-func continuousPlaylistHasEndList(outDir string) bool {
-	f, err := os.Open(filepath.Join(outDir, "ffmpeg.m3u8"))
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	found := false
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == "#EXT-X-ENDLIST" {
-			found = true
-		}
-	}
-	// A read error is indistinguishable from a playlist that is still being
-	// written — report "not finished" either way.
-	if err := scanner.Err(); err != nil {
-		return false
-	}
-	return found
-}
-
-func alignReadyContinuousSegments(outDir string, opts HLSContinuousOptions, aligned map[int]struct{}, jobDone bool) error {
+// publishContinuousReadySegments aligns every complete raw segment the muxer
+// playlist lists, publishes the contiguous prefix into index.m3u8, and writes
+// job.json. Returns whether the published set changed.
+func publishContinuousReadySegments(outDir string, startSec float64, published map[int]struct{}, jobDone bool) (bool, error) {
 	unlock := lockContinuousAlign(outDir)
 	defer unlock()
-	timescales := loadContinuousInitTimescales(filepath.Join(outDir, "init.m4s"))
-	for index := opts.StartIndex; index < opts.StartIndex+4096; index++ {
-		if _, ok := aligned[index]; ok {
-			continue
+
+	playlist, err := parseContinuousPlaylist(filepath.Join(outDir, "ffmpeg.m3u8"))
+	if err != nil {
+		// A torn read of an append_list playlist is transient — retry next pass.
+		// A parse failure on the final pass means the playlist is corrupt.
+		if os.IsNotExist(err) || !jobDone {
+			return false, nil
 		}
-		if !continuousSegmentReady(outDir, index, jobDone, opts) {
-			if index > opts.StartIndex && !continuousSegmentFileExists(outDir, index) {
-				break
-			}
-			continue
-		}
-		mediaStart := mediaStartForSegmentIndex(opts, index)
-		segPath := continuousSegmentPath(outDir, index)
-		if continuousSegmentAligned(segPath) {
-			aligned[index] = struct{}{}
-			continue
-		}
-		// Transcode uses -copyts so ffmpeg may place tfdt on encoder/source time; rebasing
-		// to the HLS media grid keeps MSE playback continuous without #EXT-X-DISCONTINUITY.
-		err := alignContinuousSegmentFile(segPath, mediaStart, timescales)
-		if err != nil {
-			return err
-		}
-		aligned[index] = struct{}{}
+		return false, err
 	}
-	return nil
+	if playlist == nil {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
+		return false, err
+	}
+
+	// hls.js places each fragment at its cumulative #EXTINF position — the
+	// emitted playlist, not a predicted segment grid, is the timeline authority.
+	starts := continuousPlaylistMediaStarts(playlist)
+	timescales := loadContinuousInitTimescales(filepath.Join(outDir, "init.m4s"))
+	changed := false
+	for _, seg := range playlist.Segments {
+		index, ok := continuousSegmentIndexFromURI(seg.URI)
+		if !ok {
+			continue
+		}
+		if _, done := published[index]; done {
+			continue
+		}
+		if continuousSegmentPublished(outDir, index) {
+			published[index] = struct{}{}
+			changed = true
+			continue
+		}
+		if !continuousRawSegmentComplete(outDir, index) {
+			continue
+		}
+		// Transcode uses -copyts so ffmpeg may place tfdt on encoder/source time, and
+		// stream-copy seeks can leave either track off the playlist grid; rebasing to
+		// the emitted playlist position keeps MSE playback continuous without
+		// #EXT-X-DISCONTINUITY.
+		if err := alignContinuousSegmentInto(continuousRawSegmentPath(outDir, index), continuousSegmentPath(outDir, index), starts[index], timescales); err != nil {
+			return false, err
+		}
+		published[index] = struct{}{}
+		changed = true
+	}
+	if !changed && !jobDone {
+		return false, nil
+	}
+	return changed, writeContinuousServeArtifacts(outDir, playlist, published, startSec)
 }
 
-func continuousSegmentFileExists(outDir string, index int) bool {
-	st, err := os.Stat(continuousSegmentPath(outDir, index))
-	return err == nil && st.Size() > 0
+// writeContinuousServeArtifacts emits index.m3u8 — the canonical serve
+// playlist covering only the contiguous published prefix — and job.json.
+func writeContinuousServeArtifacts(outDir string, playlist *continuousPlaylist, published map[int]struct{}, startSec float64) error {
+	// Target duration covers every listed segment — published entries are a
+	// prefix of them, so listed-but-unpublished durations count too.
+	targetDur := playlist.TargetDur
+	for _, seg := range playlist.Segments {
+		if seg.DurSec > targetDur {
+			targetDur = seg.DurSec
+		}
+	}
+	status := ContinuousJobStatus{StartSec: startSec, FirstIndex: -1, LastReadyIndex: -1}
+	var lines []string
+	lines = append(lines, "#EXTM3U")
+	emittedTarget := false
+	for _, line := range playlist.Header {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#EXT-X-TARGETDURATION:") {
+			continue
+		}
+		lines = append(lines, line)
+		if !emittedTarget && strings.HasPrefix(trimmed, "#EXT-X-VERSION:") {
+			lines = append(lines, "#EXT-X-TARGETDURATION:"+formatContinuousTargetDuration(targetDur))
+			emittedTarget = true
+		}
+	}
+	if !emittedTarget {
+		lines = append(lines, "#EXT-X-TARGETDURATION:"+formatContinuousTargetDuration(targetDur))
+	}
+
+	emitted := 0
+	for i, seg := range playlist.Segments {
+		index, ok := continuousSegmentIndexFromURI(seg.URI)
+		if !ok {
+			continue
+		}
+		if i == 0 || status.FirstIndex < 0 {
+			status.FirstIndex = index
+		}
+		if _, ok := published[index]; !ok {
+			// The playlist is a contiguous prefix — a gap would hand hls.js a
+			// fragment whose position it cannot compute.
+			break
+		}
+		lines = append(lines, "#EXTINF:"+strconv.FormatFloat(seg.DurSec, 'f', -1, 64)+",")
+		lines = append(lines, fmt.Sprintf("seg/%05d.m4s", index))
+		status.LastReadyIndex = index
+		status.ProducedSec += seg.DurSec
+		emitted++
+	}
+	status.EndList = playlist.HasEndList
+	status.Complete = playlist.HasEndList && emitted == len(playlist.Segments) && emitted > 0
+	if status.Complete {
+		lines = append(lines, "#EXT-X-ENDLIST")
+	}
+	if err := writeContinuousFileAtomic(filepath.Join(outDir, continuousServePlaylistName), []byte(strings.Join(lines, "\n")+"\n")); err != nil {
+		return err
+	}
+	data, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	return writeContinuousFileAtomic(filepath.Join(outDir, continuousJobStatusName), data)
 }
 
-// AlignContinuousHLSSegments rebases all segment files under outDir to the HLS media timeline.
+func formatContinuousTargetDuration(maxDur float64) string {
+	if maxDur < 1 {
+		maxDur = 1
+	}
+	return strconv.Itoa(int(math.Ceil(maxDur)))
+}
+
+// AlignContinuousHLSSegments rebases all segment files under outDir to the HLS
+// media timeline and republishes the serve artifacts.
 func AlignContinuousHLSSegments(outDir string, opts HLSContinuousOptions) error {
-	aligned := make(map[int]struct{})
-	jobDone := true
-	if err := alignReadyContinuousSegments(outDir, opts, aligned, jobDone); err != nil {
+	if _, err := publishContinuousReadySegments(outDir, opts.StartSec, map[int]struct{}{}, true); err != nil {
 		return err
 	}
 	return NormalizeContinuousPlaylist(outDir)
@@ -301,11 +423,11 @@ func FixContinuousPlaylistSegmentURIs(outDir, path string) error {
 	return writeContinuousFileAtomic(path, []byte(strings.Join(lines, "\n")))
 }
 
-func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLSContinuousOptions, job *HLSContinuousJob) {
+func runContinuousSegmentAligner(parent context.Context, outDir string, job *HLSContinuousJob) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
-	aligned := make(map[int]struct{})
+	published := make(map[int]struct{})
 	ticker := time.NewTicker(continuousAlignPollInterval)
 	defer ticker.Stop()
 
@@ -315,7 +437,7 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 		}
 		cancel()
 		ticker.Stop()
-		if err := alignReadyContinuousSegments(outDir, opts, aligned, true); err != nil {
+		if _, err := publishContinuousReadySegments(outDir, job.startSec, published, true); err != nil {
 			job.mu.Lock()
 			if job.err == nil {
 				job.err = err
@@ -339,7 +461,7 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, opts HLS
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = alignReadyContinuousSegments(outDir, opts, aligned, false)
+			_, _ = publishContinuousReadySegments(outDir, job.startSec, published, false)
 		}
 	}
 }

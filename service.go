@@ -454,6 +454,15 @@ type HLSContinuousOptions = ops.HLSContinuousOptions
 // HLSContinuousJob runs ffmpeg until EOF or cancellation.
 type HLSContinuousJob = ops.HLSContinuousJob
 
+// ContinuousJobStatus is the published state of a continuous HLS generation
+// (job.json on disk): the effective media start and produced coverage.
+type ContinuousJobStatus = ops.ContinuousJobStatus
+
+// ReadContinuousJobStatus loads job.json from a generation directory.
+func ReadContinuousJobStatus(outDir string) (ContinuousJobStatus, error) {
+	return ops.ReadContinuousJobStatus(outDir)
+}
+
 // HLSContinuousPacing selects input read pacing for a continuous HLS job.
 type HLSContinuousPacing = ops.HLSContinuousPacing
 
