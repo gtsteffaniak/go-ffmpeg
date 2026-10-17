@@ -6,12 +6,18 @@ import (
 	"sync"
 )
 
-const vtDecodeFailureThreshold = 8
+const (
+	vtDecodeFailureThreshold       = 8
+	softwareDecodeFailureThreshold = 3
+)
 
 var (
-	matroskaEBMLSeekNoise = []byte("invalid as first byte of an EBML number")
-	vtDecoderCBNoise      = []byte("vt decoder cb")
-	vtHardwareFailNoise   = []byte("hardware accelerator failed to decode picture")
+	matroskaEBMLSeekNoise    = []byte("invalid as first byte of an EBML number")
+	vtDecoderCBNoise         = []byte("vt decoder cb")
+	vtHardwareFailNoise      = []byte("hardware accelerator failed to decode picture")
+	softwareNALNoise         = []byte("invalid nal unit size")
+	softwareSubmitNoise      = []byte("error submitting packet to decoder")
+	softwareInvalidDataNoise = []byte("invalid data found when processing input")
 )
 
 type vtDecodeStderrMonitor struct {
@@ -21,7 +27,10 @@ type vtDecodeStderrMonitor struct {
 	failures int
 	// unreliable is set after sustained VT decode failures (damaged H.264 bitstream).
 	unreliable bool
-	pending    []byte
+	// softwareFailures counts software decoder corruption lines (often readrate/pacing).
+	softwareFailures   int
+	softwareUnreliable bool
+	pending            []byte
 }
 
 func newVTDecodeStderrMonitor(dst io.Writer) *vtDecodeStderrMonitor {
@@ -54,13 +63,31 @@ func (m *vtDecodeStderrMonitor) countVTDecodeLines(p []byte) {
 		}
 		line := data[:i]
 		data = data[i+1:]
+		lower := bytes.ToLower(line)
 		if bytes.Contains(line, vtDecoderCBNoise) || bytes.Contains(line, vtHardwareFailNoise) {
 			m.failures++
 			if m.failures >= vtDecodeFailureThreshold {
 				m.unreliable = true
 			}
 		}
+		if bytes.Contains(lower, softwareNALNoise) ||
+			bytes.Contains(lower, softwareSubmitNoise) ||
+			bytes.Contains(lower, softwareInvalidDataNoise) {
+			m.softwareFailures++
+			if m.softwareFailures >= softwareDecodeFailureThreshold {
+				m.softwareUnreliable = true
+			}
+		}
 	}
+}
+
+func (m *vtDecodeStderrMonitor) SoftwareDecodeUnreliable() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.softwareUnreliable
 }
 
 func (m *vtDecodeStderrMonitor) VTDecodeUnreliable() bool {

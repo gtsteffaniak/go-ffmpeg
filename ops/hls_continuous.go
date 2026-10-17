@@ -79,6 +79,15 @@ func (j *HLSContinuousJob) VTDecodeUnreliable() bool {
 	return j.stderrMon.VTDecodeUnreliable()
 }
 
+// SoftwareDecodeUnreliable reports sustained software decoder corruption in stderr
+// (for example Invalid NAL under readrate pacing). Output segments may buffer but not render.
+func (j *HLSContinuousJob) SoftwareDecodeUnreliable() bool {
+	if j == nil {
+		return false
+	}
+	return j.stderrMon.SoftwareDecodeUnreliable()
+}
+
 // Cancel stops the ffmpeg process.
 func (j *HLSContinuousJob) Cancel() {
 	if j == nil {

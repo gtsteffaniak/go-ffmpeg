@@ -55,6 +55,10 @@ func HierarchyForPlatform(plat PlatformInfo) []AccelType {
 		return []AccelType{AccelQSV, AccelNVENC, AccelAMF}
 	}
 	if plat.WSL {
+		// WSL2 with only the NVIDIA paravirtual driver often has no /dev/dri; probe NVENC first.
+		if plat.NVIDIA && !plat.DRI {
+			return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
+		}
 		return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12, AccelNVENC}
 	}
 	return []AccelType{AccelVAAPI, AccelQSV, AccelNVENC, AccelAMF}

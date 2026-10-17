@@ -20,9 +20,17 @@ type GPUDevice struct {
 
 type drmGPU = GPUDevice
 
-// ListGPUs returns DRM GPUs sorted by render node name.
+// ListGPUs returns GPUs on the host: DRM render nodes when present, plus a
+// synthetic NVIDIA entry on WSL when the driver is available without a DRI node.
 func ListGPUs() ([]GPUDevice, error) {
-	return listDRMGPUs()
+	gpus, err := listDRMGPUs()
+	if err != nil {
+		return nil, err
+	}
+	if !hasNVIDIAGPUDevice(gpus) && nvidiaAvailable() && (isWSLEnvironment() || !hasDiscreteDRMDevice(gpus)) {
+		gpus = append(gpus, syntheticNVIDIAGPU())
+	}
+	return gpus, nil
 }
 
 // DefaultRenderNodeForGPUs picks a render node for VAAPI/QSV smoke tests.
