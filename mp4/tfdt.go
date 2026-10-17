@@ -46,11 +46,20 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	if len(firstByTrack) == 0 {
 		return out, nil
 	}
+	primaryTrackID := uint32(0)
+	for id := range firstByTrack {
+		if primaryTrackID == 0 || id < primaryTrackID {
+			primaryTrackID = id
+		}
+	}
+	primaryTS := timescaleForTrackID(primaryTrackID, trackTimescales)
+	primaryTicks := firstByTrack[primaryTrackID]
+	deltaSec := mediaStartSec - float64(primaryTicks)/float64(primaryTS)
+
 	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
-	for trackID, firstTicks := range firstByTrack {
+	for trackID := range firstByTrack {
 		timescale := timescaleForTrackID(trackID, trackTimescales)
-		target := int64(math.Round(mediaStartSec * float64(timescale)))
-		deltaByTrack[trackID] = target - int64(firstTicks)
+		deltaByTrack[trackID] = int64(math.Round(deltaSec * float64(timescale)))
 	}
 	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
 		return nil, err

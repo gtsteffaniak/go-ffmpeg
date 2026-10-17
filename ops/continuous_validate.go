@@ -84,42 +84,30 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 			actualDur = plSeg.DurSec
 		}
 
-		checkMedia := media
-		checkStart := startSec
-		if transcode {
-			aligned, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales)
-			if alignErr != nil {
-				result.Issues = append(result.Issues, mp4.TimelineIssue{
-					Check:   "align",
-					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
-				})
-			} else {
-				checkMedia = aligned
-				checkStart, _ = mp4.FragmentMediaStartSecWithTimescales(aligned, trackTimescales)
-				if dur := mp4.FragmentDurationSecWithTimescales(aligned, trackTimescales); dur > 0 {
-					actualDur = dur
-				}
-			}
-		}
-
-		issues := mp4.ValidateSegmentTimelineWithTimescales(checkMedia, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
-			MediaStartSec:    checkStart,
+			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
-			Bytes:            len(checkMedia),
+			Bytes:            len(media),
 		}, toleranceSec, trackTimescales)
 		if transcode && plSeg.DurSec > 0 {
 			issues = filterTranscodeDurationIssues(issues)
 		}
 		if i > 0 {
 			prevTL := mp4.SegmentTimeline{Index: prevIndex, MediaStartSec: prevStart, ActualDurSec: prevDur}
-			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: checkStart}
+			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: startSec}
 			issues = append(issues, mp4.ValidateContinuity(prevTL, nextTL, toleranceSec)...)
+			if sourceHasAudio {
+				prevPath := resolveContinuousMediaPath(outDir, playlist.Segments[i-1].URI, "")
+				if prevMedia, readErr := os.ReadFile(prevPath); readErr == nil {
+					issues = append(issues, mp4.ValidateContinuityBetweenTracks(prevMedia, media, 2, toleranceSec, trackTimescales)...)
+				}
+			}
 		}
 		result.Issues = append(result.Issues, issues...)
-		prevStart = checkStart
+		prevStart = startSec
 		prevDur = actualDur
 		prevIndex = absIndex
 	}

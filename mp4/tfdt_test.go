@@ -2,6 +2,7 @@ package mp4
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 )
 
@@ -56,6 +57,37 @@ func TestAlignFragmentToMediaStartRebasesRemux(t *testing.T) {
 	}
 }
 
+func TestAlignFragmentPreservesAVOffset(t *testing.T) {
+	t.Parallel()
+	const videoTS = uint32(90000)
+	const audioTS = uint32(48000)
+	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
+
+	videoTicks := uint32(2.0 * float64(videoTS))
+	audioTicks := uint32(2.02 * float64(audioTS)) // 20ms audio lead
+	media := sampleDualTrackMoofMedia(videoTicks, audioTicks)
+
+	out, err := AlignFragmentToMediaStartWithTimescales(media, 8.0, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoStart, err := FragmentMediaStartSecForTrack(out, 1, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audioStart, err := FragmentMediaStartSecForTrack(out, 2, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(videoStart-8.0) > 0.001 {
+		t.Fatalf("video start = %.3f, want 8.0", videoStart)
+	}
+	wantOffset := float64(audioTicks)/float64(audioTS) - float64(videoTicks)/float64(videoTS)
+	if math.Abs((audioStart-videoStart)-wantOffset) > 0.001 {
+		t.Fatalf("A/V offset = %.3f, want %.3f", audioStart-videoStart, wantOffset)
+	}
+}
+
 func TestAlignAndReadWithHLSFMP4Timescale(t *testing.T) {
 	t.Parallel()
 	const hlsVideoTS = uint32(12288)
@@ -78,8 +110,20 @@ func TestAlignAndReadWithHLSFMP4Timescale(t *testing.T) {
 	}
 }
 
+func sampleDualTrackMoofMedia(videoTFDT, audioTFDT uint32) []byte {
+	videoTraf := makeAtom("traf", append(tfhdForTrack(1), makeFullAtom("tfdt", 0, uint32ToBytes(videoTFDT))...))
+	audioTraf := makeAtom("traf", append(tfhdForTrack(2), makeFullAtom("tfdt", 0, uint32ToBytes(audioTFDT))...))
+	moof := makeAtom("moof", append(videoTraf, audioTraf...))
+	mdat := makeAtom("mdat", make([]byte, 64))
+	return append(moof, mdat...)
+}
+
+func tfhdForTrack(trackID uint32) []byte {
+	return makeFullAtom("tfhd", 0, uint32ToBytes(trackID))
+}
+
 func sampleSingleMoofMedia(firstTFDT uint32) []byte {
-	tfhd := makeFullAtom("tfhd", 0, append([]byte{0, 0, 0, 0x01}, uint32ToBytes(1)...))
+	tfhd := tfhdForTrack(1)
 	tfdt := makeFullAtom("tfdt", 0, uint32ToBytes(firstTFDT))
 	trafPayload := append(tfhd, tfdt...)
 	traf := makeAtom("traf", trafPayload)

@@ -163,6 +163,25 @@ func TestContinuousRawSegmentComplete(t *testing.T) {
 	}
 }
 
+func TestContinuousRawSegmentCompleteSmallFragment(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	small := buildTestFragmentWithTFDTForTrack(9000, 1, 200) // well under legacy 8 KiB gate
+	if len(small) >= mp4.MinHLSSegmentMediaBytes {
+		t.Fatalf("expected small test fragment, got %d bytes", len(small))
+	}
+	rawPath := continuousRawSegmentPath(dir, 0)
+	if err := os.WriteFile(rawPath, small, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !continuousRawSegmentComplete(dir, 0) {
+		t.Fatal("parseable short raw segment must be complete when listed")
+	}
+}
+
 func TestContinuousSegmentPublished(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -275,12 +294,20 @@ func TestServePlaylistEmitsContiguousPublishedPrefix(t *testing.T) {
 }
 
 func buildTestFragmentWithTFDT(ticks uint32) []byte {
+	return buildTestFragmentWithTFDTForTrack(ticks, 1, mp4.MinHLSSegmentMediaBytes)
+}
+
+func buildTestFragmentWithTFDTForTrack(ticks uint32, trackID uint32, minTotal int) []byte {
 	tfdt := makeFullAtom("tfdt", 0, uint32ToBytes(ticks))
-	tfhd := makeFullAtom("tfhd", 0, []byte{0, 0, 0, 0, 0, 0, 0, 1})
+	tfhd := makeFullAtom("tfhd", 0, uint32ToBytes(trackID))
 	trafPayload := append(tfhd, tfdt...)
 	traf := makeAtom("traf", trafPayload)
 	moof := makeAtom("moof", traf)
-	mdat := makeAtom("mdat", make([]byte, mp4.MinHLSSegmentMediaBytes-len(moof)-8))
+	pad := minTotal - len(moof) - 8
+	if pad < 1 {
+		pad = 1
+	}
+	mdat := makeAtom("mdat", make([]byte, pad))
 	return append(moof, mdat...)
 }
 

@@ -20,4 +20,4 @@ docker run --rm \
 	-e HLS_SOFTWARE_ONLY=1 \
 	"$TEST_IMAGE" \
 	bash -c 'make test-hls SEGMENTS=0 FIXTURE_DURATION=32 \
-		FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_eac3_mkv,wmv2_wmapro_wmv'
+		FIXTURE_NAMES=h264_aac_mp4,h264_aac_mkv,h264_eac3_mkv,wmv2_wmapro_wmv,hevc_aac_mp4,vp9_opus_webm,av1_opus_webm'

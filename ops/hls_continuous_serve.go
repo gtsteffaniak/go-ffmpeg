@@ -53,13 +53,17 @@ func ContinuousSegmentServeReady(outDir, name string) bool {
 		return false
 	}
 	st, err := os.Stat(path)
-	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
+	if err != nil || st.Size() <= 0 {
 		return false
 	}
 	if _, err := os.Stat(path + continuousAlignTmpSuffix); err == nil {
 		return false
 	}
-	return true
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return mp4.IsHLSSegmentFragment(data)
 }
 
 func assertContinuousPathContained(base, target string) error {

@@ -84,8 +84,8 @@ func alignContinuousSegmentFile(path string, mediaStartSec float64, trackTimesca
 }
 
 func alignedContinuousSegment(data []byte, mediaStartSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
-	if len(data) < mp4.MinHLSSegmentMediaBytes {
-		return nil, fmt.Errorf("segment too small (%d bytes)", len(data))
+	if !mp4.IsHLSSegmentFragment(data) {
+		return nil, fmt.Errorf("segment not a parseable fMP4 fragment (%d bytes)", len(data))
 	}
 	return mp4.AlignFragmentToMediaStartWithTimescales(data, mediaStartSec, trackTimescales)
 }
@@ -172,7 +172,7 @@ func continuousSegmentPath(outDir string, index int) string {
 func continuousSegmentPublished(outDir string, index int) bool {
 	path := continuousSegmentPath(outDir, index)
 	st, err := os.Stat(path)
-	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
+	if err != nil || st.Size() <= 0 {
 		return false
 	}
 	_, err = os.Stat(path + continuousAlignTmpSuffix)
@@ -180,19 +180,24 @@ func continuousSegmentPublished(outDir string, index int) bool {
 }
 
 // continuousRawSegmentComplete reports whether the raw muxer output for a
-// playlist-listed segment is finished: non-trivial size and no in-flight
-// temp_file rename. The muxer only lists segments it has closed, so a listed
-// raw file that survives these checks is safe to align.
+// playlist-listed segment is finished: closed by the muxer (no .tmp sibling)
+// and large enough to be a parseable fMP4 fragment. The muxer only lists
+// segments it has closed, so a listed raw file that survives these checks is
+// safe to align — including short EOF tails under 8 KiB.
 func continuousRawSegmentComplete(outDir string, index int) bool {
 	path := continuousRawSegmentPath(outDir, index)
 	st, err := os.Stat(path)
-	if err != nil || st.Size() < int64(mp4.MinHLSSegmentMediaBytes) {
+	if err != nil || st.Size() <= 0 {
 		return false
 	}
 	if _, err := os.Stat(path + ".tmp"); err == nil {
 		return false
 	}
-	return true
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return mp4.IsHLSSegmentFragment(data)
 }
 
 func hlsContinuousUsesCopyTimestamps(opts HLSContinuousOptions) bool {

@@ -34,9 +34,9 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 
 func videoFilterScaleOnly(maxHeight int) ([]string, error) {
 	if maxHeight <= 0 {
-		return nil, nil
+		return []string{"-vf", "format=yuv420p"}, nil
 	}
-	return []string{"-vf", fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight)}, nil
+	return []string{"-vf", fmt.Sprintf("scale=-2:min(%d\\,ih),format=yuv420p", maxHeight)}, nil
 }
 
 // scaleVTFilter caps the output height while preserving aspect ratio.

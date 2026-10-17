@@ -351,17 +351,17 @@ func vp9Deadline(p QualityPreset) string {
 	return "good"
 }
 
-// nvencPreset maps quality presets to NVENC -preset values.
+// nvencPreset maps quality presets to NVENC -preset p1–p7 values (FFmpeg 4.3+).
 func nvencPreset(p QualityPreset) string {
 	switch p {
-	case PresetUltrafast:
-		return "ultrafast"
-	case PresetVeryfast, PresetFast:
-		return "fast"
+	case PresetUltrafast, PresetVeryfast:
+		return "p7"
+	case PresetFast:
+		return "p5"
 	case PresetMedium:
-		return "medium"
+		return "p4"
 	default:
-		return "fast"
+		return "p5"
 	}
 }
 

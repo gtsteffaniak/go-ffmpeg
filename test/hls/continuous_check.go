@@ -162,7 +162,7 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 	var prevSeg *segmentReport
 	var playlistPos float64
 	playlistOK := true
-	exactTranscodeTimeline := mode == "transcode"
+	var prevMedia []byte
 
 	for i, plSeg := range playlist.Segments {
 		segPath := resolveContinuousSegmentPath(outDir, plSeg.URI)
@@ -196,16 +196,6 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 		if actualDur <= 0 && plSeg.DurSec > 0 {
 			actualDur = plSeg.DurSec
 		}
-		if exactTranscodeTimeline {
-			if _, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales); alignErr != nil {
-				report.Pass = false
-				report.Issues = append(report.Issues, mp4.TimelineIssue{
-					Check:   "align",
-					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
-				})
-			}
-		}
-
 		seg := segmentReport{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
@@ -245,12 +235,16 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 			prevTL := mp4.SegmentTimeline{Index: prevSeg.Index, MediaStartSec: prevSeg.MediaStartSec, ActualDurSec: prevSeg.ActualDurSec}
 			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: seg.MediaStartSec}
 			issues = append(issues, mp4.ValidateContinuity(prevTL, nextTL, tolerance)...)
+			if report.SourceHasAudio && len(prevMedia) > 0 {
+				issues = append(issues, mp4.ValidateContinuityBetweenTracks(prevMedia, media, 2, tolerance, trackTimescales)...)
+			}
 		}
 		if len(issues) > 0 {
 			report.Pass = false
 			report.Issues = append(report.Issues, issues...)
 		}
 		prevSeg = &report.Segments[len(report.Segments)-1]
+		prevMedia = media
 	}
 
 	// job.json is the publisher's record of produced coverage: a finished job
