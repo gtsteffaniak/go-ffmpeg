@@ -352,12 +352,13 @@ func vp9Deadline(p QualityPreset) string {
 }
 
 // nvencPreset maps quality presets to NVENC -preset p1–p7 values (FFmpeg 4.3+).
+// p1 is fastest (lowest latency); p7 is slowest (highest quality).
 func nvencPreset(p QualityPreset) string {
 	switch p {
 	case PresetUltrafast, PresetVeryfast:
-		return "p7"
+		return "p1"
 	case PresetFast:
-		return "p5"
+		return "p3"
 	case PresetMedium:
 		return "p4"
 	default:

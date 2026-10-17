@@ -13,7 +13,10 @@ const videoToolboxDeviceAlias = "vt"
 // VideoFilterArgs returns -filter_hw_device and -vf for hardware encoders.
 // Must be appended after input and before encoder args.
 func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfile, maxHeight int) ([]string, error) {
-	if profile.ForceSoftware || profile.Codec == CodecCopy {
+	if profile.Codec == CodecCopy {
+		return nil, nil
+	}
+	if profile.ForceSoftware {
 		return videoFilterScaleOnly(maxHeight)
 	}
 	sel, err := r.ResolveEncoder(profile)

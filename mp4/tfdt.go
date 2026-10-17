@@ -46,10 +46,15 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	if len(firstByTrack) == 0 {
 		return out, nil
 	}
+	// HLS timeline validation uses track 1 (video) for tfdt_start; anchor alignment there.
 	primaryTrackID := uint32(0)
-	for id := range firstByTrack {
-		if primaryTrackID == 0 || id < primaryTrackID {
-			primaryTrackID = id
+	if _, ok := firstByTrack[1]; ok {
+		primaryTrackID = 1
+	} else {
+		for id := range firstByTrack {
+			if primaryTrackID == 0 || id < primaryTrackID {
+				primaryTrackID = id
+			}
 		}
 	}
 	primaryTS := timescaleForTrackID(primaryTrackID, trackTimescales)
@@ -60,6 +65,11 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	for trackID := range firstByTrack {
 		timescale := timescaleForTrackID(trackID, trackTimescales)
 		deltaByTrack[trackID] = int64(math.Round(deltaSec * float64(timescale)))
+		newTicks := int64(firstByTrack[trackID]) + deltaByTrack[trackID]
+		if newTicks < 0 {
+			return nil, fmt.Errorf("align tfdt: track %d would be negative (%.3fs) after aligning track %d to %.3fs",
+				trackID, float64(newTicks)/float64(timescale), primaryTrackID, mediaStartSec)
+		}
 	}
 	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
 		return nil, err

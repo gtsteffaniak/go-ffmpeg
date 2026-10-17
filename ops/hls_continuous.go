@@ -123,6 +123,32 @@ func (j *HLSContinuousJob) Done() <-chan error {
 	return ch
 }
 
+// prepareContinuousOutputLayout creates raw/ and seg/ and clears stale publish
+// artifacts when starting a new generation (mid-file seek or fresh playlist).
+// append_list resume at StartIndex 0 intentionally keeps prior seg/ and playlists.
+func prepareContinuousOutputLayout(outDir string, opts HLSContinuousOptions) error {
+	// raw/ holds the muxer's unaligned output; the publisher renames validated
+	// fragments into seg/, so a file under seg/ is always safe to serve.
+	if opts.StartIndex > 0 || opts.FreshPlaylist {
+		for _, sub := range []string{"seg", "raw"} {
+			if err := os.RemoveAll(filepath.Join(outDir, sub)); err != nil {
+				return err
+			}
+		}
+		for _, name := range []string{"ffmpeg.m3u8", continuousServePlaylistName, continuousJobStatusName} {
+			if err := os.Remove(filepath.Join(outDir, name)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	for _, sub := range []string{"seg", "raw"} {
+		if err := os.MkdirAll(filepath.Join(outDir, sub), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // StartHLSContinuous launches ffmpeg -f hls writing segments under OutputDir.
 func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSContinuousOptions) (*HLSContinuousJob, error) {
 	if runner == nil || caps == nil {
@@ -146,28 +172,8 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 		}
 		opts.Input = InputSource{URL: inputURL, StreamType: opts.Input.StreamType}
 	}
-	// raw/ holds the muxer's unaligned output; the publisher renames validated
-	// fragments into seg/, so a file under seg/ is always safe to serve.
-	// A new generation (mid-file seek or fresh playlist) must not inherit
-	// seg/, index.m3u8, or job.json from a prior run — publishContinuousReadySegments
-	// treats an existing seg/NNNNN.m4s as already published and would skip aligning
-	// the new raw/NNNNN.m4s. append_list resume at StartIndex 0 keeps prior artifacts.
-	if opts.StartIndex > 0 || opts.FreshPlaylist {
-		for _, sub := range []string{"seg", "raw"} {
-			if err := os.RemoveAll(filepath.Join(outDir, sub)); err != nil {
-				return nil, err
-			}
-		}
-		for _, name := range []string{"ffmpeg.m3u8", continuousServePlaylistName, continuousJobStatusName} {
-			if err := os.Remove(filepath.Join(outDir, name)); err != nil && !os.IsNotExist(err) {
-				return nil, err
-			}
-		}
-	}
-	for _, sub := range []string{"seg", "raw"} {
-		if err := os.MkdirAll(filepath.Join(outDir, sub), 0o755); err != nil {
-			return nil, err
-		}
+	if err := prepareContinuousOutputLayout(outDir, opts); err != nil {
+		return nil, err
 	}
 
 	opts, err = snapContinuousCopyStart(parent, runner, opts)

@@ -57,6 +57,11 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 	var prevStart, prevDur, playlistPos float64
 	var prevIndex int
 	for i, plSeg := range playlist.Segments {
+		// hls.js places each fragment at its cumulative #EXTINF position, so the
+		// playlist — not a predicted segment grid — is the expected start.
+		expectedStart := playlistPos
+		playlistPos += plSeg.DurSec
+
 		segPath := resolveContinuousMediaPath(outDir, plSeg.URI, "")
 		media, err := os.ReadFile(segPath)
 		if err != nil {
@@ -67,10 +72,6 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 			continue
 		}
 		absIndex := opts.StartIndex + i
-		// hls.js places each fragment at its cumulative #EXTINF position, so the
-		// playlist — not a predicted segment grid — is the expected start.
-		expectedStart := playlistPos
-		playlistPos += plSeg.DurSec
 		expectedDur := opts.SegmentSec
 		if plSeg.DurSec > 0 {
 			expectedDur = plSeg.DurSec

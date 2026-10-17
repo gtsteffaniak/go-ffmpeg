@@ -88,6 +88,22 @@ func TestAlignFragmentPreservesAVOffset(t *testing.T) {
 	}
 }
 
+func TestAlignFragmentRejectsNegativeTrackAfterPlaylistAnchor(t *testing.T) {
+	t.Parallel()
+	const videoTS = uint32(90000)
+	const audioTS = uint32(48000)
+	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
+	// Video starts at 2s on the playlist; audio at 0.5s. Aligning track 1 to t=0 shifts audio negative.
+	videoTicks := uint32(2.0 * float64(videoTS))
+	audioTicks := uint32(0.5 * float64(audioTS))
+	media := sampleDualTrackMoofMedia(videoTicks, audioTicks)
+
+	_, err := AlignFragmentToMediaStartWithTimescales(media, 0, timescales)
+	if err == nil {
+		t.Fatal("expected alignment error when a track would go negative")
+	}
+}
+
 func TestAlignAndReadWithHLSFMP4Timescale(t *testing.T) {
 	t.Parallel()
 	const hlsVideoTS = uint32(12288)
