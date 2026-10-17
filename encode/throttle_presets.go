@@ -1,26 +1,26 @@
 package encode
 
 // DefaultLivePacedBurstSec is the default readrate_initial_burst for live-paced jobs
-// (~15 segments at 4s). Align with app-level buffer settings (Jellyfin default throttle is 180s).
-const DefaultLivePacedBurstSec = 60
+// (~5 segments at 4s). Pair with app-level max-ahead throttling for long sessions.
+const DefaultLivePacedBurstSec = 20
 
 // ThrottleConfigOff returns a disabled throttle (max encode speed — use for background disk cache).
 func ThrottleConfigOff() ThrottleConfig {
 	return ThrottleConfig{Enabled: false}
 }
 
-// ThrottleConfigLivePaced returns slightly-faster-than-realtime input pacing
-// after an initial unlimited burst. ~1.5x keeps the produced edge ahead of
-// playback (1x reads exactly at consumption speed, so any stall starves the
-// playhead) while the cache still only fills for content that is watched.
+// ThrottleConfigLivePaced returns ~1x input pacing after an initial unlimited burst.
+// Catchup is left at 0 so ffmpeg 8+ applies its default readrate×1.05 recovery; set Catchup
+// explicitly on ThrottleConfig when a higher cap is needed. Pair with app-level pause when
+// segments are far ahead of playback.
 func ThrottleConfigLivePaced(initialBurstSec float64) ThrottleConfig {
 	if initialBurstSec <= 0 {
 		initialBurstSec = DefaultLivePacedBurstSec
 	}
 	return ThrottleConfig{
 		Enabled:      true,
-		Rate:         1.5,
-		Catchup:      2.0,
+		Rate:         1.0,
+		Catchup:      0,
 		InitialBurst: initialBurstSec,
 	}
 }

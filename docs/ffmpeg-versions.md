@@ -18,6 +18,8 @@ These differ from the library minimum and are omitted on older supported version
 | Input-side BSF | 7.0 |
 | `-readrate_catchup` | 8.0 |
 
+Live-paced HLS (`ThrottleConfigLivePaced`) uses `-readrate 1`, `-readrate_initial_burst` (6.1+), and **does not** pass `-readrate_catchup` on ffmpeg 8+ so the binary applies its default recovery rate (`readrate × 1.05`). Set `ThrottleConfig.Catchup` explicitly when a higher cap is required (e.g. remux segment deletion).
+
 ## Supported matrix versions
 
 Pinned in [`docker/versions`](../docker/versions) (regular `gtstef/ffmpeg` images, not `-decode`):

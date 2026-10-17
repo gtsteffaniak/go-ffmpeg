@@ -58,12 +58,14 @@ func TestBuildHLSContinuousArgsLivePacedReadrate(t *testing.T) {
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"-readrate 1",
-		"-readrate_catchup 2",
-		"-readrate_initial_burst 60",
+		"-readrate_initial_burst 20",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("args missing %q: %s", want, joined)
 		}
+	}
+	if strings.Contains(joined, "-readrate_catchup") {
+		t.Fatalf("live-paced preset should omit readrate_catchup on ffmpeg 8+: %s", joined)
 	}
 }
 
