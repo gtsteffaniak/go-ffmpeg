@@ -240,7 +240,7 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 		if x264Only {
 			args = append(args, "-sc_threshold", "0")
 		}
-		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", segDur))
+		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.3f)", segDur))
 		if !opts.VideoOnly() {
 			audioFilter := vodAudioResampleFilter(opts.StartSec)
 			args = append(args,
@@ -298,6 +298,17 @@ func appendHLSVODOutputTimestampArgs(args []string, startSec float64) []string {
 	return append(args, "-avoid_negative_ts", "make_zero")
 }
 
+// vodAbsLocalInputURL applies filepath.Abs only to local paths (not http/rtsp URLs).
+func vodAbsLocalInputURL(url string) string {
+	if url == "" || strings.Contains(url, "://") {
+		return url
+	}
+	if abs, err := filepath.Abs(url); err == nil {
+		return abs
+	}
+	return url
+}
+
 func vodAudioResampleFilter(startSec float64) string {
 	if startSec <= hlsStartTimeEpsilonSec {
 		return "aresample=async=1:first_pts=0"
@@ -321,11 +332,8 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 		return nil, fmt.Errorf("hls vod: output dir: %w", err)
 	}
 	opts.OutputDir = outDir
-	inputURL := opts.Input.URL
-	if inputURL != "" {
-		if abs, absErr := filepath.Abs(inputURL); absErr == nil {
-			inputURL = abs
-		}
+	inputURL := vodAbsLocalInputURL(opts.Input.URL)
+	if inputURL != opts.Input.URL {
 		opts.Input = InputSource{URL: inputURL, StreamType: opts.Input.StreamType}
 	}
 	if err := prepareVODOutputLayout(outDir, opts); err != nil {
@@ -365,6 +373,7 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 				err = fmt.Errorf("%w: %s", err, msg)
 			}
 		}
+		cancel()
 		job.mu.Lock()
 		job.err = err
 		job.mu.Unlock()

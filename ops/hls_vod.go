@@ -36,15 +36,65 @@ func BuildVODSegmentListFixedGrid(mediaDurationSec, segmentSec float64) VODSegme
 	return VODSegmentList{Starts: starts, Durations: durs, SegmentSec: segmentSec}
 }
 
-// BuildVODSegmentListKeyframe plans segments snapped to probed keyframes (remux / video-copy).
+// BuildVODSegmentListKeyframe plans remux/video-copy segments to match ffmpeg HLS copy mode:
+// cumulative hls_time targets (segmentSec × index) with each cut at the next video keyframe.
 // Keyframes and duration are normalized when startTimeSec is non-zero.
 func BuildVODSegmentListKeyframe(mediaDurationSec, segmentSec, startTimeSec float64, keyframes []float64) VODSegmentList {
 	if segmentSec <= 0 {
 		segmentSec = DefaultHLSSegmentDurationSec
 	}
 	kf, dur := PrepareHLSMediaTimeline(keyframes, mediaDurationSec, startTimeSec)
-	starts, durs := BuildHLSSegmentTimeline(dur, kf, segmentSec, 0)
+	starts, durs := vodCopyModeSegmentTimeline(dur, kf, segmentSec)
 	return VODSegmentList{Starts: starts, Durations: durs, SegmentSec: segmentSec}
+}
+
+// vodCopyModeSegmentTimeline mirrors ffmpeg -f hls stream-copy segmentation: each segment
+// ends at the first keyframe on or after the cumulative target (n * segmentSec).
+func vodCopyModeSegmentTimeline(durationSec float64, keyframes []float64, segmentSec float64) (starts, durations []float64) {
+	if segmentSec <= 0 {
+		segmentSec = DefaultHLSSegmentDurationSec
+	}
+	if durationSec <= 0 {
+		return nil, nil
+	}
+	kf := append([]float64(nil), keyframes...)
+	if len(kf) == 0 {
+		return fixedHLSSegmentTimeline(durationSec, segmentSec)
+	}
+	if kf[0] > 0.001 {
+		kf = append([]float64{0}, kf...)
+	}
+
+	start := 0.0
+	segNum := 0
+	for start < durationSec-0.001 {
+		deadline := float64(segNum+1) * segmentSec
+		end := durationSec
+		for _, k := range kf {
+			if k < start+0.001 {
+				continue
+			}
+			if k >= deadline-0.0005 {
+				end = k
+				break
+			}
+		}
+		if end <= start+0.01 {
+			break
+		}
+		dur := end - start
+		starts = append(starts, start)
+		durations = append(durations, dur)
+		start = end
+		segNum++
+		if end >= durationSec-0.001 {
+			break
+		}
+	}
+	if len(starts) == 0 {
+		return fixedHLSSegmentTimeline(durationSec, segmentSec)
+	}
+	return mergeTinyTailSegment(starts, durations)
 }
 
 // BuildVODSegmentList selects fixed-grid or keyframe mode from keyframes (nil/empty → grid).

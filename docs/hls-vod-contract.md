@@ -14,7 +14,7 @@ This document defines the **playlist-local time** model for browser MSE playback
 | Mode | Segment boundaries | Playlist `EXTINF` |
 |------|-------------------|-------------------|
 | Full transcode | Fixed grid: segment `k` starts at `k * segmentSec` | `segmentSec` except last (remainder) |
-| Remux / video-copy | Snapped to probed keyframes (max target `segmentSec`) | Actual span between keyframe boundaries |
+| Remux / video-copy | Uses `segmentSec` as a cumulative target, then snaps each cut to the next video keyframe | Actual span between emitted keyframe boundaries (can exceed `segmentSec`) |
 
 All times are on a **0-based media timeline** (container `start_time` subtracted before planning).
 
@@ -69,12 +69,14 @@ Same structure; encoder/decoder/filter args come from `encode.Resolver` (NVENC, 
 
 ## Segment readiness
 
-A segment is **ready** when:
+A segment is **ready** when `HLSVODSegmentReady` returns true:
 
-1. `seg/NNNNN.m4s` exists on disk, and
-2. The file is a complete fMP4 fragment (`moof` + `tfdt`), per `HLSVODSegmentReady`.
+1. `seg/NNNNN.m4s` exists and `seg/NNNNN.m4s.tmp` does **not** (ffmpeg `hls_flags temp_file` publish in progress).
+2. The file is a publishable fMP4 fragment (`moof` + `tfdt`, monotonic decode times), at least `minHLSSegmentMediaBytes`.
 
-Partial files must not be visible to readers; ffmpeg `temp_file` provides this for muxer output.
+On ffmpeg builds where `temp_file` does not rename fMP4 segments atomically, a segment file can appear before the muxer finishes. Use `HLSVODSegmentReadyAfter(outDir, k)` (treats segment `k` as complete when segment `k+1` is ready) or wait until the encode job passes index `k` before serving.
+
+Partial files must not be visible to readers when `temp_file` works; hosts should not bypass the readiness helpers.
 
 ## Host restart guidance
 

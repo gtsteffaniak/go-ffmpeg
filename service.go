@@ -563,9 +563,19 @@ func HLSVODInitPath(outDir string) string {
 	return ops.HLSVODInitPath(outDir)
 }
 
-// HLSVODSegmentReady reports whether a segment file is a complete fMP4 fragment.
+// HLSVODSegmentReady reports whether a segment file is publishable (see docs/hls-vod-contract.md).
 func HLSVODSegmentReady(path string) (bool, error) {
 	return ops.HLSVODSegmentReady(path)
+}
+
+// HLSVODSegmentBytesReady validates segment bytes for serving.
+func HLSVODSegmentBytesReady(data []byte) bool {
+	return ops.HLSVODSegmentBytesReady(data)
+}
+
+// HLSVODSegmentReadyAfter reports readiness for index when the encode head has advanced.
+func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
+	return ops.HLSVODSegmentReadyAfter(outDir, index)
 }
 
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.

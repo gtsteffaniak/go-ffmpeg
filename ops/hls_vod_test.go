@@ -68,6 +68,25 @@ func TestSegmentIndexForTimeKeyframeTail(t *testing.T) {
 	}
 }
 
+func TestBuildVODSegmentListKeyframeMatchesFFmpegCumulative(t *testing.T) {
+	t.Parallel()
+	var kf []float64
+	for i := 0; i <= 10; i++ {
+		kf = append(kf, float64(i)*3)
+	}
+	list := BuildVODSegmentListKeyframe(30, 4, 0, kf)
+	wantStarts := []float64{0, 6, 9, 12, 18, 21, 24}
+	wantDurs := []float64{6, 3, 3, 6, 3, 3, 6}
+	if list.Count() != len(wantStarts) {
+		t.Fatalf("count=%d want %d starts=%v durs=%v", list.Count(), len(wantStarts), list.Starts, list.Durations)
+	}
+	for i := range wantStarts {
+		if list.Starts[i] != wantStarts[i] || list.Durations[i] != wantDurs[i] {
+			t.Fatalf("segment %d: got %.3f/%.3f want %.3f/%.3f", i, list.Starts[i], list.Durations[i], wantStarts[i], wantDurs[i])
+		}
+	}
+}
+
 func TestBuildVODSegmentListMergesTinyTail(t *testing.T) {
 	t.Parallel()
 	list := BuildVODSegmentListFixedGrid(8.3, 4.0)

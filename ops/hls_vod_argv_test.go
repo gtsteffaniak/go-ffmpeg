@@ -50,7 +50,7 @@ func TestBuildHLSVODFFmpegArgsTranscodeMidFile(t *testing.T) {
 		"-avoid_negative_ts disabled",
 		"-output_ts_offset 20.000000",
 		"-start_number 5",
-		"-force_key_frames expr:gte(t,n_forced*4)",
+		"-force_key_frames expr:gte(t,n_forced*4.000)",
 		"-hls_segment_type fmp4",
 		"-hls_segment_filename seg/%05d.m4s",
 		"-hls_flags temp_file+independent_segments",
