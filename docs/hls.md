@@ -1,8 +1,12 @@
 # HLS playback
 
-go-ffmpeg targets **browser MSE** playback (Plex/Jellyfin-style), not generic HLS authoring. You pass segment index, timeline offset, and a `VideoProfile`; the library owns fMP4 mux flags, `output_ts_offset`, post-encode `tfdt` alignment, and pipeline selection (remux / video-copy / full transcode). This is the deep ffmpeg knowledge most wrappers leave to you.
+go-ffmpeg targets **browser MSE** playback (Plex/Jellyfin-style), not generic HLS authoring.
 
-## On-demand segments
+**Recommended for on-demand file playback:** [Model A VOD contract](hls-vod-contract.md) — synthetic full-length `#EXT-X-PLAYLIST-TYPE:VOD` playlists, `StartHLSVODSegmentJob`, playlist-local `output_ts_offset`, no EVENT playlist dependency.
+
+The sections below describe **legacy** APIs still used by existing integrations (e.g. FileBrowser v1.4.0). Prefer Model A for new work.
+
+## On-demand segments (legacy per-request API)
 
 Independent ffmpeg invocations per segment index. Outputs fMP4 (`moof`+`mdat`) with:
 
@@ -12,9 +16,9 @@ Independent ffmpeg invocations per segment index. Outputs fMP4 (`moof`+`mdat`) w
 
 Use `HLSInitAndSegment` for segment 0 (init + media), `HLSSegmentMedia` for later indices.
 
-## Continuous jobs
+## Continuous jobs (legacy EVENT playlist)
 
-Single `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache directory.
+Single `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache directory. Prefer [VOD Model A](hls-vod-contract.md) for on-demand file playback instead of serving growing EVENT playlists.
 
 | Pacing | Use case |
 |--------|----------|

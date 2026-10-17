@@ -499,7 +499,74 @@ func HLSCacheSchemaVersion() string {
 
 const (
 	DefaultHLSSegmentDurationSec = ops.DefaultHLSSegmentDurationSec
+
+	HLSVODInitFilename         = ops.HLSVODInitFilename
+	HLSVODSegmentSubdir        = ops.HLSVODSegmentSubdir
+	HLSVODSegmentNamePattern   = ops.HLSVODSegmentNamePattern
+	HLSVODInternalPlaylistName = ops.HLSVODInternalPlaylistName
 )
+
+// VODSegmentList describes segment starts/durations for a synthetic VOD playlist (Model A).
+type VODSegmentList = ops.VODSegmentList
+
+// VODPlaylistOptions configures URIs in BuildVODPlaylist.
+type VODPlaylistOptions = ops.VODPlaylistOptions
+
+// HLSVODJobOptions configures StartHLSVODSegmentJob.
+type HLSVODJobOptions = ops.HLSVODJobOptions
+
+// HLSVODSegmentJob runs a forward VOD segment encode job.
+type HLSVODSegmentJob = ops.HLSVODSegmentJob
+
+// BuildVODSegmentListFixedGrid plans equal segments for full transcode.
+func BuildVODSegmentListFixedGrid(mediaDurationSec, segmentSec float64) VODSegmentList {
+	return ops.BuildVODSegmentListFixedGrid(mediaDurationSec, segmentSec)
+}
+
+// BuildVODSegmentListKeyframe plans keyframe-snapped segments for remux/video-copy.
+func BuildVODSegmentListKeyframe(mediaDurationSec, segmentSec, startTimeSec float64, keyframes []float64) VODSegmentList {
+	return ops.BuildVODSegmentListKeyframe(mediaDurationSec, segmentSec, startTimeSec, keyframes)
+}
+
+// BuildVODSegmentList selects fixed-grid or keyframe mode from keyframes.
+func BuildVODSegmentList(mediaDurationSec, segmentSec, startTimeSec float64, keyframes []float64) VODSegmentList {
+	return ops.BuildVODSegmentList(mediaDurationSec, segmentSec, startTimeSec, keyframes)
+}
+
+// SegmentIndexForTime maps playlist time to segment index and start time.
+func SegmentIndexForTime(timeSec float64, starts []float64) (index int, startSec float64) {
+	return ops.SegmentIndexForTime(timeSec, starts)
+}
+
+// DefaultVODPlaylistOptions returns standard init/segment URIs for BuildVODPlaylist.
+func DefaultVODPlaylistOptions() VODPlaylistOptions {
+	return ops.DefaultVODPlaylistOptions()
+}
+
+// VODTargetDurationSec computes #EXT-X-TARGETDURATION from segment durations.
+func VODTargetDurationSec(durations []float64) int {
+	return ops.VODTargetDurationSec(durations)
+}
+
+// BuildVODPlaylist renders a complete VOD media playlist for Model A.
+func BuildVODPlaylist(list VODSegmentList, opts VODPlaylistOptions) string {
+	return ops.BuildVODPlaylist(list, opts)
+}
+
+// HLSVODSegmentPath returns the path to segment index under a job directory.
+func HLSVODSegmentPath(outDir string, index int) string {
+	return ops.HLSVODSegmentPath(outDir, index)
+}
+
+// HLSVODInitPath returns the path to init.m4s under a job directory.
+func HLSVODInitPath(outDir string) string {
+	return ops.HLSVODInitPath(outDir)
+}
+
+// HLSVODSegmentReady reports whether a segment file is a complete fMP4 fragment.
+func HLSVODSegmentReady(path string) (bool, error) {
+	return ops.HLSVODSegmentReady(path)
+}
 
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.
 func DefaultOnDemandHLSDefaults() OnDemandHLSDefaults {
@@ -611,6 +678,8 @@ func (s *Service) DescribeHLSSegmentPlan(params HLSSegmentParams) string {
 }
 
 // HLSSegment generates a self-contained MPEG-TS segment for full re-encode on-demand HLS.
+//
+// Deprecated: for on-demand fMP4 file playback prefer StartHLSVODSegmentJob (see docs/hls-vod-contract.md).
 func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byte, error) {
 	if err := s.ensureDetected(ctx); err != nil {
 		return nil, err
@@ -640,6 +709,8 @@ func (s *Service) HLSSegment(ctx context.Context, opts HLSSegmentOptions) ([]byt
 }
 
 // HLSInitAndSegment generates init and media bytes for the first HLS segment.
+//
+// Deprecated: for on-demand fMP4 file playback prefer StartHLSVODSegmentJob (see docs/hls-vod-contract.md).
 func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions) (init, media []byte, err error) {
 	if err := s.ensureDetected(ctx); err != nil {
 		return nil, nil, err
@@ -670,6 +741,8 @@ func (s *Service) HLSInitAndSegment(ctx context.Context, opts HLSSegmentOptions)
 }
 
 // HLSSegmentMedia writes a media-only fMP4 fragment for an HLS segment request.
+//
+// Deprecated: for on-demand fMP4 file playback prefer StartHLSVODSegmentJob (see docs/hls-vod-contract.md).
 func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegmentOptions) error {
 	if err := s.ensureDetected(ctx); err != nil {
 		return err
@@ -693,7 +766,63 @@ func (s *Service) HLSSegmentMedia(ctx context.Context, w io.Writer, opts HLSSegm
 	})
 }
 
+// BuildHLSVODFFmpegArgs builds frozen argv for a VOD segment encode job (Model A).
+func (s *Service) BuildHLSVODFFmpegArgs(opts HLSVODJobOptions) ([]string, error) {
+	if err := s.require("HLSVOD"); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	caps := s.caps
+	runner := s.runner
+	s.mu.RUnlock()
+	return ops.BuildHLSVODFFmpegArgs(runner, caps, opts)
+}
+
+// StartHLSVODSegmentJob launches ffmpeg -f hls writing numbered fMP4 segments for on-demand VOD.
+func (s *Service) StartHLSVODSegmentJob(ctx context.Context, opts HLSVODJobOptions) (*HLSVODSegmentJob, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.require("HLSVOD"); err != nil {
+		return nil, err
+	}
+	if !opts.Remux && !opts.VideoCopy {
+		if err := s.ValidateVideoProfile(opts.Profile); err != nil {
+			return nil, err
+		}
+		if err := s.ValidateVideoDecodeProfile(opts.Decode); err != nil {
+			return nil, err
+		}
+	}
+	slot := hlsContinuousSlotClass(ops.HLSContinuousOptions{
+		Input:     opts.Input,
+		Remux:     opts.Remux,
+		VideoCopy: opts.VideoCopy,
+		Profile:   opts.Profile,
+		Decode:    opts.Decode,
+	})
+	lease, err := s.acquireLease(ctx, slot, opts.Input.URL)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	job, err := ops.StartHLSVODSegmentJob(ctx, s.runner, caps, opts)
+	if err != nil {
+		lease.Release()
+		return nil, wrapOp("HLSVOD", ErrEncodeFailed, err)
+	}
+	go func() {
+		_ = job.Wait()
+		lease.Release()
+	}()
+	return job, nil
+}
+
 // StartHLSContinuous launches ffmpeg -f hls writing fMP4 segments to disk.
+//
+// Deprecated: for on-demand file playback prefer StartHLSVODSegmentJob and a synthetic VOD playlist (see docs/hls-vod-contract.md).
 func (s *Service) StartHLSContinuous(ctx context.Context, opts HLSContinuousOptions) (*HLSContinuousJob, error) {
 	if err := s.ensureDetected(ctx); err != nil {
 		return nil, err
