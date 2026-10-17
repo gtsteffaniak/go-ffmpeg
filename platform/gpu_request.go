@@ -28,6 +28,12 @@ type GPURequest struct {
 func ResolveGPURequest(req GPURequest, env GPUResolveEnv, strict bool) (GPUChoice, error) {
 	switch req.Kind {
 	case SelectionAuto:
+		if shouldPreferWSLNVIDIAAuto(env) {
+			c := wslNVIDIAGPUChoice(req.Label)
+			c.Mode = GPUModeAuto
+			c.AutoSelect = true
+			return c, nil
+		}
 		return GPUChoice{Mode: GPUModeAuto, AutoSelect: true, Label: req.Label}, nil
 	case SelectionSoftware:
 		return GPUChoice{
@@ -108,6 +114,9 @@ func resolveDiscrete(req GPURequest, env GPUResolveEnv, strict bool) (GPUChoice,
 			c.Label = req.Label
 			return c, nil
 		}
+	}
+	if env.WSL && env.NVIDIA {
+		return wslNVIDIAGPUChoice(req.Label), nil
 	}
 	return unavailable(strict, req.Label, "no discrete GPU render node found")
 }

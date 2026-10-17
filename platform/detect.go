@@ -353,19 +353,26 @@ func d3d12Available(wsl bool) bool {
 }
 
 func detectGPUDescription() string {
+	var parts []string
+	if name := NVIDIAGPUName(); name != "" {
+		parts = append(parts, name)
+	}
 	if !commandAvailable("lspci") {
-		return ""
+		return strings.Join(parts, "; ")
 	}
 	out, err := combinedOutputTimeout("lspci", "-nn")
 	if err != nil {
-		return ""
+		return strings.Join(parts, "; ")
 	}
 	var lines []string
 	for _, line := range strings.Split(string(out), "\n") {
 		lines = append(lines, line)
 	}
 	gpus := FilterDisplayControllerLines(lines)
-	return strings.Join(gpus, "; ")
+	if len(gpus) > 0 {
+		parts = append(parts, strings.Join(gpus, "; "))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func isWSLEnvironment() bool {

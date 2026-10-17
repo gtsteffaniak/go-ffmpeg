@@ -54,3 +54,20 @@ func TestResolveGPURequestFallbackIGPU(t *testing.T) {
 		t.Fatalf("got %+v", c)
 	}
 }
+
+func TestResolveGPURequestWSLNVIDIAWithoutDRM(t *testing.T) {
+	env := platform.GPUResolveEnv{
+		GOOS:     "linux",
+		WSL:      true,
+		NVIDIA:   true,
+		Devices:  nil,
+	}
+	c, err := platform.ResolveGPURequest(platform.GPURequest{Kind: platform.SelectionDiscrete, Label: "dgpu"}, env, true)
+	if err != nil || !c.Enabled || c.Vendor != "nvidia" || c.Mode != platform.GPUModeDGPU {
+		t.Fatalf("dgpu: %+v err=%v", c, err)
+	}
+	auto, err := platform.ResolveGPURequest(platform.GPURequest{Kind: platform.SelectionAuto, Label: "auto"}, env, false)
+	if err != nil || !auto.Enabled || auto.Vendor != "nvidia" || !auto.AutoSelect {
+		t.Fatalf("auto: %+v err=%v", auto, err)
+	}
+}
