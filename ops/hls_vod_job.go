@@ -159,7 +159,8 @@ func prepareVODOutputLayout(outDir string, opts HLSVODJobOptions) error {
 	return os.MkdirAll(segDir, 0o755)
 }
 
-// BuildHLSVODFFmpegArgs builds frozen argv for a Model A segment encode job.
+// BuildHLSVODFFmpegArgs builds frozen argv for a Model A forward segment encode job.
+// The host must not mutate these flags; see docs/hls-vod-contract.md.
 func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSVODJobOptions) ([]string, error) {
 	if opts.SegmentSec <= 0 {
 		opts.SegmentSec = DefaultHLSSegmentDurationSec
