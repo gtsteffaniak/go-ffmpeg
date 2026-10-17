@@ -97,20 +97,16 @@ func TestBuildHLSContinuousArgsAudioFilterTracksSeekOffset(t *testing.T) {
 		return strings.Join(args, " ")
 	}
 
-	// Starting at the media origin: the audio is normalised to 0.
-	if got := build(0); !strings.Contains(got, "-af aresample=async=1:first_pts=0") {
-		t.Fatalf("expected first_pts=0 without a seek offset: %s", got)
+	if got := build(0); !strings.Contains(got, "aresample=async=192000") {
+		t.Fatalf("expected normalized audio at media origin: %s", got)
 	}
 
-	// A seeking job keeps source timestamps, so forcing the audio to 0 would open
-	// an A/V gap as long as the offset that the HLS muxer has to write out as
-	// audio-only segments before any video arrives.
 	got := build(720)
-	if strings.Contains(got, "first_pts") {
-		t.Fatalf("must not force the audio to 0 when seeking: %s", got)
+	if !strings.Contains(got, "aresample=async=192000") {
+		t.Fatalf("expected normalized audio when seeking with output_ts_offset: %s", got)
 	}
-	if !strings.Contains(got, "-af aresample=async=1") {
-		t.Fatalf("expected the audio filter to be retained: %s", got)
+	if !strings.Contains(got, "-output_ts_offset 720.000000") {
+		t.Fatalf("expected output_ts_offset for seek transcode: %s", got)
 	}
 }
 
@@ -198,8 +194,10 @@ func TestBuildHLSContinuousTranscodeUsesHardwareDecode(t *testing.T) {
 		"-noautorotate",
 		"+discardcorrupt",
 		"-ss 3704.000",
-		"-copyts",
-		"-avoid_negative_ts disabled",
+		"-avoid_negative_ts make_zero",
+		"-output_ts_offset 3704.000000",
+		"-fps_mode cfr",
+		"aresample=async=192000",
 		"-hls_segment_options movflags=+frag_discont",
 		"-max_delay 5000000",
 		"scale_vt",
@@ -213,8 +211,8 @@ func TestBuildHLSContinuousTranscodeUsesHardwareDecode(t *testing.T) {
 	if !strings.Contains(joined, "videotoolbox_vld") {
 		t.Fatalf("transcode must use hwaccel_output_format videotoolbox_vld for scale_vt: %s", joined)
 	}
-	if strings.Contains(joined, "-output_ts_offset") {
-		t.Fatalf("transcode should not use output_ts_offset: %s", joined)
+	if strings.Contains(joined, "-copyts") {
+		t.Fatalf("full transcode should not use -copyts: %s", joined)
 	}
 }
 

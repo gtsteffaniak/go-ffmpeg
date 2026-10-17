@@ -19,7 +19,7 @@ type ContinuousValidationResult struct {
 }
 
 // ValidateContinuousHLSOutput checks ffmpeg.m3u8 and segment files under outDir.
-// For transcode jobs (copyts), segment durations may differ from the nominal grid;
+// For full transcode jobs, segment durations may differ from the nominal grid;
 // playlist #EXTINF values are treated as authoritative when present.
 func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourceHasAudio bool, toleranceSec float64) (ContinuousValidationResult, error) {
 	if toleranceSec <= 0 {
@@ -53,7 +53,7 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 	}
 
 	trackTimescales := mp4.TrackTimescalesFromInit(initBytes)
-	transcode := hlsContinuousUsesCopyTimestamps(opts)
+	transcode := hlsContinuousAlignMode(opts) == continuousAlignNative
 	timelineOrigin := opts.StartSec
 	if timelineOrigin < 0 {
 		timelineOrigin = 0

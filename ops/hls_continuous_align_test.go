@@ -97,13 +97,19 @@ func TestPublishContinuousReadySegmentsUsesPlaylistTimeline(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ffmpeg.m3u8"), []byte(playlist), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, index := range []int{384, 385} {
-		seg := buildTestFragmentWithTFDT(64000)
+	rawTicks := map[int]uint32{
+		384: 64000,
+		385: 64000 + uint32(13.472*90000),
+	}
+	for index, ticks := range rawTicks {
+		seg := buildTestFragmentWithTFDT(ticks)
 		if err := os.WriteFile(continuousRawSegmentPath(dir, index), seg, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := publishContinuousReadySegments(dir, 1887.0, map[int]struct{}{}, true); err != nil {
+	var runDelta float64
+	runDeltaReady := false
+	if _, err := publishContinuousReadySegments(dir, 1887.0, map[int]struct{}{}, true, continuousAlignRunDelta, &runDelta, &runDeltaReady); err != nil {
 		t.Fatalf("publishContinuousReadySegments: %v", err)
 	}
 	cases := []struct {
@@ -271,7 +277,9 @@ func TestServePlaylistEmitsContiguousPublishedPrefix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := publishContinuousReadySegments(dir, 0, map[int]struct{}{}, false); err != nil {
+	var runDelta float64
+	runDeltaReady := false
+	if _, err := publishContinuousReadySegments(dir, 0, map[int]struct{}{}, false, continuousAlignRunDelta, &runDelta, &runDeltaReady); err != nil {
 		t.Fatalf("publishContinuousReadySegments: %v", err)
 	}
 	index, err := os.ReadFile(filepath.Join(dir, "index.m3u8"))
@@ -294,7 +302,7 @@ func TestServePlaylistEmitsContiguousPublishedPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	published := map[int]struct{}{0: {}, 1: {}}
-	if _, err := publishContinuousReadySegments(dir, 0, published, true); err != nil {
+	if _, err := publishContinuousReadySegments(dir, 0, published, true, continuousAlignRunDelta, &runDelta, &runDeltaReady); err != nil {
 		t.Fatalf("publishContinuousReadySegments final: %v", err)
 	}
 	index, err = os.ReadFile(filepath.Join(dir, "index.m3u8"))

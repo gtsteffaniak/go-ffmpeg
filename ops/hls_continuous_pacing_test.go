@@ -123,6 +123,19 @@ func TestResolveContinuousThrottle(t *testing.T) {
 		t.Fatalf("explicit throttle = %+v", override)
 	}
 	disabled := encode.ThrottleConfigOff()
+	autoRemux := ResolveContinuousPacing(HLSContinuousOptions{Pacing: HLSContinuousPacingAuto, Remux: true})
+	if autoRemux != HLSContinuousLivePaced {
+		t.Fatalf("auto remux = %v, want live-paced", autoRemux)
+	}
+	autoTranscode := ResolveContinuousPacing(HLSContinuousOptions{Pacing: HLSContinuousPacingAuto, VideoCopy: true})
+	if autoTranscode != HLSContinuousCacheFill {
+		t.Fatalf("auto video-copy = %v, want cache-fill", autoTranscode)
+	}
+	throttleAuto := resolveContinuousThrottle(HLSContinuousOptions{Pacing: HLSContinuousPacingAuto, VideoCopy: true})
+	if throttleAuto.Enabled {
+		t.Fatalf("auto video-copy throttle should be off: %+v", throttleAuto)
+	}
+
 	explicitOff := resolveContinuousThrottle(HLSContinuousOptions{
 		Pacing:   HLSContinuousLivePaced,
 		Throttle: &disabled,

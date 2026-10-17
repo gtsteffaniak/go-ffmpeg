@@ -55,8 +55,14 @@ type HLSContinuousJob struct {
 	stop       context.CancelFunc
 	stderrMon  *vtDecodeStderrMonitor
 	startSec   float64
-	mu         sync.Mutex
-	err        error
+	// streamCopyPipeline is true for remux/video-copy jobs where decoder stderr
+	// directly reflects muxed segment quality. Full transcode may log source
+	// decode errors while still emitting valid H.264 in fMP4 output.
+	streamCopyPipeline bool
+	// alignMode selects how raw fMP4 fragments are published into seg/.
+	alignMode continuousAlignMode
+	mu                 sync.Mutex
+	err                error
 }
 
 // StartSec returns the generation's effective media start in seconds — the
@@ -80,7 +86,8 @@ func (j *HLSContinuousJob) VTDecodeUnreliable() bool {
 }
 
 // SoftwareDecodeUnreliable reports sustained software decoder corruption in stderr
-// (for example Invalid NAL under readrate pacing). Output segments may buffer but not render.
+// (Invalid NAL, submit-to-decoder failures). Callers restart the generation so
+// fMP4 segments are not served after the decode path starts dropping packets.
 func (j *HLSContinuousJob) SoftwareDecodeUnreliable() bool {
 	if j == nil {
 		return false
@@ -210,11 +217,13 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 	cmd.Stderr = stderrMon
 
 	job := &HLSContinuousJob{
-		ffmpegDone: make(chan struct{}),
-		alignDone:  make(chan struct{}),
-		stop:       cancel,
-		stderrMon:  stderrMon,
-		startSec:   opts.StartSec,
+		ffmpegDone:         make(chan struct{}),
+		alignDone:          make(chan struct{}),
+		stop:               cancel,
+		stderrMon:          stderrMon,
+		startSec:           opts.StartSec,
+		streamCopyPipeline: opts.Remux || opts.VideoCopy,
+		alignMode:          hlsContinuousAlignMode(opts),
 	}
 	go func() {
 		err := cmd.Run()
@@ -341,24 +350,15 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		}
 		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%.0f)", segDur))
 		if !opts.VideoOnly() {
-			// Only force the audio to the media origin when the job starts at 0.
-			// A job that seeks keeps source timestamps (-copyts), so forcing
-			// first_pts=0 would open an A/V gap as long as the seek offset: ffmpeg
-			// rewinds the audio to 0 regardless of the value given, and the HLS
-			// muxer then has to write the whole gap as audio-only segments before
-			// any video arrives.
-			audioFilter := "aresample=async=1"
-			if opts.StartSec <= 0 {
-				audioFilter = "aresample=async=1:first_pts=0"
-			}
 			args = append(args,
 				"-c:a", "aac",
 				"-ar", "48000",
 				"-ac", "2",
 				"-profile:a", "aac_low",
-				"-af", audioFilter,
+				"-af", hlsTranscodeAudioFilter(),
 			)
 		}
+		args = append(args, "-fps_mode", "cfr", "-max_interleave_delta", "0")
 	}
 
 	if videoCopyPipeline {
@@ -371,7 +371,11 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		}
 		args = appendHLSOutputTimestampArgs(args, offsetSec)
 	} else {
-		args = appendHLSTranscodeCopyTimestampArgs(args)
+		offsetSec := 0.0
+		if opts.StartIndex > 0 || opts.StartSec > hlsStartTimeEpsilonSec {
+			offsetSec = opts.StartSec
+		}
+		args = appendHLSOutputTimestampArgs(args, offsetSec)
 	}
 	// Every fragment begins on a keyframe — copy pipelines split at GOP
 	// boundaries and transcode forces keyframes on the segment grid — so the

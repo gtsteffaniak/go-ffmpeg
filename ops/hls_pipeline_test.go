@@ -8,13 +8,16 @@ import (
 
 func TestUseVideoCopy(t *testing.T) {
 	t.Parallel()
-	eac3 := probe.StreamInfo{HasVideo: true, VideoCodec: "h264", AudioCodec: "eac3", Height: 1080}
-	pipeline := HLSPipelineOptions{}
-	if !UseVideoCopy(eac3, pipeline) {
-		t.Fatal("default pipeline should use video copy for h264+eac3")
+	eac3MKV := probe.StreamInfo{HasVideo: true, VideoCodec: "h264", AudioCodec: "eac3", FormatName: "matroska,webm", Height: 1080}
+	if UseVideoCopy(eac3MKV, HLSPipelineOptions{}) {
+		t.Fatal("mkv h264+eac3 must transcode video for MSE-safe fMP4")
 	}
-	pipeline.ForceVideoTranscode = true
-	if UseVideoCopy(eac3, pipeline) {
+	eac3MP4 := probe.StreamInfo{HasVideo: true, VideoCodec: "h264", AudioCodec: "eac3", FormatName: "mov,mp4,m4a,3gp,3g2", Height: 1080}
+	if !UseVideoCopy(eac3MP4, HLSPipelineOptions{}) {
+		t.Fatal("mp4 h264+eac3 should use video copy when audio transcodes")
+	}
+	pipeline := HLSPipelineOptions{ForceVideoTranscode: true}
+	if UseVideoCopy(eac3MP4, pipeline) {
 		t.Fatal("forced transcode should not use video copy")
 	}
 }

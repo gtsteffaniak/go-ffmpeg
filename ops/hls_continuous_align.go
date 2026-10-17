@@ -68,37 +68,73 @@ func ReadContinuousJobStatus(outDir string) (ContinuousJobStatus, error) {
 // AlignContinuousSegmentFile rebases fMP4 decode timestamps to mediaStartSec on the HLS timeline.
 // Init-segment timescales are loaded from init.m4s next to the segment or in the job directory.
 func AlignContinuousSegmentFile(path string, mediaStartSec float64) error {
-	return alignContinuousSegmentFile(path, mediaStartSec, trackTimescalesForSegmentFile(path))
+	return alignContinuousSegmentFile(path, mediaStartSec, trackTimescalesForSegmentFile(path), continuousAlignRunDelta)
 }
 
-func alignContinuousSegmentFile(path string, mediaStartSec float64, trackTimescales map[uint32]uint32) error {
+// continuousAlignMode controls how raw muxer fMP4 is published into seg/.
+type continuousAlignMode uint8
+
+const (
+	// continuousAlignNative passes fragments through unchanged — full transcode
+	// jobs emit sample-contiguous tfdt when ffmpeg timestamps are normalized.
+	continuousAlignNative continuousAlignMode = 0
+	// continuousAlignRunDelta applies one video-anchored offset for the whole run.
+	continuousAlignRunDelta continuousAlignMode = 1
+)
+
+func hlsContinuousAlignMode(opts HLSContinuousOptions) continuousAlignMode {
+	if opts.Remux || opts.VideoCopy {
+		return continuousAlignRunDelta
+	}
+	return continuousAlignNative
+}
+
+func alignContinuousSegmentFile(path string, mediaStartSec float64, trackTimescales map[uint32]uint32, mode continuousAlignMode) error {
+	var runDelta float64
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales)
+	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales, mode, &runDelta, false)
 	if err != nil {
 		return err
 	}
 	return writeContinuousFileAtomic(path, aligned)
 }
 
-func alignedContinuousSegment(data []byte, mediaStartSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
+func alignedContinuousSegment(data []byte, mediaStartSec float64, trackTimescales map[uint32]uint32, mode continuousAlignMode, runDeltaSec *float64, runDeltaReady bool) ([]byte, error) {
 	if !mp4.IsHLSSegmentFragment(data) {
 		return nil, fmt.Errorf("segment not a parseable fMP4 fragment (%d bytes)", len(data))
 	}
-	return mp4.AlignFragmentToMediaStartWithTimescales(data, mediaStartSec, trackTimescales)
+	switch mode {
+	case continuousAlignNative:
+		return data, nil
+	case continuousAlignRunDelta:
+		if runDeltaSec == nil {
+			return nil, fmt.Errorf("run delta required for stream-copy alignment")
+		}
+		if !runDeltaReady {
+			videoStart, err := mp4.FragmentMediaStartSecWithTimescales(data, trackTimescales)
+			if err != nil {
+				return nil, err
+			}
+			*runDeltaSec = mediaStartSec - videoStart
+		}
+		return mp4.ShiftFragmentTimelineSec(data, *runDeltaSec, trackTimescales)
+	default:
+		return nil, fmt.Errorf("unknown continuous align mode %d", mode)
+	}
 }
 
 // alignContinuousSegmentInto validates and rebases the raw muxer output at
 // rawPath, publishes it at dstPath via atomic rename, and removes the raw
 // file — the published copy is the only fragment copy kept on disk.
-func alignContinuousSegmentInto(rawPath, dstPath string, mediaStartSec float64, trackTimescales map[uint32]uint32) error {
+func alignContinuousSegmentInto(rawPath, dstPath string, mediaStartSec float64, trackTimescales map[uint32]uint32, mode continuousAlignMode, runDeltaSec *float64, runDeltaReady bool) error {
 	data, err := os.ReadFile(rawPath)
 	if err != nil {
 		return err
 	}
-	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales)
+	aligned, err := alignedContinuousSegment(data, mediaStartSec, trackTimescales, mode, runDeltaSec, runDeltaReady)
 	if err != nil {
 		return err
 	}
@@ -214,14 +250,10 @@ func continuousRawSegmentComplete(outDir string, index int) bool {
 	return mp4.IsHLSSegmentFragment(data)
 }
 
-func hlsContinuousUsesCopyTimestamps(opts HLSContinuousOptions) bool {
-	return !opts.Remux && !opts.VideoCopy
-}
-
 // publishContinuousReadySegments aligns every complete raw segment the muxer
 // playlist lists, publishes the contiguous prefix into index.m3u8, and writes
 // job.json. Returns whether the published set changed.
-func publishContinuousReadySegments(outDir string, startSec float64, published map[int]struct{}, jobDone bool) (bool, error) {
+func publishContinuousReadySegments(outDir string, startSec float64, published map[int]struct{}, jobDone bool, mode continuousAlignMode, runDeltaSec *float64, runDeltaReady *bool) (bool, error) {
 	unlock := lockContinuousAlign(outDir)
 	defer unlock()
 
@@ -262,12 +294,12 @@ func publishContinuousReadySegments(outDir string, startSec float64, published m
 		if !continuousRawSegmentComplete(outDir, index) {
 			continue
 		}
-		// Transcode uses -copyts so ffmpeg may place tfdt on encoder/source time, and
-		// stream-copy seeks can leave either track off the playlist grid; rebasing to
-		// the emitted playlist position keeps MSE playback continuous without
-		// #EXT-X-DISCONTINUITY.
-		if err := alignContinuousSegmentInto(continuousRawSegmentPath(outDir, index), continuousSegmentPath(outDir, index), starts[index], timescales); err != nil {
+		deltaReady := runDeltaReady != nil && *runDeltaReady
+		if err := alignContinuousSegmentInto(continuousRawSegmentPath(outDir, index), continuousSegmentPath(outDir, index), starts[index], timescales, mode, runDeltaSec, deltaReady); err != nil {
 			return false, err
+		}
+		if mode == continuousAlignRunDelta && runDeltaReady != nil && !*runDeltaReady {
+			*runDeltaReady = true
 		}
 		published[index] = struct{}{}
 		changed = true
@@ -353,7 +385,9 @@ func formatContinuousTargetDuration(maxDur float64) string {
 // AlignContinuousHLSSegments rebases all segment files under outDir to the HLS
 // media timeline and republishes the serve artifacts.
 func AlignContinuousHLSSegments(outDir string, opts HLSContinuousOptions) error {
-	if _, err := publishContinuousReadySegments(outDir, opts.StartSec, map[int]struct{}{}, true); err != nil {
+	var runDelta float64
+	runDeltaReady := false
+	if _, err := publishContinuousReadySegments(outDir, opts.StartSec, map[int]struct{}{}, true, hlsContinuousAlignMode(opts), &runDelta, &runDeltaReady); err != nil {
 		return err
 	}
 	return NormalizeContinuousPlaylist(outDir)
@@ -429,11 +463,18 @@ func FixContinuousPlaylistSegmentURIs(outDir, path string) error {
 		if st, statErr := os.Stat(direct); statErr == nil && !st.IsDir() {
 			continue
 		}
-		segPath := filepath.Join(outDir, "seg", filepath.Base(trim))
+		base := filepath.Base(trim)
+		rawPath := filepath.Join(outDir, continuousRawSegmentDir, base)
+		if st, statErr := os.Stat(rawPath); statErr == nil && !st.IsDir() {
+			lines[i] = filepath.ToSlash(filepath.Join(continuousRawSegmentDir, base))
+			updated = true
+			continue
+		}
+		segPath := filepath.Join(outDir, "seg", base)
 		if st, statErr := os.Stat(segPath); statErr != nil || st.IsDir() {
 			continue
 		}
-		lines[i] = filepath.ToSlash(filepath.Join("seg", filepath.Base(trim)))
+		lines[i] = filepath.ToSlash(filepath.Join("seg", base))
 		updated = true
 	}
 	if !updated {
@@ -447,6 +488,12 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, job *HLS
 	defer cancel()
 
 	published := make(map[int]struct{})
+	var runDelta float64
+	runDeltaReady := false
+	mode := continuousAlignNative
+	if job != nil {
+		mode = job.alignMode
+	}
 	ticker := time.NewTicker(continuousAlignPollInterval)
 	defer ticker.Stop()
 
@@ -456,7 +503,7 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, job *HLS
 		}
 		cancel()
 		ticker.Stop()
-		if _, err := publishContinuousReadySegments(outDir, job.startSec, published, true); err != nil {
+		if _, err := publishContinuousReadySegments(outDir, job.startSec, published, true, mode, &runDelta, &runDeltaReady); err != nil {
 			job.mu.Lock()
 			if job.err == nil {
 				job.err = err
@@ -480,7 +527,7 @@ func runContinuousSegmentAligner(parent context.Context, outDir string, job *HLS
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_, _ = publishContinuousReadySegments(outDir, job.startSec, published, false)
+			_, _ = publishContinuousReadySegments(outDir, job.startSec, published, false, mode, &runDelta, &runDeltaReady)
 		}
 	}
 }

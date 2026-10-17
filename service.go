@@ -469,6 +469,7 @@ type HLSContinuousPacing = ops.HLSContinuousPacing
 const (
 	HLSContinuousCacheFill            = ops.HLSContinuousCacheFill
 	HLSContinuousLivePaced            = ops.HLSContinuousLivePaced
+	HLSContinuousPacingAuto           = ops.HLSContinuousPacingAuto
 	HLSContinuousRemuxSegmentDeletion = ops.HLSContinuousRemuxSegmentDeletion
 )
 

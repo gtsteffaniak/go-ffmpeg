@@ -86,6 +86,68 @@ func TestAlignFragmentClampsNegativeAudioAtSegmentOrigin(t *testing.T) {
 	}
 }
 
+func TestShiftFragmentTimelineSecPreservesAVOffset(t *testing.T) {
+	t.Parallel()
+	const videoTS = uint32(90000)
+	const audioTS = uint32(48000)
+	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
+
+	videoTicks := uint32(14.183 * float64(videoTS))
+	audioTicks := uint32(14.20 * float64(audioTS))
+	media := sampleDualTrackMoofMedia(videoTicks, audioTicks)
+
+	const delta = 1886.289
+	out, err := ShiftFragmentTimelineSec(media, delta, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoStart, err := FragmentMediaStartSecForTrack(out, 1, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audioStart, err := FragmentMediaStartSecForTrack(out, 2, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantVideo := 14.183 + delta
+	if math.Abs(videoStart-wantVideo) > 0.02 {
+		t.Fatalf("video start = %.3f, want ~%.3f", videoStart, wantVideo)
+	}
+	if math.Abs((audioStart-videoStart)-(14.20-14.183)) > 0.02 {
+		t.Fatalf("A/V offset = %.3f, want ~%.3f", audioStart-videoStart, 14.20-14.183)
+	}
+}
+
+func TestAlignFragmentTracksToMediaStartSyncsAV(t *testing.T) {
+	t.Parallel()
+	const videoTS = uint32(24000)
+	const audioTS = uint32(48000)
+	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
+
+	videoTicks := uint32(7.97 * float64(videoTS))
+	audioTicks := uint32(6.29 * float64(audioTS)) // drift like transcode -copyts
+	media := sampleDualTrackMoofMedia(videoTicks, audioTicks)
+
+	out, err := AlignFragmentTracksToMediaStartWithTimescales(media, 8.0, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoStart, err := FragmentMediaStartSecForTrack(out, 1, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audioStart, err := FragmentMediaStartSecForTrack(out, 2, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(videoStart-8.0) > 0.001 {
+		t.Fatalf("video start = %.3f, want 8.0", videoStart)
+	}
+	if math.Abs(audioStart-8.0) > 0.001 {
+		t.Fatalf("audio start = %.3f, want 8.0", audioStart)
+	}
+}
+
 func TestAlignFragmentPreservesAVOffset(t *testing.T) {
 	t.Parallel()
 	const videoTS = uint32(90000)

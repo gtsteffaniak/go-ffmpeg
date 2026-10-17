@@ -80,6 +80,69 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	return out, nil
 }
 
+// ShiftFragmentTimelineSec applies the same deltaSec to every track's earliest tfdt in
+// the fragment. Use for stream-copy HLS runs where ffmpeg emits sample-contiguous
+// decode times and only a single run-level offset is needed to match the playlist.
+func ShiftFragmentTimelineSec(media []byte, deltaSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
+	if math.Abs(deltaSec) < 1e-9 || len(media) == 0 {
+		return media, nil
+	}
+	out := append([]byte(nil), media...)
+	firstByTrack, err := firstTFDTByTrack(out)
+	if err != nil {
+		return nil, err
+	}
+	if len(firstByTrack) == 0 {
+		return out, nil
+	}
+	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
+	for trackID, firstTicks := range firstByTrack {
+		timescale := timescaleForTrackID(trackID, trackTimescales)
+		delta := int64(math.Round(deltaSec * float64(timescale)))
+		newTicks := int64(firstTicks) + delta
+		if newTicks < 0 {
+			delta = -int64(firstTicks)
+		}
+		deltaByTrack[trackID] = delta
+	}
+	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AlignFragmentTracksToMediaStartWithTimescales rebases every track's earliest tfdt
+// to mediaStartSec on the HLS playlist grid. Use for full transcode (-copyts) where
+// libavcodec may drift audio/video decode times per fragment; MSE needs both tracks
+// to start at the same media time each segment.
+func AlignFragmentTracksToMediaStartWithTimescales(media []byte, mediaStartSec float64, trackTimescales map[uint32]uint32) ([]byte, error) {
+	if len(media) == 0 {
+		return media, nil
+	}
+	out := append([]byte(nil), media...)
+	firstByTrack, err := firstTFDTByTrack(out)
+	if err != nil {
+		return nil, err
+	}
+	if len(firstByTrack) == 0 {
+		return out, nil
+	}
+	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
+	for trackID, firstTicks := range firstByTrack {
+		timescale := timescaleForTrackID(trackID, trackTimescales)
+		target := int64(math.Round(mediaStartSec * float64(timescale)))
+		delta := target - int64(firstTicks)
+		if target < 0 {
+			delta = -int64(firstTicks)
+		}
+		deltaByTrack[trackID] = delta
+	}
+	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func timescaleForTrackID(trackID uint32, trackTimescales map[uint32]uint32) uint32 {
 	if len(trackTimescales) > 0 {
 		if ts, ok := trackTimescales[trackID]; ok && ts > 0 {

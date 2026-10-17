@@ -52,6 +52,20 @@ func appendHLSTimestampArgs(args []string, startSec float64) []string {
 	return appendHLSOutputTimestampArgs(args, startSec)
 }
 
+// hlsAudioResampleAsyncSamples is the aresample "async" limit in output samples
+// (~4s at 48 kHz). The default (1000) only tolerates ~21 ms of A/V drift, which
+// leaves short audio runs in fMP4 segments when EAC3/MKV decode lags video.
+const hlsAudioResampleAsyncSamples = 192000
+
+// hlsTranscodeAudioFilter normalizes AAC for HLS fMP4 and stretches/compresses audio
+// to track the video clock across segment boundaries.
+func hlsTranscodeAudioFilter() string {
+	return fmt.Sprintf(
+		"aformat=sample_rates=48000:channel_layouts=stereo,aresample=async=%d:min_hard_comp=0.100:first_pts=0",
+		hlsAudioResampleAsyncSamples,
+	)
+}
+
 // minHLSSegmentMediaBytes rejects empty fMP4 fragments (moof+mdat shell only).
 const minHLSSegmentMediaBytes = 8192
 
@@ -283,9 +297,10 @@ func buildHLSSegmentFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabil
 				"-ar", "48000",
 				"-ac", "2",
 				"-profile:a", "aac_low",
-				"-af", "aresample=async=1:first_pts=0",
+				"-af", hlsTranscodeAudioFilter(),
 			)
 		}
+		args = append(args, "-fps_mode", "cfr")
 	}
 
 	if videoCopyPipeline {

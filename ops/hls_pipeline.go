@@ -50,7 +50,22 @@ func CanH264VideoCopy(info probe.StreamInfo) bool {
 		return false
 	}
 	audio := strings.ToLower(strings.TrimSpace(info.AudioCodec))
-	return audio != "" && audio != "aac"
+	if audio == "" || audio == "aac" {
+		return false
+	}
+	// fMP4 HLS with video copy + audio transcode is only reliable from ISO-BMFF
+	// inputs. Matroska/WebM often yields fragments MSE rejects (bufferAppendingError).
+	return fmp4VideoCopySafeContainer(info.FormatName)
+}
+
+func fmp4VideoCopySafeContainer(formatName string) bool {
+	for _, part := range strings.Split(strings.ToLower(formatName), ",") {
+		switch strings.TrimSpace(part) {
+		case "mov", "mp4", "m4v", "3gp", "3g2", "ismv", "f4v":
+			return true
+		}
+	}
+	return false
 }
 
 func isH264VideoCodec(name string) bool {

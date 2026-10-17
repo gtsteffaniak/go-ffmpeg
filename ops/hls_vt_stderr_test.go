@@ -66,6 +66,21 @@ func TestVTDecodeStderrMonitorCountsSplitLine(t *testing.T) {
 	}
 }
 
+func TestSoftwareDecodeUnreliableForTranscodeJob(t *testing.T) {
+	t.Parallel()
+	m := newVTDecodeStderrMonitor(nil)
+	line := "Invalid NAL unit size (0 > 27059).\n"
+	for i := 0; i < softwareDecodeFailureThreshold+2; i++ {
+		if _, err := m.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job := &HLSContinuousJob{stderrMon: m, streamCopyPipeline: false}
+	if !job.SoftwareDecodeUnreliable() {
+		t.Fatal("transcode should surface sustained decode corruption for restart")
+	}
+}
+
 func TestSoftwareDecodeStderrMonitorThreshold(t *testing.T) {
 	t.Parallel()
 	m := newVTDecodeStderrMonitor(nil)

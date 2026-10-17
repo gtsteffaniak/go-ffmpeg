@@ -147,12 +147,9 @@ func TestContinuousSoftwarePublishesPlaylistDuringRun(t *testing.T) {
 	}
 }
 
-// A seeking job keeps source timestamps on the video (-copyts), so the audio must
-// not be forced back to the media origin. Doing so leaves the first audio packet
-// at ~0 while the video stays at the seek offset, i.e. an A/V skew as long as the
-// offset. The continuous aligner rebases both tracks to the HLS media grid, which
-// hides it for callers that align, so this drives the argv directly and checks the
-// raw muxer output.
+// A seeking transcode job uses -output_ts_offset so muxed fMP4 lands on the seek
+// position; audio must use aresample without rewinding to the media origin. This
+// drives the argv directly and checks the raw muxer output (no segment aligner).
 func TestContinuousSoftwareTranscodeFromSeekOffset(t *testing.T) {
 	ffmpegPath, ffprobePath := integrationFFmpegPaths(t)
 	input := filepath.Join(t.TempDir(), "input.mkv")
