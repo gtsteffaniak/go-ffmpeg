@@ -66,6 +66,26 @@ func TestVTDecodeStderrMonitorCountsSplitLine(t *testing.T) {
 	}
 }
 
+func TestSoftwareDecodeStderrMonitorThreshold(t *testing.T) {
+	t.Parallel()
+	m := newVTDecodeStderrMonitor(nil)
+	line := "Invalid NAL unit size (0 > 27059).\n"
+	for i := 0; i < softwareDecodeFailureThreshold-1; i++ {
+		if _, err := m.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m.SoftwareDecodeUnreliable() {
+		t.Fatal("expected below threshold")
+	}
+	if _, err := m.Write([]byte(line)); err != nil {
+		t.Fatal(err)
+	}
+	if !m.SoftwareDecodeUnreliable() {
+		t.Fatal("expected unreliable after threshold")
+	}
+}
+
 func TestBuildHLSContinuousArgsLogLevel(t *testing.T) {
 	t.Parallel()
 	caps := &capabilities.Capabilities{}

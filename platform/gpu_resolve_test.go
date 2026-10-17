@@ -57,10 +57,10 @@ func TestResolveGPURequestFallbackIGPU(t *testing.T) {
 
 func TestResolveGPURequestWSLNVIDIAWithoutDRM(t *testing.T) {
 	env := platform.GPUResolveEnv{
-		GOOS:     "linux",
-		WSL:      true,
-		NVIDIA:   true,
-		Devices:  nil,
+		GOOS:    "linux",
+		WSL:     true,
+		NVIDIA:  true,
+		Devices: nil,
 	}
 	c, err := platform.ResolveGPURequest(platform.GPURequest{Kind: platform.SelectionDiscrete, Label: "dgpu"}, env, true)
 	if err != nil || !c.Enabled || c.Vendor != "nvidia" || c.Mode != platform.GPUModeDGPU {
