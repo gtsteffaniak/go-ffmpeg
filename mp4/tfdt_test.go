@@ -57,6 +57,35 @@ func TestAlignFragmentToMediaStartRebasesRemux(t *testing.T) {
 	}
 }
 
+func TestAlignFragmentClampsNegativeAudioAtSegmentOrigin(t *testing.T) {
+	t.Parallel()
+	const videoTS = uint32(90000)
+	const audioTS = uint32(48000)
+	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
+	// Transcode-like: video tfdt at 40ms, audio at 0 — anchor video to playlist 0.
+	videoTicks := uint32(0.04 * float64(videoTS))
+	media := sampleDualTrackMoofMedia(videoTicks, 0)
+
+	out, err := AlignFragmentToMediaStartWithTimescales(media, 0, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoStart, err := FragmentMediaStartSecForTrack(out, 1, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audioStart, err := FragmentMediaStartSecForTrack(out, 2, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(videoStart) > 0.001 {
+		t.Fatalf("video start = %.3f, want 0", videoStart)
+	}
+	if audioStart < 0 {
+		t.Fatalf("audio start = %.3f, must not be negative", audioStart)
+	}
+}
+
 func TestAlignFragmentPreservesAVOffset(t *testing.T) {
 	t.Parallel()
 	const videoTS = uint32(90000)
@@ -88,19 +117,26 @@ func TestAlignFragmentPreservesAVOffset(t *testing.T) {
 	}
 }
 
-func TestAlignFragmentRejectsNegativeTrackAfterPlaylistAnchor(t *testing.T) {
+func TestAlignFragmentClampsAudioWhenAnchorShiftsPastOrigin(t *testing.T) {
 	t.Parallel()
 	const videoTS = uint32(90000)
 	const audioTS = uint32(48000)
 	timescales := map[uint32]uint32{1: videoTS, 2: audioTS}
-	// Video starts at 2s on the playlist; audio at 0.5s. Aligning track 1 to t=0 shifts audio negative.
+	// Video at 2s, audio at 0.5s — anchoring video to playlist 0 would push audio to -1.5s without clamp.
 	videoTicks := uint32(2.0 * float64(videoTS))
 	audioTicks := uint32(0.5 * float64(audioTS))
 	media := sampleDualTrackMoofMedia(videoTicks, audioTicks)
 
-	_, err := AlignFragmentToMediaStartWithTimescales(media, 0, timescales)
-	if err == nil {
-		t.Fatal("expected alignment error when a track would go negative")
+	out, err := AlignFragmentToMediaStartWithTimescales(media, 0, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audioStart, err := FragmentMediaStartSecForTrack(out, 2, timescales)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audioStart < 0 {
+		t.Fatalf("audio start = %.3f, must be clamped to >= 0", audioStart)
 	}
 }
 

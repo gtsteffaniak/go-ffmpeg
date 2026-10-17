@@ -62,14 +62,17 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	deltaSec := mediaStartSec - float64(primaryTicks)/float64(primaryTS)
 
 	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
-	for trackID := range firstByTrack {
+	for trackID, firstTicks := range firstByTrack {
 		timescale := timescaleForTrackID(trackID, trackTimescales)
-		deltaByTrack[trackID] = int64(math.Round(deltaSec * float64(timescale)))
-		newTicks := int64(firstByTrack[trackID]) + deltaByTrack[trackID]
+		delta := int64(math.Round(deltaSec * float64(timescale)))
+		newTicks := int64(firstTicks) + delta
+		// Transcode segment 0 often has video tfdt > 0 while audio still starts at 0.
+		// A single video-anchored delta preserves A/V offset across segments; clamp
+		// sub-zero results so MSE SourceBuffers never see negative decode times.
 		if newTicks < 0 {
-			return nil, fmt.Errorf("align tfdt: track %d would be negative (%.3fs) after aligning track %d to %.3fs",
-				trackID, float64(newTicks)/float64(timescale), primaryTrackID, mediaStartSec)
+			delta = -int64(firstTicks)
 		}
+		deltaByTrack[trackID] = delta
 	}
 	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
 		return nil, err
