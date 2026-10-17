@@ -65,6 +65,12 @@ func TestAppendReadrateArgsVersionGates(t *testing.T) {
 
 	assertReadrateArgs(t, capabilities.Version{Major: 8, Minor: 0, Patch: 0}, cfg,
 		[]string{"-readrate", "1", "-readrate_catchup", "2", "-readrate_initial_burst", "30"})
+
+	livePaced := encode.ThrottleConfigLivePaced(0)
+	assertReadrateArgs(t, capabilities.Version{Major: 8, Minor: 0, Patch: 0}, livePaced,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "20"})
+	assertReadrateArgs(t, capabilities.Version{Major: 7, Minor: 0, Patch: 0}, livePaced,
+		[]string{"-readrate", "1", "-readrate_initial_burst", "20"})
 }
 
 func TestFailureClassifier(t *testing.T) {

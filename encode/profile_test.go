@@ -67,6 +67,28 @@ func TestVideoEncoderArgsCopy(t *testing.T) {
 	}
 }
 
+func TestVideoEncoderArgsNVENCPresetFastestForUltrafast(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Encoders["h264_nvenc"] = capabilities.EncoderCapability{Name: "h264_nvenc", Available: true, Kind: "nvenc"}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Hardware:  map[capabilities.AccelType]string{capabilities.AccelNVENC: "h264_nvenc"},
+		Preferred: capabilities.EncoderSelection{Encoder: "h264_nvenc", Accel: capabilities.AccelNVENC, Kind: "nvenc"},
+	}
+	r := encode.NewResolver(caps)
+	args, err := r.VideoEncoderArgs(encode.VideoProfile{
+		Codec:   encode.CodecH264,
+		Accel:   capabilities.AccelNVENC,
+		Quality: encode.PresetUltrafast,
+		Bitrate: encode.BitrateConfig{Target: "4M", Max: "4M", BufSize: "8M"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx := indexOf(args, "-preset"); idx < 0 || args[idx+1] != "p1" {
+		t.Fatalf("ultrafast NVENC should use p1 (fastest), got %v", args)
+	}
+}
+
 func TestVideoEncoderArgsH264QSV(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Encoders["h264_qsv"] = capabilities.EncoderCapability{Name: "h264_qsv", Available: true, Kind: "qsv"}

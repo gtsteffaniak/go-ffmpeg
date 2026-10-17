@@ -19,7 +19,7 @@ Single `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache direc
 | Pacing | Use case |
 |--------|----------|
 | `HLSContinuousCacheFill` | Background prefetch at max speed |
-| `HLSContinuousLivePaced` | Watch-while-transcode (~1× readrate) |
+| `HLSContinuousLivePaced` | Watch-while-transcode (~1× readrate, ~20s initial burst; ffmpeg 8+ default catchup) |
 | `HLSContinuousRemuxSegmentDeletion` | Stream-copy + segment deletion |
 
 Background aligner rebases segment `tfdt` to the HLS media timeline. Resume via `StartIndex` / `StartSec`.

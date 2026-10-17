@@ -46,11 +46,33 @@ func AlignFragmentToMediaStartWithTimescales(media []byte, mediaStartSec float64
 	if len(firstByTrack) == 0 {
 		return out, nil
 	}
+	// HLS timeline validation uses track 1 (video) for tfdt_start; anchor alignment there.
+	primaryTrackID := uint32(0)
+	if _, ok := firstByTrack[1]; ok {
+		primaryTrackID = 1
+	} else {
+		for id := range firstByTrack {
+			if primaryTrackID == 0 || id < primaryTrackID {
+				primaryTrackID = id
+			}
+		}
+	}
+	primaryTS := timescaleForTrackID(primaryTrackID, trackTimescales)
+	primaryTicks := firstByTrack[primaryTrackID]
+	deltaSec := mediaStartSec - float64(primaryTicks)/float64(primaryTS)
+
 	deltaByTrack := make(map[uint32]int64, len(firstByTrack))
 	for trackID, firstTicks := range firstByTrack {
 		timescale := timescaleForTrackID(trackID, trackTimescales)
-		target := int64(math.Round(mediaStartSec * float64(timescale)))
-		deltaByTrack[trackID] = target - int64(firstTicks)
+		delta := int64(math.Round(deltaSec * float64(timescale)))
+		newTicks := int64(firstTicks) + delta
+		// Transcode segment 0 often has video tfdt > 0 while audio still starts at 0.
+		// A single video-anchored delta preserves A/V offset across segments; clamp
+		// sub-zero results so MSE SourceBuffers never see negative decode times.
+		if newTicks < 0 {
+			delta = -int64(firstTicks)
+		}
+		deltaByTrack[trackID] = delta
 	}
 	if err := applyTFDTDeltas(out, deltaByTrack); err != nil {
 		return nil, err

@@ -68,7 +68,7 @@ func TestHLSContinuousTranscodeVTSmoke(t *testing.T) {
 
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
-		if continuousSegmentReady(outDir, 0, false, opts) {
+		if continuousSegmentPublished(outDir, 0) {
 			if _, err := os.Stat(filepath.Join(outDir, "init.m4s")); err == nil {
 				job.Cancel()
 				_ = job.Wait()

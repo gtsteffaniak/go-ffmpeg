@@ -8,7 +8,9 @@ import (
 const (
 	// DefaultHLSTimeToleranceSec is the default allowed drift for HLS timeline checks.
 	DefaultHLSTimeToleranceSec = 0.050
-	// MinHLSSegmentMediaBytes rejects empty fMP4 fragments.
+	// MinHLSParseableFragmentBytes is the smallest fMP4 fragment the aligner accepts.
+	MinHLSParseableFragmentBytes = 64
+	// MinHLSSegmentMediaBytes is deprecated for publish gating; kept for tests that build large synthetic moofs.
 	MinHLSSegmentMediaBytes = 8192
 )
 
@@ -41,10 +43,10 @@ func ValidateSegmentTimelineWithTimescales(media []byte, seg SegmentTimeline, to
 		toleranceSec = DefaultHLSTimeToleranceSec
 	}
 	var issues []TimelineIssue
-	if len(media) < MinHLSSegmentMediaBytes {
+	if !IsHLSSegmentFragment(media) {
 		issues = append(issues, TimelineIssue{
 			Check:   "min_size",
-			Message: fmt.Sprintf("segment %d too small (%d bytes)", seg.Index, len(media)),
+			Message: fmt.Sprintf("segment %d not a parseable fMP4 fragment (%d bytes)", seg.Index, len(media)),
 		})
 	}
 	startSec, err := FragmentMediaStartSecWithTimescales(media, trackTimescales)
@@ -88,6 +90,63 @@ func ValidateSegmentTimelineWithTimescales(media []byte, seg SegmentTimeline, to
 		})
 	}
 	return issues
+}
+
+// IsHLSSegmentFragment reports whether media looks like a non-empty fMP4 segment (moof + tfdt).
+func IsHLSSegmentFragment(media []byte) bool {
+	if len(media) < MinHLSParseableFragmentBytes {
+		return false
+	}
+	firstByTrack, err := firstTFDTByTrack(media)
+	return err == nil && len(firstByTrack) > 0
+}
+
+// FragmentMediaStartSecForTrack returns decode start for one track ID in seconds.
+func FragmentMediaStartSecForTrack(media []byte, trackID uint32, trackTimescales map[uint32]uint32) (float64, error) {
+	firstByTrack, err := firstTFDTByTrack(media)
+	if err != nil {
+		return 0, err
+	}
+	ticks, ok := firstByTrack[trackID]
+	if !ok {
+		return 0, fmt.Errorf("no tfdt for track %d", trackID)
+	}
+	ts := timescaleForTrackID(trackID, trackTimescales)
+	if ts == 0 {
+		ts = timescaleForTrack(trackID)
+	}
+	return float64(ticks) / float64(ts), nil
+}
+
+// FragmentDurationSecForTrack returns one track's span inside the fragment in seconds.
+func FragmentDurationSecForTrack(media []byte, trackID uint32, trackTimescales map[uint32]uint32) float64 {
+	secs := fragmentTrackDurationSecs(media, trackTimescales)
+	if sec, ok := secs[trackID]; ok {
+		return sec
+	}
+	return 0
+}
+
+// ValidateContinuityBetweenTracks checks decode continuity for one track across segments.
+func ValidateContinuityBetweenTracks(prevMedia, nextMedia []byte, trackID uint32, toleranceSec float64, trackTimescales map[uint32]uint32) []TimelineIssue {
+	if toleranceSec <= 0 {
+		toleranceSec = DefaultHLSTimeToleranceSec
+	}
+	prevStart, err := FragmentMediaStartSecForTrack(prevMedia, trackID, trackTimescales)
+	if err != nil {
+		return nil
+	}
+	nextStart, err := FragmentMediaStartSecForTrack(nextMedia, trackID, trackTimescales)
+	if err != nil {
+		return nil
+	}
+	prevDur := FragmentDurationSecForTrack(prevMedia, trackID, trackTimescales)
+	if prevDur <= 0 {
+		return nil
+	}
+	prevTL := SegmentTimeline{MediaStartSec: prevStart, ActualDurSec: prevDur}
+	nextTL := SegmentTimeline{MediaStartSec: nextStart}
+	return ValidateContinuity(prevTL, nextTL, toleranceSec)
 }
 
 // ValidateContinuity checks that segment N ends where segment N+1 begins.

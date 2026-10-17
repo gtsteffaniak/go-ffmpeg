@@ -11,3 +11,4 @@ test/hls/report.json
 test/hls/report_site/media/
 test/hls/playback/node_modules/
 test/hls/test-results/
+test/hls/hls

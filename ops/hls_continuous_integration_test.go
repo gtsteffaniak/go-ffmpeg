@@ -170,8 +170,12 @@ func TestContinuousSoftwareTranscodeFromSeekOffset(t *testing.T) {
 	const startIndex = 3 // 12s into the fixture
 	startSec := float64(startIndex) * segmentSec
 	outDir := filepath.Join(t.TempDir(), "job")
-	if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
-		t.Fatal(err)
+	// Mirror the layout StartHLSContinuous creates: the muxer writes staging
+	// output under raw/ and does not create missing subdirs itself.
+	for _, sub := range []string{"seg", "raw"} {
+		if err := os.MkdirAll(filepath.Join(outDir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	opts := HLSContinuousOptions{
 		Input:      InputSource{URL: input, StreamType: probe.StreamFile},
@@ -209,7 +213,9 @@ func TestContinuousSoftwareTranscodeFromSeekOffset(t *testing.T) {
 // ffprobe something it can parse.
 func firstPacketTimes(t *testing.T, ffprobePath, outDir string) (video, audio float64) {
 	t.Helper()
-	segments, err := filepath.Glob(filepath.Join(outDir, "seg", "*.m4s"))
+	// The argv-only run writes the muxer's raw staging output; the publisher
+	// does not run without StartHLSContinuous.
+	segments, err := filepath.Glob(filepath.Join(outDir, "raw", "*.m4s"))
 	if err != nil || len(segments) == 0 {
 		t.Fatalf("no segments in %s: %v", outDir, err)
 	}

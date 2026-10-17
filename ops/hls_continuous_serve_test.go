@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gtsteffaniak/go-ffmpeg/mp4"
 )
 
 func TestNormalizeContinuousPlaylist(t *testing.T) {
@@ -31,7 +33,7 @@ func TestNormalizeContinuousPlaylist(t *testing.T) {
 	}
 }
 
-func TestContinuousSegmentServeReadyRequiresReadyMarker(t *testing.T) {
+func TestContinuousSegmentServeReady(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	segDir := filepath.Join(dir, "seg")
@@ -39,18 +41,24 @@ func TestContinuousSegmentServeReadyRequiresReadyMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(segDir, "00000.m4s")
-	payload := make([]byte, 9000)
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	if ContinuousSegmentServeReady(dir, "00000.m4s") {
+		t.Fatal("missing segment must not be serve-ready")
+	}
+	if err := os.WriteFile(path, []byte("short"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if ContinuousSegmentServeReady(dir, "00000.m4s") {
-		t.Fatal("expected segment without .ready marker to be not serve-ready")
+		t.Fatal("undersized segment must not be serve-ready")
 	}
-	if err := markContinuousSegmentReady(path); err != nil {
+	payload := buildTestFragmentWithTFDTForTrack(0, 1, 200)
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if !mp4.IsHLSSegmentFragment(payload) {
+		t.Fatal("test payload must be a parseable fMP4 fragment")
+	}
 	if !ContinuousSegmentServeReady(dir, "00000.m4s") {
-		t.Fatal("expected aligned segment to be serve-ready")
+		t.Fatal("published segment must be serve-ready")
 	}
 }
 

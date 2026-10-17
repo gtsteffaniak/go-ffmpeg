@@ -86,9 +86,12 @@ func startContinuousWithVTFallback(ctx context.Context, t *testing.T, runner *ff
 		}
 		t.Log("VT decode unreliable; restarting with CPU decode")
 		opts.Decode = encode.SoftwareDecodeProfile(opts.Decode)
-		_ = os.RemoveAll(filepath.Join(outDir, "seg"))
-		_ = os.Remove(filepath.Join(outDir, "init.m4s"))
-		_ = os.Remove(filepath.Join(outDir, "ffmpeg.m3u8"))
+		for _, sub := range []string{"seg", "raw"} {
+			_ = os.RemoveAll(filepath.Join(outDir, sub))
+		}
+		for _, name := range []string{"init.m4s", "ffmpeg.m3u8", "index.m3u8", "job.json"} {
+			_ = os.Remove(filepath.Join(outDir, name))
+		}
 		if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
 			return nil, func() {}, err
 		}
@@ -100,11 +103,7 @@ func waitContinuousThrough(ctx context.Context, outDir string, opts HLSContinuou
 	for {
 		ready := true
 		for i := 0; i <= wantThrough; i++ {
-			if !continuousSegmentReady(outDir, i, false, opts) {
-				ready = false
-				break
-			}
-			if _, err := os.Stat(filepath.Join(outDir, "seg", fmt.Sprintf("%05d.m4s.ready", i))); err != nil {
+			if !continuousSegmentPublished(outDir, i) {
 				ready = false
 				break
 			}

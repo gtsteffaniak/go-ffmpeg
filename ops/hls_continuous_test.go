@@ -49,7 +49,7 @@ func TestBuildHLSContinuousArgsUsesRelativeOutputPaths(t *testing.T) {
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"-fflags +genpts",
-		"-hls_segment_filename seg/%05d.m4s",
+		"-hls_segment_filename raw/%05d.m4s",
 		"-hls_fmp4_init_filename init.m4s",
 		"-avoid_negative_ts make_zero",
 		"ffmpeg.m3u8",

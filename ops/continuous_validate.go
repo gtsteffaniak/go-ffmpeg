@@ -26,7 +26,13 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 		toleranceSec = mp4.DefaultHLSTimeToleranceSec
 	}
 	result := ContinuousValidationResult{}
-	playlistPath := filepath.Join(outDir, "ffmpeg.m3u8")
+	// index.m3u8 is the canonical serve artifact — the playlist a client
+	// actually consumes. ffmpeg.m3u8 is the muxer's internal playlist and is
+	// only a fallback for output produced without the publisher.
+	playlistPath := filepath.Join(outDir, continuousServePlaylistName)
+	if _, statErr := os.Stat(playlistPath); statErr != nil {
+		playlistPath = filepath.Join(outDir, "ffmpeg.m3u8")
+	}
 	playlist, err := parseContinuousPlaylist(playlistPath)
 	if err != nil {
 		return result, err
@@ -48,9 +54,14 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 
 	trackTimescales := mp4.TrackTimescalesFromInit(initBytes)
 	transcode := hlsContinuousUsesCopyTimestamps(opts)
-	var prevStart, prevDur float64
+	var prevStart, prevDur, playlistPos float64
 	var prevIndex int
 	for i, plSeg := range playlist.Segments {
+		// hls.js places each fragment at its cumulative #EXTINF position, so the
+		// playlist — not a predicted segment grid — is the expected start.
+		expectedStart := playlistPos
+		playlistPos += plSeg.DurSec
+
 		segPath := resolveContinuousMediaPath(outDir, plSeg.URI, "")
 		media, err := os.ReadFile(segPath)
 		if err != nil {
@@ -61,13 +72,9 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 			continue
 		}
 		absIndex := opts.StartIndex + i
-		expectedStart := mediaStartForSegmentIndex(opts, absIndex)
 		expectedDur := opts.SegmentSec
 		if plSeg.DurSec > 0 {
 			expectedDur = plSeg.DurSec
-		}
-		if transcode {
-			expectedStart = float64(absIndex) * opts.SegmentSec
 		}
 		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
 		actualDur := mp4.FragmentDurationSecWithTimescales(media, trackTimescales)
@@ -78,42 +85,30 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 			actualDur = plSeg.DurSec
 		}
 
-		checkMedia := media
-		checkStart := startSec
-		if transcode {
-			aligned, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales)
-			if alignErr != nil {
-				result.Issues = append(result.Issues, mp4.TimelineIssue{
-					Check:   "align",
-					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
-				})
-			} else {
-				checkMedia = aligned
-				checkStart, _ = mp4.FragmentMediaStartSecWithTimescales(aligned, trackTimescales)
-				if dur := mp4.FragmentDurationSecWithTimescales(aligned, trackTimescales); dur > 0 {
-					actualDur = dur
-				}
-			}
-		}
-
-		issues := mp4.ValidateSegmentTimelineWithTimescales(checkMedia, mp4.SegmentTimeline{
+		issues := mp4.ValidateSegmentTimelineWithTimescales(media, mp4.SegmentTimeline{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
 			ExpectedDurSec:   expectedDur,
-			MediaStartSec:    checkStart,
+			MediaStartSec:    startSec,
 			ActualDurSec:     actualDur,
-			Bytes:            len(checkMedia),
+			Bytes:            len(media),
 		}, toleranceSec, trackTimescales)
 		if transcode && plSeg.DurSec > 0 {
 			issues = filterTranscodeDurationIssues(issues)
 		}
 		if i > 0 {
 			prevTL := mp4.SegmentTimeline{Index: prevIndex, MediaStartSec: prevStart, ActualDurSec: prevDur}
-			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: checkStart}
+			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: startSec}
 			issues = append(issues, mp4.ValidateContinuity(prevTL, nextTL, toleranceSec)...)
+			if sourceHasAudio {
+				prevPath := resolveContinuousMediaPath(outDir, playlist.Segments[i-1].URI, "")
+				if prevMedia, readErr := os.ReadFile(prevPath); readErr == nil {
+					issues = append(issues, mp4.ValidateContinuityBetweenTracks(prevMedia, media, 2, toleranceSec, trackTimescales)...)
+				}
+			}
 		}
 		result.Issues = append(result.Issues, issues...)
-		prevStart = checkStart
+		prevStart = startSec
 		prevDur = actualDur
 		prevIndex = absIndex
 	}
@@ -137,6 +132,7 @@ func filterTranscodeDurationIssues(issues []mp4.TimelineIssue) []mp4.TimelineIss
 
 type continuousPlaylist struct {
 	InitURI    string
+	Header     []string // tag lines before the first segment entry, verbatim
 	Segments   []continuousPlaylistSegment
 	HasEndList bool
 	TargetDur  float64
@@ -174,6 +170,9 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 		}
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
 			out.InitURI = parseContinuousPlaylistURI(line)
+			if !hasExtInf && len(out.Segments) == 0 {
+				out.Header = append(out.Header, line)
+			}
 			continue
 		}
 		if line == "#EXT-X-ENDLIST" {
@@ -194,6 +193,9 @@ func parseContinuousPlaylist(path string) (*continuousPlaylist, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
+			if !hasExtInf && len(out.Segments) == 0 {
+				out.Header = append(out.Header, line)
+			}
 			continue
 		}
 		if !hasExtInf {

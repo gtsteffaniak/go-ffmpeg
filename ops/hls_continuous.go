@@ -23,20 +23,14 @@ type HLSContinuousOptions struct {
 	StartSec float64
 	// InputStartTimeSec is the container start_time from ffprobe (added for ffmpeg input -ss).
 	InputStartTimeSec float64
-	// SegmentDurations[i] is the #EXTINF duration for segment index i on the HLS media
-	// timeline. When set, fMP4 fragments are aligned to a contiguous decode timeline
-	// (sum of prior durations) instead of source keyframe timestamps.
-	SegmentDurations []float64
-	// SegmentMediaStarts is deprecated for timeline alignment; kept for diagnostics only.
-	SegmentMediaStarts []float64
-	SegmentSec         float64
-	FreshPlaylist      bool // use temp_file instead of append_list at StartIndex 0
-	Decode             encode.VideoDecodeProfile
-	Profile            encode.VideoProfile
-	MaxHeight          int
-	Remux              bool
-	VideoCopy          bool
-	GOP                int
+	SegmentSec        float64
+	FreshPlaylist     bool // use temp_file instead of append_list at StartIndex 0
+	Decode            encode.VideoDecodeProfile
+	Profile           encode.VideoProfile
+	MaxHeight         int
+	Remux             bool
+	VideoCopy         bool
+	GOP               int
 	// InputVideoCodec names the source video codec (e.g. "hevc"). On stream-copy
 	// pipelines it selects the fMP4 sample-entry tag browsers require — ffmpeg
 	// defaults HEVC to hev1, which MSE implementations refuse to decode.
@@ -60,8 +54,20 @@ type HLSContinuousJob struct {
 	alignDone  chan struct{}
 	stop       context.CancelFunc
 	stderrMon  *vtDecodeStderrMonitor
+	startSec   float64
 	mu         sync.Mutex
 	err        error
+}
+
+// StartSec returns the generation's effective media start in seconds — the
+// requested seek position for transcode jobs, or the keyframe the muxer
+// actually snapped to for stream-copy jobs. Consumers must anchor the client
+// timeline at this value, not at a predicted segment-grid position.
+func (j *HLSContinuousJob) StartSec() float64 {
+	if j == nil {
+		return 0
+	}
+	return j.startSec
 }
 
 // VTDecodeUnreliable reports sustained VideoToolbox hardware decode failures in stderr.
@@ -117,6 +123,32 @@ func (j *HLSContinuousJob) Done() <-chan error {
 	return ch
 }
 
+// prepareContinuousOutputLayout creates raw/ and seg/ and clears stale publish
+// artifacts when starting a new generation (mid-file seek or fresh playlist).
+// append_list resume at StartIndex 0 intentionally keeps prior seg/ and playlists.
+func prepareContinuousOutputLayout(outDir string, opts HLSContinuousOptions) error {
+	// raw/ holds the muxer's unaligned output; the publisher renames validated
+	// fragments into seg/, so a file under seg/ is always safe to serve.
+	if opts.StartIndex > 0 || opts.FreshPlaylist {
+		for _, sub := range []string{"seg", "raw"} {
+			if err := os.RemoveAll(filepath.Join(outDir, sub)); err != nil {
+				return err
+			}
+		}
+		for _, name := range []string{"ffmpeg.m3u8", continuousServePlaylistName, continuousJobStatusName} {
+			if err := os.Remove(filepath.Join(outDir, name)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	for _, sub := range []string{"seg", "raw"} {
+		if err := os.MkdirAll(filepath.Join(outDir, sub), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // StartHLSContinuous launches ffmpeg -f hls writing segments under OutputDir.
 func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSContinuousOptions) (*HLSContinuousJob, error) {
 	if runner == nil || caps == nil {
@@ -140,7 +172,7 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 		}
 		opts.Input = InputSource{URL: inputURL, StreamType: opts.Input.StreamType}
 	}
-	if err := os.MkdirAll(filepath.Join(outDir, "seg"), 0o755); err != nil {
+	if err := prepareContinuousOutputLayout(outDir, opts); err != nil {
 		return nil, err
 	}
 
@@ -172,6 +204,7 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 		alignDone:  make(chan struct{}),
 		stop:       cancel,
 		stderrMon:  stderrMon,
+		startSec:   opts.StartSec,
 	}
 	go func() {
 		err := cmd.Run()
@@ -188,7 +221,7 @@ func StartHLSContinuous(parent context.Context, runner *ffexec.Runner, caps *cap
 		job.mu.Unlock()
 		close(job.ffmpegDone)
 	}()
-	go runContinuousSegmentAligner(ctx, outDir, opts, job)
+	go runContinuousSegmentAligner(ctx, outDir, job)
 	return job, nil
 }
 
@@ -259,12 +292,19 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	case opts.VideoCopy:
 		args = append(args, "-c:v", "copy")
 		if !opts.VideoOnly() {
+			// Same rule as the transcode path: a seek job must not force
+			// first_pts=0 — async resample would pad silence for the offset
+			// between the seek point and the first audio packet.
+			audioFilter := "aresample=async=1"
+			if opts.StartSec <= 0 {
+				audioFilter = "aresample=async=1:first_pts=0"
+			}
 			args = append(args,
 				"-c:a", "aac",
 				"-ar", "48000",
 				"-ac", "2",
 				"-profile:a", "aac_low",
-				"-af", "aresample=async=1:first_pts=0",
+				"-af", audioFilter,
 				"-bsf:a", "aac_adtstoasc",
 			)
 		}
@@ -323,10 +363,13 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 	} else {
 		args = appendHLSTranscodeCopyTimestampArgs(args)
 	}
-	hlsFlags := "append_list"
+	// Every fragment begins on a keyframe — copy pipelines split at GOP
+	// boundaries and transcode forces keyframes on the segment grid — so the
+	// playlist can advertise random access for hls.js seeking.
+	hlsFlags := "append_list+independent_segments"
 	if opts.StartIndex > 0 || opts.FreshPlaylist {
 		// Mid-file restarts and post-invalidation jobs must not append to a stale playlist.
-		hlsFlags = "temp_file"
+		hlsFlags = "temp_file+independent_segments"
 	}
 	args = append(args,
 		"-max_muxing_queue_size", "128",
@@ -335,7 +378,7 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		"-hls_time", fmt.Sprintf("%.3f", segDur),
 		"-hls_segment_type", "fmp4",
 		"-hls_fmp4_init_filename", "init.m4s",
-		"-hls_segment_filename", "seg/%05d.m4s",
+		"-hls_segment_filename", "raw/%05d.m4s",
 		"-start_number", fmt.Sprintf("%d", opts.StartIndex),
 		// event, not vod: ffmpeg only writes a vod playlist when the stream ends,
 		// so a continuous job over a long input published no playlist at all until

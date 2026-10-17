@@ -10,6 +10,7 @@ import (
 
 	goffmpeg "github.com/gtsteffaniak/go-ffmpeg"
 	"github.com/gtsteffaniak/go-ffmpeg/mp4"
+	"github.com/gtsteffaniak/go-ffmpeg/ops"
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
@@ -114,9 +115,8 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 	}()
 
 	keyframes, _ := svc.ProbeVideoKeyframeTimes(ctx, file)
-	keyframeSeekTimes, mediaDur := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
-	starts, durations := goffmpeg.BuildHLSSegmentTimeline(mediaDur, keyframeSeekTimes, goffmpeg.DefaultHLSSegmentDurationSec, 0)
-	opts := continuousOptions(file, params, outDir, starts, durations, mode == "transcode", startIndex, startSec)
+	keyframeSeekTimes, _ := goffmpeg.PrepareHLSMediaTimeline(keyframes, info.Duration, info.StartTime)
+	opts := continuousOptions(file, params, outDir, startIndex, startSec)
 	start := time.Now()
 	job, err := svc.StartHLSContinuous(ctx, opts)
 	if err != nil {
@@ -127,11 +127,9 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 	}
 	totalMs := time.Since(start).Milliseconds()
 
-	if err := finalizeContinuousOutputDir(outDir); err != nil {
-		return nil, fmt.Errorf("finalize playlist: %w", err)
-	}
-
-	playlistPath := filepath.Join(outDir, "ffmpeg.m3u8")
+	// The publisher's index.m3u8 is canonical: listed ⇒ aligned, published,
+	// and servable from seg/.
+	playlistPath := filepath.Join(outDir, "index.m3u8")
 	playlist, err := parseFFmpegM3U8(playlistPath)
 	if err != nil {
 		return nil, fmt.Errorf("parse playlist: %w", err)
@@ -162,8 +160,9 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 
 	trackTimescales := mp4.TrackTimescalesFromInit(initBytes)
 	var prevSeg *segmentReport
+	var playlistPos float64
 	playlistOK := true
-	exactTranscodeTimeline := mode == "transcode"
+	var prevMedia []byte
 
 	for i, plSeg := range playlist.Segments {
 		segPath := resolveContinuousSegmentPath(outDir, plSeg.URI)
@@ -179,20 +178,14 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 		}
 
 		absIndex := opts.StartIndex + i
-		expectedStart := 0.0
+		// hls.js places each fragment at its cumulative #EXTINF position —
+		// the emitted playlist, not the precomputed segment grid, is the
+		// timeline a correct fragment must land on.
+		expectedStart := playlistPos
+		playlistPos += plSeg.DurSec
 		expectedDur := goffmpeg.DefaultHLSSegmentDurationSec
-		if absIndex >= 0 && absIndex < len(durations) {
-			expectedDur = durations[absIndex]
-		}
-		if exactTranscodeTimeline {
-			expectedStart = float64(absIndex) * goffmpeg.DefaultHLSSegmentDurationSec
-			if plSeg.DurSec > 0 {
-				expectedDur = plSeg.DurSec
-			}
-		} else {
-			for j := 0; j < absIndex && j < len(durations); j++ {
-				expectedStart += durations[j]
-			}
+		if plSeg.DurSec > 0 {
+			expectedDur = plSeg.DurSec
 		}
 
 		startSec, _ := mp4.FragmentMediaStartSecWithTimescales(media, trackTimescales)
@@ -203,16 +196,6 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 		if actualDur <= 0 && plSeg.DurSec > 0 {
 			actualDur = plSeg.DurSec
 		}
-		if exactTranscodeTimeline {
-			if _, alignErr := mp4.AlignFragmentToMediaStartWithTimescales(media, expectedStart, trackTimescales); alignErr != nil {
-				report.Pass = false
-				report.Issues = append(report.Issues, mp4.TimelineIssue{
-					Check:   "align",
-					Message: fmt.Sprintf("segment %d align to %.3fs: %v", absIndex, expectedStart, alignErr),
-				})
-			}
-		}
-
 		seg := segmentReport{
 			Index:            absIndex,
 			ExpectedStartSec: expectedStart,
@@ -252,12 +235,48 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 			prevTL := mp4.SegmentTimeline{Index: prevSeg.Index, MediaStartSec: prevSeg.MediaStartSec, ActualDurSec: prevSeg.ActualDurSec}
 			nextTL := mp4.SegmentTimeline{Index: absIndex, MediaStartSec: seg.MediaStartSec}
 			issues = append(issues, mp4.ValidateContinuity(prevTL, nextTL, tolerance)...)
+			if report.SourceHasAudio && len(prevMedia) > 0 {
+				issues = append(issues, mp4.ValidateContinuityBetweenTracks(prevMedia, media, 2, tolerance, trackTimescales)...)
+			}
 		}
 		if len(issues) > 0 {
 			report.Pass = false
 			report.Issues = append(report.Issues, issues...)
 		}
 		prevSeg = &report.Segments[len(report.Segments)-1]
+		prevMedia = media
+	}
+
+	// job.json is the publisher's record of produced coverage: a finished job
+	// must report complete, and its start anchor must be the generation's real
+	// media start (snapped keyframe at-or-before the requested -ss position).
+	status, statusErr := ops.ReadContinuousJobStatus(outDir)
+	if statusErr != nil {
+		report.Pass = false
+		report.Issues = append(report.Issues, mp4.TimelineIssue{Check: "job_status", Message: statusErr.Error()})
+	} else {
+		requestedSec := opts.StartSec
+		if status.StartSec > requestedSec+tolerance || status.StartSec < -tolerance {
+			report.Pass = false
+			report.Issues = append(report.Issues, mp4.TimelineIssue{
+				Check:   "job_status",
+				Message: fmt.Sprintf("startSec %.3f outside snapped range [0, %.3f]", status.StartSec, requestedSec),
+			})
+		}
+		if status.FirstIndex != opts.StartIndex {
+			report.Pass = false
+			report.Issues = append(report.Issues, mp4.TimelineIssue{
+				Check:   "job_status",
+				Message: fmt.Sprintf("firstIndex %d, expected %d", status.FirstIndex, opts.StartIndex),
+			})
+		}
+		if playlist.HasEndList && !status.Complete {
+			report.Pass = false
+			report.Issues = append(report.Issues, mp4.TimelineIssue{
+				Check:   "job_status",
+				Message: "ENDLIST present but job status reports incomplete",
+			})
+		}
 	}
 
 	if !playlist.HasEndList {
@@ -293,19 +312,17 @@ func hlsModeFromParams(params goffmpeg.HLSSegmentParams) string {
 	return "transcode"
 }
 
-func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir string, starts, durations []float64, transcode bool, startIndex int, startSec float64) goffmpeg.HLSContinuousOptions {
-	if transcode {
-		durations = nil
-	}
-	if startIndex > 0 && startSec <= 0 && startIndex < len(starts) {
-		startSec = starts[startIndex]
+func continuousOptions(file string, params goffmpeg.HLSSegmentParams, outDir string, startIndex int, startSec float64) goffmpeg.HLSContinuousOptions {
+	if startIndex > 0 && startSec <= 0 {
+		// Same convention the backend uses: ffmpeg -ss lands on the segment
+		// grid; the library snaps to the real keyframe for copy pipelines.
+		startSec = float64(startIndex) * goffmpeg.DefaultHLSSegmentDurationSec
 	}
 	return goffmpeg.HLSContinuousOptions{
 		Input:             goffmpeg.InputSource{URL: file, StreamType: probe.StreamFile},
 		OutputDir:         outDir,
 		StartIndex:        startIndex,
 		StartSec:          startSec,
-		SegmentDurations:  durations,
 		SegmentSec:        goffmpeg.DefaultHLSSegmentDurationSec,
 		FreshPlaylist:     startIndex == 0 && startSec <= 0,
 		Decode:            params.Decode,

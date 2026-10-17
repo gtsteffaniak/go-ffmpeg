@@ -7,6 +7,21 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 )
 
+func TestVideoFilterArgsCopyNoFilters(t *testing.T) {
+	r := encode.NewResolver(capabilities.NewCapabilities())
+	args, err := r.VideoFilterArgs(
+		encode.VideoProfile{Codec: encode.CodecCopy},
+		encode.VideoDecodeProfile{},
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(args) != 0 {
+		t.Fatalf("stream copy must not emit -vf, got %v", args)
+	}
+}
+
 func TestVideoFilterArgsVAAPIWithSoftwareDecode(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Platform.Details = map[string]string{"render_device": "/dev/dri/renderD128"}
