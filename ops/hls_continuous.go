@@ -61,8 +61,9 @@ type HLSContinuousJob struct {
 
 // StartSec returns the generation's effective media start in seconds — the
 // requested seek position for transcode jobs, or the keyframe the muxer
-// actually snapped to for stream-copy jobs. Consumers must anchor the client
-// timeline at this value, not at a predicted segment-grid position.
+// actually snapped to for stream-copy jobs. Published fMP4 segments are
+// aligned on the full-file decode timeline (tfdt ≈ StartSec + cumulative
+// #EXTINF), so players can use native currentTime without subtracting an offset.
 func (j *HLSContinuousJob) StartSec() float64 {
 	if j == nil {
 		return 0

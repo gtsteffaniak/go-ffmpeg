@@ -54,12 +54,15 @@ func ValidateContinuousHLSOutput(outDir string, opts HLSContinuousOptions, sourc
 
 	trackTimescales := mp4.TrackTimescalesFromInit(initBytes)
 	transcode := hlsContinuousUsesCopyTimestamps(opts)
+	timelineOrigin := opts.StartSec
+	if timelineOrigin < 0 {
+		timelineOrigin = 0
+	}
 	var prevStart, prevDur, playlistPos float64
 	var prevIndex int
 	for i, plSeg := range playlist.Segments {
-		// hls.js places each fragment at its cumulative #EXTINF position, so the
-		// playlist — not a predicted segment grid — is the expected start.
-		expectedStart := playlistPos
+		// Published segments are aligned on the full-file decode timeline.
+		expectedStart := timelineOrigin + playlistPos
 		playlistPos += plSeg.DurSec
 
 		segPath := resolveContinuousMediaPath(outDir, plSeg.URI, "")

@@ -178,10 +178,11 @@ func checkContinuousHLS(ctx context.Context, svc *goffmpeg.Service, file string,
 		}
 
 		absIndex := opts.StartIndex + i
-		// hls.js places each fragment at its cumulative #EXTINF position —
-		// the emitted playlist, not the precomputed segment grid, is the
-		// timeline a correct fragment must land on.
-		expectedStart := playlistPos
+		timelineOrigin := opts.StartSec
+		if timelineOrigin < 0 {
+			timelineOrigin = 0
+		}
+		expectedStart := timelineOrigin + playlistPos
 		playlistPos += plSeg.DurSec
 		expectedDur := goffmpeg.DefaultHLSSegmentDurationSec
 		if plSeg.DurSec > 0 {

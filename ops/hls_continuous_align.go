@@ -129,12 +129,10 @@ func loadContinuousInitTimescales(initPath string) map[uint32]uint32 {
 	return mp4.TrackTimescalesFromInit(data)
 }
 
-// continuousPlaylistMediaStarts returns each listed segment's media start on the
-// playlist timeline — the cumulative #EXTINF position hls.js uses to place the
-// fragment — keyed by segment index. The emitted playlist is the timeline
-// authority: a predicted segment grid cannot reproduce the muxer's GOP-boundary
-// splits (after a long GOP, ffmpeg emits short catch-up segments), and a seek
-// job anchors its grid at the first packet rather than media 0.
+// continuousPlaylistMediaStarts returns each listed segment's start on the
+// generation-local playlist axis (cumulative #EXTINF from the first listed
+// segment). Use continuousPlaylistAbsoluteMediaStarts when rebasing fMP4 tfdt
+// for browser MSE on the full-file media timeline.
 func continuousPlaylistMediaStarts(playlist *continuousPlaylist) map[int]float64 {
 	if playlist == nil {
 		return nil
@@ -148,6 +146,22 @@ func continuousPlaylistMediaStarts(playlist *continuousPlaylist) map[int]float64
 		pos += seg.DurSec
 	}
 	return starts
+}
+
+// continuousPlaylistAbsoluteMediaStarts maps each segment index to its decode
+// time on the full media timeline (0 at file head). Seek generations add
+// generationStartSec so <video>.currentTime and hls.js buffer timestamps match
+// the probed asset without client-side offset math.
+func continuousPlaylistAbsoluteMediaStarts(playlist *continuousPlaylist, generationStartSec float64) map[int]float64 {
+	relative := continuousPlaylistMediaStarts(playlist)
+	if generationStartSec <= 0 || len(relative) == 0 {
+		return relative
+	}
+	absolute := make(map[int]float64, len(relative))
+	for index, pos := range relative {
+		absolute[index] = generationStartSec + pos
+	}
+	return absolute
 }
 
 func continuousSegmentIndexFromURI(uri string) (int, bool) {
@@ -229,7 +243,7 @@ func publishContinuousReadySegments(outDir string, startSec float64, published m
 
 	// hls.js places each fragment at its cumulative #EXTINF position — the
 	// emitted playlist, not a predicted segment grid, is the timeline authority.
-	starts := continuousPlaylistMediaStarts(playlist)
+	starts := continuousPlaylistAbsoluteMediaStarts(playlist, startSec)
 	timescales := loadContinuousInitTimescales(filepath.Join(outDir, "init.m4s"))
 	changed := false
 	for _, seg := range playlist.Segments {

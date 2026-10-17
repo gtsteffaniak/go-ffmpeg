@@ -22,7 +22,7 @@ Single `ffmpeg -f hls` writing `init.m4s` and `seg/%05d.m4s` under a cache direc
 | `HLSContinuousLivePaced` | Watch-while-transcode (~1× readrate, ~20s initial burst; ffmpeg 8+ default catchup) |
 | `HLSContinuousRemuxSegmentDeletion` | Stream-copy + segment deletion |
 
-Background aligner rebases segment `tfdt` to the HLS media timeline. Resume via `StartIndex` / `StartSec`.
+Background aligner rebases segment `tfdt` onto the **full-file decode timeline** (segment 0 at file head; seek jobs at the snapped `StartSec` + cumulative `#EXTINF`). Resume via `StartIndex` / `StartSec`. Consumers can read `job.json` `startSec` for the generation anchor; `<video>.currentTime` tracks absolute media time without subtracting an offset.
 
 ## Helpers
 
