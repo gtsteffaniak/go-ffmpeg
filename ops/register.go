@@ -106,6 +106,7 @@ func (hlsContinuousOp) Requirements() RequirementSet {
 	return RequirementSet{NeedsEncode: true, MinProfile: capabilities.BuildFull, Protocols: []string{"file", "tcp"}}
 }
 
+// hlsVODOp gates on-demand VOD segment jobs (remux, video-copy, and transcode).
 type hlsVODOp struct{}
 
 func (hlsVODOp) Name() string { return "HLSVOD" }

@@ -523,7 +523,8 @@ func BuildVODSegmentListFixedGrid(mediaDurationSec, segmentSec float64) VODSegme
 	return ops.BuildVODSegmentListFixedGrid(mediaDurationSec, segmentSec)
 }
 
-// BuildVODSegmentListKeyframe plans keyframe-snapped segments for remux/video-copy.
+// BuildVODSegmentListKeyframe plans remux/video-copy segments using ffmpeg's cumulative
+// hls_time targets (segmentSec × index) with each cut at the next video keyframe.
 func BuildVODSegmentListKeyframe(mediaDurationSec, segmentSec, startTimeSec float64, keyframes []float64) VODSegmentList {
 	return ops.BuildVODSegmentListKeyframe(mediaDurationSec, segmentSec, startTimeSec, keyframes)
 }

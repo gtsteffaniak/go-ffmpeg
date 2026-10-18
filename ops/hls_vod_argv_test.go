@@ -71,6 +71,31 @@ func TestBuildHLSVODFFmpegArgsTranscodeMidFile(t *testing.T) {
 	}
 }
 
+func TestBuildHLSVODFFmpegArgsTranscodeFractionalSegmentSec(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	opts := HLSVODJobOptions{
+		Input:      InputSource{URL: "/media/clip.mkv"},
+		OutputDir:  "/cache/vod",
+		SegmentSec: 2.5,
+		Profile:    encode.VideoProfile{Codec: encode.CodecH264},
+		Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+	}
+	args, err := BuildHLSVODFFmpegArgs(runner, swH264Caps(), opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"-force_key_frames expr:gte(t,n_forced*2.500)",
+		"-hls_time 2.500",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q: %s", want, joined)
+		}
+	}
+}
+
 func TestBuildHLSVODFFmpegArgsCopyUsesKeyframeSeek(t *testing.T) {
 	t.Parallel()
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
