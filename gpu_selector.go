@@ -94,3 +94,16 @@ func (c *Config) effectiveGPUSelector() GPUSelector {
 func (c *Config) effectiveGPUStrictness() GPUStrictness {
 	return c.GPUStrictness
 }
+
+func (c *Config) effectiveDeviceSelection() DeviceSelection {
+	ds := c.DeviceSelection
+	if ds.Primary.IsZero() {
+		ds.Primary = c.effectiveGPUSelector()
+	}
+	allow := true
+	if c.AllowSoftwareEncoderFallback != nil {
+		allow = *c.AllowSoftwareEncoderFallback
+	}
+	ds.AllowSoftware = allow
+	return ds
+}

@@ -16,6 +16,7 @@ const (
 	AccelVAAPI        AccelType = "vaapi"
 	AccelD3D12        AccelType = "d3d12"
 	AccelVideoToolbox AccelType = "videotoolbox"
+	AccelV4L2M2M      AccelType = "v4l2m2m"
 	AccelNone         AccelType = "none"
 )
 
@@ -36,7 +37,7 @@ func DefaultHierarchy() []AccelType {
 
 // AllEncoderAccelTypes lists every hardware backend the library understands.
 func AllEncoderAccelTypes() []AccelType {
-	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox, AccelV4L2M2M}
 }
 
 // HierarchyForPlatform returns encoder preference order for the detected host.
@@ -48,6 +49,17 @@ func AllEncoderAccelTypes() []AccelType {
 //   - WSL2:        VAAPI → QSV → D3D12 → NVENC
 //   - macOS:       VideoToolbox only
 func HierarchyForPlatform(plat PlatformInfo) []AccelType {
+	if plat.Details != nil {
+		switch plat.Details["pi_model"] {
+		case string(platform.Pi4):
+			return []AccelType{AccelV4L2M2M, AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
+		case string(platform.Pi5):
+			// H.264 encode is software; HEVC may decode via v4l2 request API when available.
+			return []AccelType{AccelV4L2M2M, AccelNone}
+		case string(platform.PiLegacy):
+			return []AccelType{AccelNone}
+		}
+	}
 	switch plat.OS {
 	case "darwin":
 		return []AccelType{AccelVideoToolbox}
@@ -105,12 +117,14 @@ type DecoderSelection struct {
 
 // EncoderCapability describes a single encoder's availability.
 type EncoderCapability struct {
-	Name      string `json:"name"`
-	Compiled  bool   `json:"compiled"`
-	Tested    bool   `json:"tested"`
-	Available bool   `json:"available"`
-	Kind      string `json:"kind"`
-	TestError string `json:"testError,omitempty"`
+	Name           string `json:"name"`
+	Compiled       bool   `json:"compiled"`
+	Tested         bool   `json:"tested"`
+	Available      bool   `json:"available"`
+	Kind           string `json:"kind"`
+	TestError      string `json:"testError,omitempty"`
+	SelectionNote  string `json:"selectionNote,omitempty"` // e.g. available, not selected
+	OutOfSelection bool   `json:"outOfSelection,omitempty"`
 }
 
 // HWAccelCapability describes a hardware acceleration method.
@@ -163,6 +177,19 @@ type Capabilities struct {
 	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`
 	SelectedGPU      *platform.GPUChoice          `json:"selectedGpu,omitempty"`
 	GPUSelection     *platform.GPUChoice          `json:"gpuSelection,omitempty"`
+	HardwarePlatform PlatformInfo                 `json:"hardwarePlatform,omitempty"`
+	PiProfile        *platform.PiEncodeProfile    `json:"piProfile,omitempty"`
+	DeviceAttempts   []DeviceCodecAttempt         `json:"deviceAttempts,omitempty"`
+	AllowSoftware    bool                         `json:"allowSoftware,omitempty"`
+}
+
+// DeviceCodecAttempt records why a device/backend was skipped during selection.
+type DeviceCodecAttempt struct {
+	Codec    VideoCodec `json:"codec"`
+	Device   string     `json:"device"`
+	Encoder  string     `json:"encoder,omitempty"`
+	Reason   string     `json:"reason,omitempty"`
+	Selected bool       `json:"selected,omitempty"`
 }
 
 // NewCapabilities returns an empty capability matrix.

@@ -16,18 +16,22 @@ func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 		opts.EncoderPreference = pref
 	}
 
-	sel := s.cfg.effectiveGPUSelector()
+	ds := s.cfg.effectiveDeviceSelection()
 	strict := s.cfg.effectiveGPUStrictness()
-	choice, err := ResolveGPUSelector(sel, strict)
+	choice, fallbacks, err := ResolveDeviceSelection(ds, strict)
 	if err != nil {
 		return opts, fmt.Errorf("gpu selection: %w", err)
 	}
 	if choice.Warning != "" && s.cfg.Logger != nil {
-		s.cfg.Logger.Warn(choice.Warning, "gpu", sel.String())
+		s.cfg.Logger.Warn(choice.Warning, "gpu", ds.Primary.String())
 	}
 	opts.GPU = choice
+	opts.DeviceChain = append([]platform.GPUChoice{choice}, fallbacks...)
 	if choice.RenderDevice != "" {
 		opts.RenderDevice = choice.RenderDevice
+	}
+	if s.cfg.AllowSoftwareEncoderFallback != nil {
+		opts.AllowSoftware = s.cfg.AllowSoftwareEncoderFallback
 	}
 	if choice.SoftwareOnly {
 		opts.SkipHWTests = true

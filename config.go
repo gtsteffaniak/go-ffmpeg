@@ -52,6 +52,14 @@ type Config struct {
 	// the platform default backend order on all detected GPUs.
 	GPUSelector GPUSelector
 
+	// DeviceSelection sets an explicit primary GPU and ordered fallbacks evaluated per codec.
+	// When Primary is zero, GPUSelector is used as the primary device.
+	DeviceSelection DeviceSelection
+
+	// AllowSoftwareEncoderFallback defaults to true. When false, detection returns an error
+	// if no hardware path works on the selected device chain.
+	AllowSoftwareEncoderFallback *bool
+
 	// GPUStrictness controls behavior when the selected GPU is unavailable.
 	// Zero (GPUFallbackOnUnavailable) falls back to auto and records the reason in the capability report.
 	GPUStrictness GPUStrictness

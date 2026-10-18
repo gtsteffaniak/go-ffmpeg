@@ -27,11 +27,9 @@ func defaultGPUResolveEnv() GPUResolveEnv {
 		Intel:  intelGPUPresent(),
 		AMD:    amdGPUPresent(),
 	}
-	if runtime.GOOS == "linux" {
-		devs, err := listDRMGPUs()
-		if err == nil {
-			env.Devices = devs
-		}
+	devs, err := ListGPUDevices()
+	if err == nil {
+		env.Devices = devs
 	}
 	if desc := detectGPUDescription(); desc != "" {
 		for _, part := range strings.Split(desc, ";") {

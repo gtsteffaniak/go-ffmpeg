@@ -15,6 +15,8 @@ type DetectOptions struct {
 	EncoderPreference EncoderPreference
 	RenderDevice      string
 	GPU               platform.GPUChoice
+	DeviceChain       []platform.GPUChoice
+	AllowSoftware     *bool // nil = true (backward compatible)
 }
 
 // Detect runs the full capability detection pipeline.
@@ -47,7 +49,13 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		opts.SkipHWTests = true
 	}
 	gpuScoped := gpuChoice.Enabled && !gpuChoice.SoftwareOnly
-	caps.Platform = platform.Detect()
+	hardwarePlat := platform.Detect()
+	caps.Platform = hardwarePlat
+	caps.HardwarePlatform = hardwarePlat
+	caps.AllowSoftware = true
+	if opts.AllowSoftware != nil {
+		caps.AllowSoftware = *opts.AllowSoftware
+	}
 	sel := gpuChoice
 	if sel.Mode == "" {
 		sel.Mode = platform.GPUModeAuto
@@ -57,27 +65,25 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	}
 	caps.GPUSelection = &sel
 	if gpuScoped {
-		caps.Platform = platform.ScopedPlatform(caps.Platform, gpuChoice)
 		caps.SelectedGPU = &gpuChoice
 	}
 	if opts.RenderDevice != "" {
-		if caps.Platform.Details == nil {
-			caps.Platform.Details = map[string]string{}
-		}
-		caps.Platform.Details["render_device"] = opts.RenderDevice
+		gpuChoice.RenderDevice = opts.RenderDevice
 	}
 
-	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, gpuChoice, caps.Platform)
+	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, gpuChoice, hardwarePlat)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
-	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, caps.Platform, hierarchy, gpuScoped)
+	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)
 	PopulateHWAccels(ctx, caps, runner)
-	PopulateDecoders(ctx, caps, runner, opts.SkipHWTests, caps.Platform, hierarchy, gpuScoped)
+	PopulateDecoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)
 	PopulateFilters(ctx, caps, runner)
 	PopulateProtocols(ctx, caps, runner)
 
 	caps.BuildProfile = InferBuildProfile(caps.BuildConfig, caps.Encoders)
 	BuildCodecMatrix(caps, hierarchy)
+	applyPiPlatformProfile(caps)
+	ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice)
 
 	return caps, nil
 }

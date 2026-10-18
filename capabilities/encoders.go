@@ -25,6 +25,7 @@ var KnownEncoders = []struct {
 	{"vp9_nvenc", "nvenc", true},
 	// AMF
 	{"h264_amf", "amf", true},
+	{"hevc_amf", "amf", true},
 	{"av1_amf", "amf", true},
 	{"vp9_amf", "amf", true},
 	// QSV
@@ -40,6 +41,9 @@ var KnownEncoders = []struct {
 	// VideoToolbox (macOS)
 	{"h264_videotoolbox", "videotoolbox", true},
 	{"hevc_videotoolbox", "videotoolbox", true},
+	// Raspberry Pi V4L2 M2M (Pi 4 H.264; Pi 5 HEVC decode paths when compiled)
+	{"h264_v4l2m2m", "v4l2m2m", true},
+	{"hevc_v4l2m2m", "v4l2m2m", true},
 }
 
 // KnownFilters lists filters required by library operations.
@@ -68,6 +72,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "h264_vaapi"
 		case AccelVideoToolbox:
 			return "h264_videotoolbox"
+		case AccelV4L2M2M:
+			return "h264_v4l2m2m"
 		}
 	case CodecAV1:
 		switch accel {
@@ -101,6 +107,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "hevc_vaapi"
 		case AccelVideoToolbox:
 			return "hevc_videotoolbox"
+		case AccelV4L2M2M:
+			return "hevc_v4l2m2m"
 		}
 	}
 	return ""
