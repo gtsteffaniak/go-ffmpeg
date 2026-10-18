@@ -358,7 +358,7 @@ func buildHLSContinuousArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 				"-af", hlsTranscodeAudioFilter(),
 			)
 		}
-		args = append(args, "-fps_mode", "cfr", "-max_interleave_delta", "0")
+		args = append(args, "-fps_mode", "cfr")
 	}
 
 	if videoCopyPipeline {

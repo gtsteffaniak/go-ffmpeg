@@ -52,10 +52,10 @@ func appendHLSTimestampArgs(args []string, startSec float64) []string {
 	return appendHLSOutputTimestampArgs(args, startSec)
 }
 
-// hlsAudioResampleAsyncSamples is the aresample "async" limit in output samples
-// (~4s at 48 kHz). The default (1000) only tolerates ~21 ms of A/V drift, which
-// leaves short audio runs in fMP4 segments when EAC3/MKV decode lags video.
-const hlsAudioResampleAsyncSamples = 192000
+// hlsAudioResampleAsyncSamples is the aresample "async" limit in output samples.
+// FFmpeg's default is 0 (disabled); 48000 ≈ 1s at 48 kHz — enough for MKV/EAC3
+// jitter without uncapped stretch/warble.
+const hlsAudioResampleAsyncSamples = 48000
 
 // hlsTranscodeAudioFilter normalizes AAC for HLS fMP4 and stretches/compresses audio
 // to track the video clock across segment boundaries.

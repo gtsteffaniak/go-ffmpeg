@@ -97,12 +97,12 @@ func TestBuildHLSContinuousArgsAudioFilterTracksSeekOffset(t *testing.T) {
 		return strings.Join(args, " ")
 	}
 
-	if got := build(0); !strings.Contains(got, "aresample=async=192000") {
+	if got := build(0); !strings.Contains(got, "aresample=async=48000") {
 		t.Fatalf("expected normalized audio at media origin: %s", got)
 	}
 
 	got := build(720)
-	if !strings.Contains(got, "aresample=async=192000") {
+	if !strings.Contains(got, "aresample=async=48000") {
 		t.Fatalf("expected normalized audio when seeking with output_ts_offset: %s", got)
 	}
 	if !strings.Contains(got, "-output_ts_offset 720.000000") {
@@ -197,7 +197,7 @@ func TestBuildHLSContinuousTranscodeUsesHardwareDecode(t *testing.T) {
 		"-avoid_negative_ts make_zero",
 		"-output_ts_offset 3704.000000",
 		"-fps_mode cfr",
-		"aresample=async=192000",
+		"aresample=async=48000",
 		"-hls_segment_options movflags=+frag_discont",
 		"-max_delay 5000000",
 		"scale_vt",
