@@ -22,7 +22,7 @@ func KnownGPUConfigValues() []string {
 // GPUConfigHelp returns a short summary for documentation.
 func GPUConfigHelp() string {
 	return strings.Join([]string{
-		`GPUSelector zero value or Kind=GPUAuto — platform default backend order`,
+		`GPUSelector zero / GPUAuto — automatic iGPU→dGPU→software device chain (see DevicePreference)`,
 		`GPUIntegrated / GPUDiscrete / GPUSoftware`,
 		`GPUByRenderNode(path) / GPUByName(substr)`,
 		`ParseGPUSelector(yaml) for string configs; GPUStrictness for error vs fallback`,

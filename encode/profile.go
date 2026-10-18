@@ -53,6 +53,12 @@ type VideoProfile struct {
 
 	// ForceSoftware is shorthand for software encoding without naming an encoder.
 	ForceSoftware bool
+
+	// OutputHeight is the scaled output height in pixels (enables HW encoder limit fallback).
+	OutputHeight int
+
+	// FrameRate is the output frame rate when known (enables FPS limit fallback).
+	FrameRate float64
 }
 
 type encodeOpts struct {
@@ -163,6 +169,11 @@ func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		return []string{
 			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
+			"-pix_fmt", o.pixFmt, "-g", gop,
+		}
+	case capabilities.AccelV4L2M2M:
+		return []string{
+			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max,
 			"-pix_fmt", o.pixFmt, "-g", gop,
 		}
 	case capabilities.AccelVideoToolbox:

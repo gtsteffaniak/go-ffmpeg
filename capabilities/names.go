@@ -118,6 +118,7 @@ var accelLabels = map[AccelType]string{
 	AccelVAAPI:        "VAAPI",
 	AccelD3D12:        "WSL D3D12 (VAAPI)",
 	AccelVideoToolbox: "Apple VideoToolbox",
+	AccelV4L2M2M:      "V4L2 M2M (Raspberry Pi)",
 	AccelNone:         "Software",
 }
 
@@ -136,6 +137,7 @@ var encoderKindLabels = map[string]string{
 	"qsv":          "Intel Quick Sync Video",
 	"vaapi":        "VAAPI (Intel/AMD GPU)",
 	"videotoolbox": "Apple VideoToolbox",
+	"v4l2m2m":      "V4L2 M2M (Raspberry Pi)",
 }
 
 var platformGateLabels = map[string]string{

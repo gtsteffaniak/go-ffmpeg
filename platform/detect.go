@@ -57,6 +57,21 @@ func Detect() Info {
 	info.D3D12 = d3d12Available(info.WSL)
 	info.VideoToolbox = runtime.GOOS == "darwin"
 	info.Details["gpu"] = detectGPUDescription()
+	if pi := DetectPiModel(); pi != PiUnknown {
+		info.Details["pi_model"] = string(pi)
+		prof := PiEncodeProfileForModel(pi)
+		info.Details["pi_h264_summary"] = prof.H264Summary
+		if prof.InstallHint != "" {
+			info.Details["pi_install_hint"] = prof.InstallHint
+		}
+		if v4l := ListV4L2M2MDevices(); len(v4l) > 0 {
+			var names []string
+			for _, d := range v4l {
+				names = append(names, d.Path+" ("+d.Name+")")
+			}
+			info.Details["v4l2_m2m"] = strings.Join(names, "; ")
+		}
+	}
 	return info
 }
 
@@ -83,25 +98,6 @@ func nvidiaAvailable() bool {
 			return true
 		}
 		return runSilentTimeout("nvidia-smi", "-L") == nil
-	}
-	return false
-}
-
-func amdGPUPresent() bool {
-	if runtime.GOOS != "linux" {
-		return false
-	}
-	if drmVendorPresent("0x1002") {
-		return true
-	}
-	if commandAvailable("lspci") {
-		out, err := combinedOutputTimeout("lspci", "-nn")
-		if err == nil {
-			s := strings.ToLower(string(out))
-			if strings.Contains(s, "[1002:") || strings.Contains(s, "amd/ati") {
-				return true
-			}
-		}
 	}
 	return false
 }

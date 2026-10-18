@@ -28,7 +28,11 @@ func (r *Resolver) ResolveEncoder(profile VideoProfile) (capabilities.EncoderSel
 	}
 
 	if profile.Encoder != "" {
-		return r.resolveExplicitEncoder(codec, profile.Encoder)
+		sel, err := r.resolveExplicitEncoder(codec, profile.Encoder)
+		if err != nil {
+			return sel, err
+		}
+		return r.finalizeEncoderSelection(codec, profile, sel)
 	}
 
 	accel := profile.Accel
@@ -37,12 +41,20 @@ func (r *Resolver) ResolveEncoder(profile VideoProfile) (capabilities.EncoderSel
 	}
 
 	if accel == "" {
-		return r.resolvePreferred(codec)
+		sel, err := r.resolvePreferred(codec)
+		if err != nil {
+			return sel, err
+		}
+		return r.finalizeEncoderSelection(codec, profile, sel)
 	}
 	if accel == capabilities.AccelNone {
 		return r.resolveSoftware(codec, "")
 	}
-	return r.resolveHardware(codec, accel)
+	sel, err := r.resolveHardware(codec, accel)
+	if err != nil {
+		return sel, err
+	}
+	return r.finalizeEncoderSelection(codec, profile, sel)
 }
 
 // ValidateVideoProfile reports whether the profile can be encoded on this host.

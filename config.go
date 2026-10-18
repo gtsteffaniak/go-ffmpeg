@@ -48,9 +48,23 @@ type Config struct {
 	// "powersave" is an alias for that default. "performance" (dgpu-first) prefers NVENC before VAAPI on Linux.
 	EncoderPreference string
 
-	// GPUSelector selects which GPU to use. Zero value (GPUAuto) autoselects using
-	// the platform default backend order on all detected GPUs.
+	// GPUSelector selects a single GPU when set to GPUIntegrated, GPUDiscrete, GPUDevice, etc.
+	// Zero value (GPUAuto) keeps automatic device hierarchy (iGPU/SoC → dGPU → software).
+	// ParseGPUSelector("") and ParseGPUSelector("auto") both map to GPUAuto.
 	GPUSelector GPUSelector
+
+	// DeviceSelection sets an explicit primary GPU and ordered fallbacks evaluated per codec.
+	// When unset (zero), the library builds a default chain from DevicePreference (iGPU/SoC → dGPU → software).
+	DeviceSelection DeviceSelection
+
+	// DevicePreference selects default GPU order when DeviceSelection is unset.
+	// PreferIntegrated (zero): integrated/SoC → discrete → software. PreferDiscrete reverses iGPU and dGPU.
+	// EncoderPreference "performance" is a deprecated alias for PreferDiscrete (device order only).
+	DevicePreference DevicePreference
+
+	// AllowSoftwareEncoderFallback defaults to true. When false, detection returns an error
+	// if no hardware path works on the selected device chain.
+	AllowSoftwareEncoderFallback *bool
 
 	// GPUStrictness controls behavior when the selected GPU is unavailable.
 	// Zero (GPUFallbackOnUnavailable) falls back to auto and records the reason in the capability report.

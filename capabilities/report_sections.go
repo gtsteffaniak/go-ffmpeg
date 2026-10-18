@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
 type hwReportBackend struct {
@@ -14,6 +16,7 @@ type hwReportBackend struct {
 
 var hwReportBackends = []hwReportBackend{
 	{Title: "Software (CPU)", Kinds: []string{"software", "native"}, Accel: AccelNone},
+	{Title: "Raspberry Pi V4L2 M2M", Kinds: []string{"v4l2m2m"}, Accel: AccelV4L2M2M},
 	{Title: "NVIDIA NVENC / NVDEC", Kinds: []string{"nvenc"}, Accel: AccelNVENC},
 	{Title: "Intel Quick Sync (QSV)", Kinds: []string{"qsv"}, Accel: AccelQSV},
 	{Title: "VAAPI", Kinds: []string{"vaapi"}, Accel: AccelVAAPI},
@@ -36,13 +39,8 @@ func encodersForKinds(kinds []string) []string {
 }
 
 func backendVisible(c *Capabilities, backend hwReportBackend) bool {
-	if c == nil || c.SelectedGPU == nil || !c.SelectedGPU.Enabled {
-		return true
-	}
-	if backend.Accel == AccelNone {
-		return true
-	}
-	return hierarchyIncludesAccel(c.EncoderHierarchy, backend.Accel)
+	// Detection is never scoped: always show every vendor backend that was probed.
+	return true
 }
 
 func writeBuildSection(w io.Writer, st reportStyle, c *Capabilities) {
@@ -132,6 +130,14 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 		return
 	}
 	fmt.Fprintln(w, st.section("GPU configuration:"))
+	if c.DeviceOrderSummary != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device order:"), st.cyan(c.DeviceOrderSummary))
+	} else if len(c.DeviceChain) > 0 {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device order:"), st.dim(formatChainShort(c.DeviceChain)))
+	}
+	if c.DevicePreference != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device preference:"), st.cyan(c.DevicePreference))
+	}
 	if gpu.Label != "" {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Selector:"), st.cyan(gpu.Label))
 	} else if gpu.RequestedSpec != "" {
@@ -162,25 +168,63 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 	if dev := c.Platform.Details["render_device"]; dev != "" && gpu.Enabled {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Render node:"), st.cyan(dev))
 	}
-	if c.SelectedGPU != nil && c.SelectedGPU.Enabled && len(c.EncoderHierarchy) > 0 {
+	if len(c.EncoderHierarchy) > 0 {
 		labels := make([]string, 0, len(c.EncoderHierarchy))
 		for _, accel := range c.EncoderHierarchy {
 			labels = append(labels, AccelLabel(accel))
 		}
-		fmt.Fprintf(w, "  %s %s\n", st.bold("Encoder hierarchy:"), st.dim(strings.Join(labels, " → ")))
-		writeScopedPlatformGates(w, st, c)
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Encoder hierarchy (selection):"), st.dim(strings.Join(labels, " → ")))
+	}
+	if c.HardwarePlatform.OS != "" {
+		writeHardwareGates(w, st, c.HardwarePlatform)
+	}
+	if c.Pinning.NVENC != "" || c.Pinning.AMF != "" || c.Pinning.D3D11 != "" {
+		fmt.Fprintf(w, "  %s nvenc=%s cuda=%s amf=%s qsv=%s d3d11va=%s\n", st.bold("Pinning confidence:"),
+			st.cyan(string(c.Pinning.NVENC)), st.cyan(string(c.Pinning.CUDA)),
+			st.cyan(string(c.Pinning.AMF)), st.cyan(string(c.Pinning.QSV)), st.cyan(string(c.Pinning.D3D11)))
+		if c.Pinning.Note != "" {
+			fmt.Fprintf(w, "  %s %s\n", st.bold("Pinning note:"), st.dim(c.Pinning.Note))
+		}
+	}
+	if len(c.DeviceAttempts) > 0 {
+		fmt.Fprintf(w, "  %s\n", st.bold("Device selection attempts:"))
+		for _, att := range c.DeviceAttempts {
+			line := fmt.Sprintf("    %s @ %s", att.Codec, att.Device)
+			if att.Encoder != "" {
+				line += " → " + att.Encoder
+			}
+			if att.Selected {
+				line += " " + st.green("(selected)")
+			} else if att.Reason != "" {
+				line += " " + st.yellow("("+att.Reason+")")
+			}
+			fmt.Fprintln(w, line)
+		}
 	}
 }
 
-func writeScopedPlatformGates(w io.Writer, st reportStyle, c *Capabilities) {
-	p := c.Platform
+func formatChainShort(chain []platform.GPUChoice) string {
+	var parts []string
+	for _, c := range chain {
+		if c.SoftwareOnly {
+			parts = append(parts, "software")
+		} else if c.Name != "" {
+			parts = append(parts, c.Name)
+		}
+	}
+	return strings.Join(parts, " → ")
+}
+
+func writeHardwareGates(w io.Writer, st reportStyle, p PlatformInfo) {
+	fmt.Fprintf(w, "  %s\n", st.bold("Hardware detection (unscoped):"))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("Intel")+":"), st.boolLabel(p.Intel))
-	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("QSV")+":"), st.boolLabel(p.QSV))
-	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("QSVRuntime")+":"), st.qsvRuntimeLabel(p))
-	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VAAPI")+":"), st.boolLabel(p.VAAPI))
-	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("NVIDIA")+":"), st.boolLabel(p.NVIDIA))
 	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("AMD")+":"), st.boolLabel(p.AMD))
-	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VideoToolbox")+":"), st.boolLabel(p.VideoToolbox))
+	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("NVIDIA")+":"), st.boolLabel(p.NVIDIA))
+	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("VAAPI")+":"), st.boolLabel(p.VAAPI))
+	fmt.Fprintf(w, "  %s %s\n", st.bold(PlatformGateLabel("QSV")+":"), st.boolLabel(p.QSV))
+	if p.Details != nil && p.Details["pi_h264_summary"] != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Raspberry Pi H.264:"), st.cyan(p.Details["pi_h264_summary"]))
+	}
 }
 
 func writeHardwareBackendSections(w io.Writer, st reportStyle, c *Capabilities) {
@@ -271,6 +315,9 @@ func writeSingleEncoderRow(w io.Writer, st reportStyle, c *Capabilities, group e
 
 	skipVP9Dup := group.Codec == CodecVP9 && vp9IntelEncodeHintShown != nil &&
 		isVP9IntelLinuxEncodeUnavailable(name, c.Platform) && *vp9IntelEncodeHintShown
+	if enc.SelectionNote != "" {
+		fmt.Fprintf(w, "      %s\n", st.dim("↳ "+enc.SelectionNote))
+	}
 	if enc.TestError != "" && !skipVP9Dup {
 		writeHints(w, st, enc.TestError)
 		if vp9IntelEncodeHintShown != nil && isVP9IntelLinuxEncodeUnavailable(name, c.Platform) {
@@ -352,10 +399,10 @@ func writeCodecResolutionSection(w io.Writer, st reportStyle, c *Capabilities) {
 }
 
 func writeSystemPlatformSummary(w io.Writer, st reportStyle, c *Capabilities) {
-	if c.SelectedGPU != nil && c.SelectedGPU.Enabled {
-		return
+	p := c.HardwarePlatform
+	if p.OS == "" {
+		p = c.Platform
 	}
-	p := c.Platform
 	fmt.Fprintln(w, st.section("System platform:"))
 	fmt.Fprintf(w, "  %s %s/%s\n", st.bold("OS:"), st.cyan(p.OS), st.cyan(p.Arch))
 	if gpu := p.Details["gpu"]; gpu != "" {

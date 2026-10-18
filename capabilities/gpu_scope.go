@@ -14,6 +14,8 @@ func encoderKindToAccel(kind string) AccelType {
 		return AccelVAAPI
 	case "videotoolbox":
 		return AccelVideoToolbox
+	case "v4l2m2m":
+		return AccelV4L2M2M
 	default:
 		return ""
 	}

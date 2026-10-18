@@ -18,6 +18,11 @@ type GPUResolveEnv struct {
 	Stat          func(path string) error
 }
 
+// DefaultGPUResolveEnv returns host GPU facts for resolution (live detection).
+func DefaultGPUResolveEnv() GPUResolveEnv {
+	return defaultGPUResolveEnv()
+}
+
 func defaultGPUResolveEnv() GPUResolveEnv {
 	env := GPUResolveEnv{
 		GOOS:   runtime.GOOS,
@@ -27,11 +32,9 @@ func defaultGPUResolveEnv() GPUResolveEnv {
 		Intel:  intelGPUPresent(),
 		AMD:    amdGPUPresent(),
 	}
-	if runtime.GOOS == "linux" {
-		devs, err := listDRMGPUs()
-		if err == nil {
-			env.Devices = devs
-		}
+	devs, err := ListGPUDevices()
+	if err == nil {
+		env.Devices = devs
 	}
 	if desc := detectGPUDescription(); desc != "" {
 		for _, part := range strings.Split(desc, ";") {

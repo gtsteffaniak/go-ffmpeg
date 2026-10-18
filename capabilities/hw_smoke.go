@@ -2,12 +2,16 @@ package capabilities
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
+
+var nvencMinDriverRE = regexp.MustCompile(`Driver version\s+(\d+)\.(\d+)`)
 
 const hwTestTimeout = 10 * time.Second
 
@@ -61,30 +65,49 @@ func SmokeTestHardwareEncoder(ctx context.Context, runner *ffexec.Runner, encode
 
 func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 	renderDev := platform.RenderDevice(plat.Details)
+	choice := gpuChoiceFromSmokePlatform(plat)
 
 	switch encoderKindForName(encoderName) {
 	case "nvenc":
-		return []string{
-			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+		args := []string{"-hide_banner",
+			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
-			"-c:v", encoderName, "-t", "0.1", "-f", "null", "-",
 		}
+		args = append(args, platform.FFmpegEncoderDeviceArgs("nvenc", choice, plat)...)
+		args = append(args, "-c:v", encoderName, "-t", "0.1", "-f", "null", "-")
+		return args
 	case "amf":
-		return []string{
-			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+		args := []string{"-hide_banner"}
+		args = append(args, platform.FFmpegHWDeviceInit("amf", choice, plat)...)
+		args = append(args,
+			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
 			"-c:v", encoderName, "-t", "0.1", "-f", "null", "-",
+		)
+		return args
+	case "v4l2m2m":
+		args := []string{
+			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-pix_fmt", "yuv420p",
 		}
+		if strings.Contains(encoderName, "h264") {
+			args = append(args, "-b:v", "2M")
+		}
+		args = append(args, "-c:v", encoderName, "-t", "0.1", "-f", "null", "-")
+		return args
 	case "qsv":
-		return []string{
-			"-hide_banner",
-			"-init_hw_device", "qsv=hw",
-			"-filter_hw_device", "hw",
+		args := []string{"-hide_banner"}
+		args = append(args, platform.FFmpegHWDeviceInit("qsv", choice, plat)...)
+		if len(args) == 1 {
+			args = append(args, "-init_hw_device", "qsv=hw", "-filter_hw_device", "hw")
+		}
+		args = append(args,
 			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
 			"-vf", "format=nv12,hwupload=extra_hw_frames=64,format=qsv",
 			"-c:v", encoderName,
 			"-t", "0.1", "-f", "null", "-",
-		}
+		)
+		return args
 	case "vaapi":
 		return []string{
 			"-hide_banner",
@@ -159,6 +182,10 @@ func summarizeHWError(output string) string {
 			return "permission denied accessing GPU render node (add user to 'render' or 'video' group)"
 		case strings.Contains(lower, "encoder not found"):
 			return "encoder not available in this FFmpeg build"
+		case strings.Contains(lower, "driver does not support") || strings.Contains(lower, "minimum required"):
+			if msg := nvencDriverMismatch(output); msg != "" {
+				return msg
+			}
 		case strings.Contains(lower, "load_plugin"):
 			continue // skip noisy qsv option warnings
 		case strings.HasPrefix(lower, "[vost") || strings.HasPrefix(lower, "[out#"):
@@ -184,11 +211,52 @@ func truncateErr(s string, max int) string {
 	return s[:max] + "..."
 }
 
+func nvencDriverMismatch(output string) string {
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "nvenc") && !strings.Contains(lower, "driver") {
+		return ""
+	}
+	if m := nvencMinDriverRE.FindStringSubmatch(output); len(m) == 3 {
+		return fmt.Sprintf("NVENC driver %s.%s below minimum required for this FFmpeg build", m[1], m[2])
+	}
+	if strings.Contains(lower, "api version") && strings.Contains(lower, "required") {
+		return truncateErr(strings.TrimSpace(output), 160)
+	}
+	return ""
+}
+
 func trimFFmpegLine(line string) string {
 	if idx := strings.Index(line, "]"); idx >= 0 && idx+1 < len(line) {
 		return strings.TrimSpace(line[idx+1:])
 	}
 	return line
+}
+
+func gpuChoiceFromSmokePlatform(plat platform.Info) platform.GPUChoice {
+	c := platform.GPUChoice{Enabled: true}
+	if plat.Details == nil {
+		return c
+	}
+	if name := plat.Details["smoke_gpu"]; name != "" {
+		c.Name = name
+	}
+	if v := plat.Details["cuda_index"]; v != "" {
+		var idx int
+		if n, err := fmt.Sscanf(v, "%d", &idx); n == 1 && err == nil {
+			c.CUDAIndex = idx
+			c.Pinning.NVENC = platform.PinningExact
+			c.Pinning.CUDA = platform.PinningExact
+		}
+	}
+	if v := plat.Details["dxgi_index"]; v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &c.DXGIIndex); n == 1 && err == nil {
+			_ = err
+		}
+	}
+	if dev := plat.Details["render_device"]; dev != "" {
+		c.RenderDevice = dev
+	}
+	return c
 }
 
 func platformGateForEncoder(kind string, plat platform.Info) bool {
@@ -197,6 +265,11 @@ func platformGateForEncoder(kind string, plat platform.Info) bool {
 		return plat.NVIDIA
 	case "amf":
 		return plat.AMD
+	case "v4l2m2m":
+		if plat.Details != nil && plat.Details["pi_model"] != "" {
+			return len(platform.ListV4L2M2MDevices()) > 0 || plat.Details["pi_model"] == string(platform.Pi4)
+		}
+		return len(platform.ListV4L2M2MDevices()) > 0
 	case "qsv":
 		return plat.QSV && plat.Intel && plat.VAAPI && plat.QSVRuntime
 	case "vaapi":
@@ -215,6 +288,10 @@ func platformSkipReason(kind string, plat platform.Info) string {
 	case "amf":
 		if !plat.AMD {
 			return "[platform] no AMD GPU detected (AMF requires AMD hardware)"
+		}
+	case "v4l2m2m":
+		if !platformGateForEncoder(kind, plat) {
+			return "[platform] no V4L2 M2M codec device found (use Raspberry Pi OS ffmpeg on Pi 4+)"
 		}
 	case "qsv":
 		if !plat.Intel {

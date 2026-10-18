@@ -10,12 +10,20 @@ import (
 
 // GPUDevice describes one DRM render node and its PCI GPU.
 type GPUDevice struct {
-	RenderNode string
-	VendorID   string
-	Vendor     string
-	Name       string
-	Integrated bool
-	PCIAddress string
+	ID           string // stable id for admin UIs (drm path, WMI PNP id, etc.)
+	RenderNode   string
+	VendorID     string
+	Vendor       string
+	Name         string
+	DeviceClass  string // igpu, dgpu, soc
+	Integrated   bool
+	PCIAddress   string
+	DXGIIndex    int
+	LUID         string
+	PNPDeviceID  string
+	CUDAIndex    int
+	DXGIFromEnum bool // true when DXGIIndex/LUID came from DXGI enumeration
+	Pinning      BackendPinning
 }
 
 type drmGPU = GPUDevice
@@ -23,14 +31,7 @@ type drmGPU = GPUDevice
 // ListGPUs returns GPUs on the host: DRM render nodes when present, plus a
 // synthetic NVIDIA entry on WSL when the driver is available without a DRI node.
 func ListGPUs() ([]GPUDevice, error) {
-	gpus, err := listDRMGPUs()
-	if err != nil {
-		return nil, err
-	}
-	if !hasNVIDIAGPUDevice(gpus) && nvidiaAvailable() && (isWSLEnvironment() || !hasDiscreteDRMDevice(gpus)) {
-		gpus = append(gpus, syntheticNVIDIAGPU())
-	}
-	return gpus, nil
+	return ListGPUDevices()
 }
 
 // DefaultRenderNodeForGPUs picks a render node for VAAPI/QSV smoke tests.
@@ -57,13 +58,38 @@ func DefaultRenderNodeForGPUs(gpus []GPUDevice) string {
 	return gpus[0].RenderNode
 }
 
+// GPUChoiceFromDevice converts a detected GPUDevice to a GPUChoice.
+func GPUChoiceFromDevice(d GPUDevice) GPUChoice {
+	return gpuChoiceFromDRM(d)
+}
+
 func gpuChoiceFromDRM(d drmGPU) GPUChoice {
-	return GPUChoice{
+	c := GPUChoice{
 		Enabled:      true,
 		RenderDevice: d.RenderNode,
 		Vendor:       d.Vendor,
 		Name:         d.Name,
+		DeviceID:     d.ID,
+		DXGIIndex:    d.DXGIIndex,
+		LUID:         d.LUID,
+		Integrated:   d.Integrated,
 	}
+	if c.DeviceID == "" {
+		c.DeviceID = gpuStableID(d)
+	}
+	if d.Vendor == "nvidia" {
+		if d.CUDAIndex >= 0 && d.Pinning.NVENC != "" {
+			c.CUDAIndex = d.CUDAIndex
+			c.Pinning = d.Pinning
+		} else if d.PCIAddress != "" {
+			if idx, ok := MatchNVIDIACUDAIndex(d.PCIAddress, d.Name, QueryNVIDIAGPUIndexTable()); ok {
+				c.CUDAIndex = idx
+				c.Pinning.NVENC = PinningExact
+				c.Pinning.CUDA = PinningExact
+			}
+		}
+	}
+	return c
 }
 
 func listDRMGPUs() ([]drmGPU, error) {

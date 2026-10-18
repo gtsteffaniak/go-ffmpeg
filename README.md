@@ -64,7 +64,35 @@ func main() {
 }
 ```
 
-Set `GPUSelector` in `Config` (`GPUIntegrated`, `GPUDiscrete`, `GPUByRenderNode`, `GPUSoftware`, or zero for auto). FileBrowser-style YAML strings can use `ParseGPUSelector`. See [docs/hardware.md](docs/hardware.md).
+## GPU and hardware (zero config)
+
+A zero-value `ffmpeg.Config{}` (and `GPUSelector` / `DeviceSelection` at their zero values) uses **`GPUAuto`**: go-ffmpeg detects every backend, orders devices **integrated/SoC → discrete → software**, walks that chain per job, and falls back automatically. No `ListDevices()` call is required.
+
+```go
+// Preferred hierarchy out of the box — same as GPUAuto / ParseGPUSelector("auto")
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{})
+```
+
+Discrete GPUs first when you want maximum encode throughput:
+
+```go
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+    DevicePreference: ffmpeg.PreferDiscrete,
+})
+```
+
+Pin a specific device and ordered fallbacks (admin UIs may use `ListDevices()` to populate dropdowns):
+
+```go
+svc, err := ffmpeg.New(ctx, ffmpeg.Config{
+    DeviceSelection: ffmpeg.DeviceSelection{
+        Primary:   ffmpeg.GPUByName("NVIDIA GeForce RTX 3050 Laptop GPU"),
+        Fallbacks: []ffmpeg.GPUSelector{{Kind: ffmpeg.GPUIntegrated}},
+    },
+})
+```
+
+`GPUIntegrated`, `GPUDiscrete`, `GPUByRenderNode`, and `GPUSoftware` still scope to one device when set on `GPUSelector`. YAML strings: `ParseGPUSelector("auto")`. Details: [docs/hardware.md](docs/hardware.md).
 
 ## Examples
 

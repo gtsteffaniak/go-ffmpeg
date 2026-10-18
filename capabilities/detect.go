@@ -10,11 +10,15 @@ import (
 
 // DetectOptions configures capability detection.
 type DetectOptions struct {
-	SkipHWTests       bool
-	EncoderHierarchy  []AccelType
-	EncoderPreference EncoderPreference
-	RenderDevice      string
-	GPU               platform.GPUChoice
+	SkipHWTests        bool
+	EncoderHierarchy   []AccelType
+	EncoderPreference  EncoderPreference
+	RenderDevice       string
+	GPU                platform.GPUChoice
+	DeviceChain        []platform.GPUChoice
+	DeviceOrderSummary string
+	DevicePreference   string
+	AllowSoftware      *bool // nil = true (backward compatible)
 }
 
 // Detect runs the full capability detection pipeline.
@@ -47,7 +51,13 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		opts.SkipHWTests = true
 	}
 	gpuScoped := gpuChoice.Enabled && !gpuChoice.SoftwareOnly
-	caps.Platform = platform.Detect()
+	hardwarePlat := platform.Detect()
+	caps.Platform = hardwarePlat
+	caps.HardwarePlatform = hardwarePlat
+	caps.AllowSoftware = true
+	if opts.AllowSoftware != nil {
+		caps.AllowSoftware = *opts.AllowSoftware
+	}
 	sel := gpuChoice
 	if sel.Mode == "" {
 		sel.Mode = platform.GPUModeAuto
@@ -56,28 +66,41 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		sel.AutoSelect = true
 	}
 	caps.GPUSelection = &sel
+	caps.DeviceChain = append([]platform.GPUChoice(nil), opts.DeviceChain...)
+	caps.DeviceOrderSummary = opts.DeviceOrderSummary
+	caps.DevicePreference = opts.DevicePreference
+	if len(caps.DeviceChain) == 0 && gpuChoice.Enabled && !gpuChoice.SoftwareOnly {
+		caps.DeviceChain = []platform.GPUChoice{gpuChoice}
+	}
+	if gpuChoice.Pinning.NVENC != "" || gpuChoice.Pinning.AMF != "" {
+		caps.Pinning = gpuChoice.Pinning
+	}
 	if gpuScoped {
-		caps.Platform = platform.ScopedPlatform(caps.Platform, gpuChoice)
 		caps.SelectedGPU = &gpuChoice
 	}
 	if opts.RenderDevice != "" {
-		if caps.Platform.Details == nil {
-			caps.Platform.Details = map[string]string{}
-		}
-		caps.Platform.Details["render_device"] = opts.RenderDevice
+		gpuChoice.RenderDevice = opts.RenderDevice
 	}
 
-	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, gpuChoice, caps.Platform)
+	hierarchyGPU := gpuChoice
+	if len(opts.DeviceChain) > 1 {
+		hierarchyGPU = platform.GPUChoice{AutoSelect: true}
+	}
+	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
-	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, caps.Platform, hierarchy, gpuScoped)
+	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)
 	PopulateHWAccels(ctx, caps, runner)
-	PopulateDecoders(ctx, caps, runner, opts.SkipHWTests, caps.Platform, hierarchy, gpuScoped)
+	PopulateDecoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)
 	PopulateFilters(ctx, caps, runner)
 	PopulateProtocols(ctx, caps, runner)
 
 	caps.BuildProfile = InferBuildProfile(caps.BuildConfig, caps.Encoders)
 	BuildCodecMatrix(caps, hierarchy)
+	applyPiPlatformProfile(caps)
+	if err := ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice); err != nil {
+		return nil, err
+	}
 
 	return caps, nil
 }
