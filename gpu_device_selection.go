@@ -9,9 +9,10 @@ import (
 
 // DeviceSelection configures explicit primary GPU and ordered fallbacks per job.
 type DeviceSelection struct {
-	Primary       GPUSelector
-	Fallbacks     []GPUSelector
-	AllowSoftware bool // default true when unset in Config (see effectiveAllowSoftware)
+	Primary   GPUSelector
+	Fallbacks []GPUSelector
+	// AllowSoftware overrides Config.AllowSoftwareEncoderFallback when non-nil.
+	AllowSoftware *bool
 }
 
 // ParseGPUSelectorList parses a comma-separated ordered GPU selector list (primary first).
@@ -34,7 +35,7 @@ func ParseGPUSelectorList(spec string) ([]GPUSelector, error) {
 
 // ResolveDeviceSelection resolves primary + fallbacks to concrete GPU choices.
 func ResolveDeviceSelection(sel DeviceSelection, strict GPUStrictness) (primary platform.GPUChoice, fallbacks []platform.GPUChoice, err error) {
-	return ResolveDeviceSelectionWithEnv(sel, strict, platform.GPUResolveEnv{})
+	return ResolveDeviceSelectionWithEnv(sel, strict, platform.DefaultGPUResolveEnv())
 }
 
 // ResolveDeviceSelectionWithEnv resolves using an injected environment (tests).
@@ -54,7 +55,7 @@ func ResolveDeviceSelectionWithEnv(sel DeviceSelection, strict GPUStrictness, en
 }
 
 func resolveSelectorChain(primary GPUSelector, fallbacks []GPUSelector, strict GPUStrictness) ([]platform.GPUChoice, error) {
-	return resolveSelectorChainEnv(primary, fallbacks, strict, platform.GPUResolveEnv{})
+	return resolveSelectorChainEnv(primary, fallbacks, strict, platform.DefaultGPUResolveEnv())
 }
 
 func resolveSelectorChainEnv(primary GPUSelector, fallbacks []GPUSelector, strict GPUStrictness, env platform.GPUResolveEnv) ([]platform.GPUChoice, error) {

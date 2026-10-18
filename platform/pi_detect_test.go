@@ -33,6 +33,13 @@ func TestPiEncodeProfilePi5SoftwareH264(t *testing.T) {
 	}
 }
 
+func TestPiModelFromDeviceTreeComputeModule4(t *testing.T) {
+	model := "Raspberry Pi Compute Module 4 Rev 1.0"
+	if piModelFromDeviceTreeModel(model) != Pi4 {
+		t.Fatalf("expected Pi4 for %q", model)
+	}
+}
+
 func TestPiEncodeProfilePi4V4L2(t *testing.T) {
 	p := PiEncodeProfileForModel(Pi4)
 	if p.DefaultH264Encoder != "h264_v4l2m2m" || !p.UseBitrateForV4L2M2M {

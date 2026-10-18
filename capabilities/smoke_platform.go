@@ -7,7 +7,7 @@ import (
 // PlatformForEncoderKind returns host platform info tuned for smoke-testing a backend
 // on the correct GPU device. Detection always uses the full hardware picture; this
 // only picks render nodes / adapter indices for per-backend tests.
-func PlatformForEncoderKind(base platform.Info, kind string) platform.Info {
+func PlatformForEncoderKind(base platform.Info, kind string, gpus []platform.GPUDevice) platform.Info {
 	plat := base
 	if plat.Details == nil {
 		plat.Details = map[string]string{}
@@ -18,7 +18,6 @@ func PlatformForEncoderKind(base platform.Info, kind string) platform.Info {
 		}
 		plat.Details = dup
 	}
-	gpus, _ := platform.ListGPUDevices()
 	switch kind {
 	case "nvenc":
 		if g := platform.PickNVIDIAGPUDevice(gpus); g != nil {
@@ -27,6 +26,9 @@ func PlatformForEncoderKind(base platform.Info, kind string) platform.Info {
 				plat.Details["render_device"] = g.RenderNode
 			}
 			plat.Details["dxgi_index"] = itoa(g.DXGIIndex)
+			if g.Pinning.NVENC == platform.PinningExact || g.Pinning.CUDA == platform.PinningExact {
+				plat.Details["cuda_index"] = itoa(g.CUDAIndex)
+			}
 		}
 	case "amf":
 		if g := platform.PickAMDGPUDevice(gpus); g != nil {

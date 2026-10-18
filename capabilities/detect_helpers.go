@@ -23,6 +23,7 @@ func ProbeEncoder(ctx context.Context, runner *ffexec.Runner, name string) (bool
 // PopulateEncoders fills encoder capabilities in the matrix.
 // plat must be the unscoped hardware platform; selection is annotated separately.
 func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info, hierarchy []AccelType, gpuScoped bool) {
+	gpus, _ := platform.ListGPUDevices()
 	listRes, err := runner.RunFFmpeg(ctx, "-hide_banner", "-encoders")
 	compiledSet := map[string]bool{}
 	if err == nil {
@@ -50,7 +51,6 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 				caps.Encoders[known.Name] = enc
 				continue
 			}
-			smokePlat := PlatformForEncoderKind(plat, known.Kind)
 			if reason := platformSkipReason(known.Kind, plat); reason != "" {
 				enc.TestError = reason
 				if outOfSelection {
@@ -69,6 +69,7 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 				caps.Encoders[known.Name] = enc
 				continue
 			}
+			smokePlat := PlatformForEncoderKind(plat, known.Kind, gpus)
 			enc.Tested = true
 			ok, testErr := SmokeTestHardwareEncoder(ctx, runner, known.Name, smokePlat)
 			enc.Available = ok
@@ -90,6 +91,7 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 
 // PopulateDecoders fills decoder capabilities including hardware decode smoke tests.
 func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, skipHW bool, plat platform.Info, hierarchy []AccelType, gpuScoped bool) {
+	gpus, _ := platform.ListGPUDevices()
 	listRes, err := runner.RunFFmpeg(ctx, "-hide_banner", "-decoders")
 	compiledSet := map[string]bool{}
 	if err == nil {
@@ -124,7 +126,6 @@ func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 				caps.Decoders[known.Name] = dec
 				continue
 			}
-			smokePlat := PlatformForEncoderKind(plat, known.Kind)
 			if reason := platformSkipReason(known.Kind, plat); reason != "" {
 				dec.TestError = reason
 				caps.Decoders[known.Name] = dec
@@ -135,6 +136,7 @@ func PopulateDecoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 				caps.Decoders[known.Name] = dec
 				continue
 			}
+			smokePlat := PlatformForEncoderKind(plat, known.Kind, gpus)
 			dec.Tested = true
 			ok, testErr := SmokeTestHardwareDecoder(ctx, runner, known.Name, known.Codec, known.HWAccel, dec.SWCodec, smokePlat, fixtures)
 			dec.Available = ok

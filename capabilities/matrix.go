@@ -184,7 +184,7 @@ type Capabilities struct {
 	DeviceOrderSummary string                       `json:"deviceOrderSummary,omitempty"`
 	DevicePreference   string                       `json:"devicePreference,omitempty"`
 	Pinning            platform.BackendPinning      `json:"pinning,omitempty"`
-	AllowSoftware      bool                         `json:"allowSoftware,omitempty"`
+	AllowSoftware      bool                         `json:"allowSoftware"`
 }
 
 // DeviceCodecAttempt records why a device/backend was skipped during selection.

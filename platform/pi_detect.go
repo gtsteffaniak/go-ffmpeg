@@ -26,12 +26,15 @@ func DetectPiModel() PiModel {
 			return Pi5
 		}
 	}
-	model := readDeviceTreeModel()
+	return piModelFromDeviceTreeModel(readDeviceTreeModel())
+}
+
+func piModelFromDeviceTreeModel(model string) PiModel {
 	lower := strings.ToLower(model)
-	if strings.Contains(lower, "raspberry pi 5") {
+	if strings.Contains(lower, "raspberry pi 5") || strings.Contains(lower, "compute module 5") {
 		return Pi5
 	}
-	if strings.Contains(lower, "raspberry pi 4") {
+	if strings.Contains(lower, "raspberry pi 4") || strings.Contains(lower, "compute module 4") {
 		return Pi4
 	}
 	if strings.Contains(lower, "raspberry pi") {

@@ -73,13 +73,6 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
 
 Deprecated: `Config.GPU` string is still accepted when `GPUSelector` is zero.
 
-## Override precedence
-
-1. **`EncoderHierarchy`**
-2. **`GPUSelector`** (scopes vendor/device; `GPUSoftware` skips HW tests)
-3. **`EncoderPreference`** (`performance` = NVENC-first on Linux)
-4. **Platform default**
-
 ## Detection
 
 `platform.Detect()` → FFmpeg inventory → optional smoke tests → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
@@ -96,7 +89,7 @@ With `GPUAuto` (zero `GPUSelector` and zero `DeviceSelection`), detection builds
 
 Within each device, backends follow vendor order (e.g. Intel Linux: VAAPI → QSV; AMD Windows: AMF; NVIDIA: NVENC). The capability report includes a line such as:
 
-`Device order (default): AMD Radeon Graphics → NVIDIA GeForce RTX 3050 Laptop GPU → software`
+`Device order (auto): AMD Radeon Graphics → NVIDIA GeForce RTX 3050 Laptop GPU → software`
 
 Opt into discrete-first order:
 
@@ -124,7 +117,7 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
     DeviceSelection: ffmpeg.DeviceSelection{
         Primary:   ffmpeg.GPUByName("NVIDIA GeForce RTX 3050 Laptop GPU"),
         Fallbacks: []ffmpeg.GPUSelector{ffmpeg.GPUSelector{Kind: ffmpeg.GPUIntegrated}},
-        AllowSoftware: true, // default; set false to error instead of libx264 fallback
+        // AllowSoftware: &false, // optional override; else use Config.AllowSoftwareEncoderFallback
     },
     GPUStrictness: ffmpeg.GPUStrictOnUnavailable,
 })
@@ -132,7 +125,7 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
 
 Comma-separated lists parse with `ParseGPUSelectorList("dgpu, igpu")`.
 
-Windows pinning uses WMI adapter order for `-gpu` / `d3d11va=dx:<n>` / QSV `child_device=<n>`. DXGI order may differ from CUDA PCI order; the report notes when pinning is best-effort.
+Windows pinning prefers **DXGI adapter enumeration** (bundled script) for `d3d11va=dx:<n>` / QSV `child_device=<n>` and falls back to WMI adapter order when DXGI is unavailable. NVENC uses `nvidia-smi` PCI matching for `-gpu <cuda_index>` when exact. The capability report notes best-effort pinning.
 
 ## Raspberry Pi (Linux arm)
 

@@ -1,5 +1,7 @@
 package capabilities
 
+import "github.com/gtsteffaniak/go-ffmpeg/platform"
+
 // EncodeLimits describes known output constraints for a hardware encoder.
 type EncodeLimits struct {
 	MaxHeight int
@@ -11,6 +13,10 @@ func EncodeLimitsFor(encoder string, caps *Capabilities) EncodeLimits {
 	if caps != nil && caps.PiProfile != nil {
 		switch encoder {
 		case "h264_v4l2m2m":
+			if caps.PiProfile.Model == platform.Pi4 {
+				// Pi 4 uses resolution/FPS combinations; see pi4HWEncodeExceeds.
+				return EncodeLimits{}
+			}
 			lim := EncodeLimits{MaxFPS: float64(caps.PiProfile.RecommendedMaxFPS)}
 			if caps.PiProfile.MaxHWEncodeHeight > 0 {
 				lim.MaxHeight = caps.PiProfile.MaxHWEncodeHeight
@@ -26,17 +32,15 @@ func EncodeLimitsFor(encoder string, caps *Capabilities) EncodeLimits {
 			return lim
 		}
 	}
-	switch encoder {
-	case "h264_v4l2m2m":
-		return EncodeLimits{MaxHeight: 1080, MaxFPS: 30}
-	default:
-		return EncodeLimits{}
-	}
+	return EncodeLimits{}
 }
 
 // EncodeExceedsLimits reports whether output height/FPS exceeds encoder limits.
 // Zero height or fps skips that axis (unknown stream geometry).
 func EncodeExceedsLimits(encoder string, caps *Capabilities, outputHeight int, fps float64) bool {
+	if caps != nil && caps.PiProfile != nil && caps.PiProfile.Model == platform.Pi4 && encoder == "h264_v4l2m2m" {
+		return pi4HWEncodeExceeds(outputHeight, fps)
+	}
 	lim := EncodeLimitsFor(encoder, caps)
 	if lim.MaxHeight > 0 && outputHeight > 0 && outputHeight > lim.MaxHeight {
 		return true
@@ -47,8 +51,31 @@ func EncodeExceedsLimits(encoder string, caps *Capabilities, outputHeight int, f
 	return false
 }
 
+// pi4HWEncodeExceeds applies Pi 4 h264_v4l2m2m mode limits (1080p30, 720p60).
+func pi4HWEncodeExceeds(outputHeight int, fps float64) bool {
+	if outputHeight > 0 && outputHeight > 1080 {
+		return true
+	}
+	if fps <= 0 {
+		return false
+	}
+	if outputHeight > 0 {
+		if outputHeight <= 720 {
+			return fps > 60
+		}
+		return fps > 30
+	}
+	return fps > 60
+}
+
 // ExceedsLimitsReason returns a human-readable reason when limits are exceeded.
 func ExceedsLimitsReason(encoder string, caps *Capabilities, outputHeight int, fps float64) string {
+	if caps != nil && caps.PiProfile != nil && caps.PiProfile.Model == platform.Pi4 && encoder == "h264_v4l2m2m" {
+		if pi4HWEncodeExceeds(outputHeight, fps) {
+			return encoder + ": output exceeds Pi 4 hardware encode limits (1080p30 or 720p60)"
+		}
+		return ""
+	}
 	lim := EncodeLimitsFor(encoder, caps)
 	if lim.MaxHeight > 0 && outputHeight > 0 && outputHeight > lim.MaxHeight {
 		return fmtLimit(encoder, outputHeight, lim.MaxHeight, "height")

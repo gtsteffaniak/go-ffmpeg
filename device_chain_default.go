@@ -6,6 +6,17 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
+func effectiveAllowSoftware(cfg Config, ds DeviceSelection) bool {
+	allow := true
+	if cfg.AllowSoftwareEncoderFallback != nil {
+		allow = *cfg.AllowSoftwareEncoderFallback
+	}
+	if ds.AllowSoftware != nil {
+		allow = *ds.AllowSoftware
+	}
+	return allow
+}
+
 func deviceSelectionExplicit(ds DeviceSelection) bool {
 	if len(ds.Fallbacks) > 0 {
 		return true
@@ -23,11 +34,7 @@ func ResolveConfigDeviceChain(cfg Config, strict GPUStrictness, env platform.GPU
 		env = platform.DefaultGPUResolveEnv()
 	}
 	ds := cfg.DeviceSelection
-	allow := true
-	if cfg.AllowSoftwareEncoderFallback != nil {
-		allow = *cfg.AllowSoftwareEncoderFallback
-	}
-	ds.AllowSoftware = allow
+	allow := effectiveAllowSoftware(cfg, ds)
 
 	if deviceSelectionExplicit(ds) {
 		choices, err := resolveSelectorChainEnv(ds.Primary, ds.Fallbacks, strict, env)

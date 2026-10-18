@@ -102,10 +102,5 @@ func (c *Config) effectiveDeviceSelection() DeviceSelection {
 	if ds.Primary.IsZero() {
 		ds.Primary = c.effectiveGPUSelector()
 	}
-	allow := true
-	if c.AllowSoftwareEncoderFallback != nil {
-		allow = *c.AllowSoftwareEncoderFallback
-	}
-	ds.AllowSoftware = allow
 	return ds
 }

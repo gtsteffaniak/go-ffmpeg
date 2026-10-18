@@ -101,6 +101,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 		switch accel {
 		case AccelNVENC:
 			return "hevc_nvenc"
+		case AccelAMF:
+			return "hevc_amf"
 		case AccelQSV:
 			return "hevc_qsv"
 		case AccelVAAPI, AccelD3D12:

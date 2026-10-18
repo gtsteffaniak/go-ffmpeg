@@ -2,7 +2,6 @@ package platform
 
 import (
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -52,11 +51,9 @@ func mergeDXGIAdapters(gpus []GPUDevice) {
 				gpus[i].DXGIIndex = row.Index
 				gpus[i].LUID = row.LUID
 				gpus[i].DXGIFromEnum = true
-				if gpus[i].Pinning.D3D11 == "" {
-					gpus[i].Pinning.D3D11 = PinningExact
-					gpus[i].Pinning.AMF = PinningExact
-					gpus[i].Pinning.QSV = PinningExact
-				}
+				gpus[i].Pinning.D3D11 = PinningExact
+				gpus[i].Pinning.AMF = PinningExact
+				gpus[i].Pinning.QSV = PinningExact
 				break
 			}
 		}
@@ -64,11 +61,14 @@ func mergeDXGIAdapters(gpus []GPUDevice) {
 }
 
 func queryDXGIAdapters() []dxgiAdapterRow {
-	script := dxgiScriptPath()
-	if script == "" {
+	scriptPath, cleanup, err := dxgiScriptFile()
+	if scriptPath == "" || err != nil {
 		return nil
 	}
-	out, err := combinedOutputTimeout("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	out, err := combinedOutputTimeout("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 	if err != nil {
 		return nil
 	}
@@ -95,23 +95,26 @@ func queryDXGIAdapters() []dxgiAdapterRow {
 	return rows
 }
 
-func dxgiScriptPath() string {
+// dxgiScriptFile returns a PowerShell script path and optional cleanup for a temp file.
+func dxgiScriptFile() (path string, cleanup func(), err error) {
 	if p := os.Getenv("GOFFMPEG_DXGI_SCRIPT"); p != "" {
-		return p
+		return p, nil, nil
 	}
-	// Relative to module root when running tests from repo.
-	candidates := []string{
-		"scripts/dxgi-adapters.ps1",
-		filepath.Join("..", "scripts", "dxgi-adapters.ps1"),
+	if embeddedDXGIAdapters == "" {
+		return "", nil, nil
 	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			abs, err := filepath.Abs(c)
-			if err == nil {
-				return abs
-			}
-			return c
-		}
+	f, err := os.CreateTemp("", "goffmpeg-dxgi-*.ps1")
+	if err != nil {
+		return "", nil, err
 	}
-	return ""
+	if _, err := f.WriteString(embeddedDXGIAdapters); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", nil, err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return "", nil, err
+	}
+	return f.Name(), func() { os.Remove(f.Name()) }, nil
 }

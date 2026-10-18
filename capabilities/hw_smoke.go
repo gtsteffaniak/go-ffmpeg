@@ -69,13 +69,12 @@ func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 
 	switch encoderKindForName(encoderName) {
 	case "nvenc":
-		args := []string{"-hide_banner"}
-		args = append(args, platform.FFmpegHWDeviceInit("nvenc", choice, plat)...)
-		args = append(args,
+		args := []string{"-hide_banner",
 			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
-			"-c:v", encoderName, "-t", "0.1", "-f", "null", "-",
-		)
+		}
+		args = append(args, platform.FFmpegEncoderDeviceArgs("nvenc", choice, plat)...)
+		args = append(args, "-c:v", encoderName, "-t", "0.1", "-f", "null", "-")
 		return args
 	case "amf":
 		args := []string{"-hide_banner"}
@@ -237,6 +236,17 @@ func gpuChoiceFromSmokePlatform(plat platform.Info) platform.GPUChoice {
 	c := platform.GPUChoice{Enabled: true}
 	if plat.Details == nil {
 		return c
+	}
+	if name := plat.Details["smoke_gpu"]; name != "" {
+		c.Name = name
+	}
+	if v := plat.Details["cuda_index"]; v != "" {
+		var idx int
+		if n, err := fmt.Sscanf(v, "%d", &idx); n == 1 && err == nil {
+			c.CUDAIndex = idx
+			c.Pinning.NVENC = platform.PinningExact
+			c.Pinning.CUDA = platform.PinningExact
+		}
 	}
 	if v := plat.Details["dxgi_index"]; v != "" {
 		if n, err := fmt.Sscanf(v, "%d", &c.DXGIIndex); n == 1 && err == nil {

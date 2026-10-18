@@ -153,15 +153,23 @@ func FillGPUChoiceDevice(choice *GPUChoice, devices []GPUDevice) {
 	if choice == nil || !choice.Enabled {
 		return
 	}
+	if choice.DeviceID != "" {
+		for _, d := range devices {
+			if d.ID == choice.DeviceID {
+				applyDeviceToChoice(choice, d)
+				return
+			}
+		}
+	}
+	if choice.RenderDevice != "" {
+		for _, d := range devices {
+			if d.RenderNode == choice.RenderDevice {
+				applyDeviceToChoice(choice, d)
+				return
+			}
+		}
+	}
 	for _, d := range devices {
-		if choice.DeviceID != "" && d.ID == choice.DeviceID {
-			applyDeviceToChoice(choice, d)
-			return
-		}
-		if choice.RenderDevice != "" && d.RenderNode == choice.RenderDevice {
-			applyDeviceToChoice(choice, d)
-			return
-		}
 		if nameMatches(d.Name, choice.Name) && (choice.Vendor == "" || d.Vendor == choice.Vendor) {
 			applyDeviceToChoice(choice, d)
 			return

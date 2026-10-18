@@ -49,6 +49,40 @@ func TestV4L2M2MUsedWithinLimits(t *testing.T) {
 	}
 }
 
+func TestV4L2M2MPi4Allows720p60(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	piProf := platform.PiEncodeProfileForModel(platform.Pi4)
+	caps.PiProfile = &piProf
+	caps.Encoders["h264_v4l2m2m"] = capabilities.EncoderCapability{Name: "h264_v4l2m2m", Compiled: true, Available: true, Kind: "v4l2m2m"}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Preferred: capabilities.EncoderSelection{Encoder: "h264_v4l2m2m", Accel: capabilities.AccelV4L2M2M},
+	}
+	r := encode.NewResolver(caps)
+	sel, err := r.ResolveEncoder(encode.VideoProfile{Codec: encode.CodecH264, OutputHeight: 720, FrameRate: 60})
+	if err != nil || sel.Encoder != "h264_v4l2m2m" {
+		t.Fatalf("%+v err=%v", sel, err)
+	}
+}
+
+func TestExplicitEncoderOverLimitReturnsError(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.AllowSoftware = true
+	piProf := platform.PiEncodeProfileForModel(platform.Pi4)
+	caps.PiProfile = &piProf
+	caps.Encoders["h264_v4l2m2m"] = capabilities.EncoderCapability{Name: "h264_v4l2m2m", Compiled: true, Available: true, Kind: "v4l2m2m"}
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Compiled: true, Available: true, Kind: "software"}
+	r := encode.NewResolver(caps)
+	_, err := r.ResolveEncoder(encode.VideoProfile{
+		Codec:        encode.CodecH264,
+		Encoder:      "h264_v4l2m2m",
+		OutputHeight: 1440,
+		FrameRate:    30,
+	})
+	if err == nil {
+		t.Fatal("expected error for explicit over-limit encoder")
+	}
+}
+
 func TestResolutionFallbackDisallowedSoftware(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.AllowSoftware = false

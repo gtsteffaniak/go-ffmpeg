@@ -2,18 +2,12 @@ package platform
 
 import "fmt"
 
-// FFmpegHWDeviceInit returns ffmpeg arguments to pin a backend to choice's adapter/render node.
-// When pinning cannot be guaranteed, Details on Info should note the limitation.
+// FFmpegHWDeviceInit returns ffmpeg arguments before -i to pin a backend to choice's adapter/render node.
 func FFmpegHWDeviceInit(backend string, choice GPUChoice, plat Info) []string {
 	pinned := choice.DeviceID != "" || choice.Name != ""
 	switch backend {
 	case "nvenc":
-		if choice.Pinning.NVENC == PinningExact || choice.Pinning.CUDA == PinningExact || choice.PCIAddress != "" {
-			return []string{"-gpu", fmt.Sprintf("%d", choice.CUDAIndex)}
-		}
-		if plat.OS == "windows" && pinned {
-			return []string{"-gpu", fmt.Sprintf("%d", choice.DXGIIndex)}
-		}
+		return nil
 	case "amf", "d3d11va":
 		if plat.OS == "windows" && pinned {
 			idx := choice.DXGIIndex
@@ -39,6 +33,17 @@ func FFmpegHWDeviceInit(backend string, choice GPUChoice, plat Info) []string {
 				"-init_hw_device", "vaapi=va:" + dev,
 				"-filter_hw_device", "va",
 			}
+		}
+	}
+	return nil
+}
+
+// FFmpegEncoderDeviceArgs returns encoder-scoped device arguments (after -i, before -c:v).
+func FFmpegEncoderDeviceArgs(backend string, choice GPUChoice, plat Info) []string {
+	switch backend {
+	case "nvenc":
+		if choice.Pinning.NVENC != "" || choice.Pinning.CUDA != "" {
+			return []string{"-gpu", fmt.Sprintf("%d", choice.CUDAIndex)}
 		}
 	}
 	return nil

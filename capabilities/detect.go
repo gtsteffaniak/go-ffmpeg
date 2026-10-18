@@ -98,7 +98,9 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.BuildProfile = InferBuildProfile(caps.BuildConfig, caps.Encoders)
 	BuildCodecMatrix(caps, hierarchy)
 	applyPiPlatformProfile(caps)
-	ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice)
+	if err := ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice); err != nil {
+		return nil, err
+	}
 
 	return caps, nil
 }

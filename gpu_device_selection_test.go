@@ -37,7 +37,7 @@ func TestWindowsNVENCUsesCUDAIndexFromPCI(t *testing.T) {
 		PCIAddress: "00000000:01:00.0",
 		Pinning:    platform.BackendPinning{NVENC: platform.PinningExact, CUDA: platform.PinningExact},
 	}
-	args := platform.FFmpegHWDeviceInit("nvenc", choice, platform.Info{OS: "windows"})
+	args := platform.FFmpegEncoderDeviceArgs("nvenc", choice, platform.Info{OS: "windows"})
 	if len(args) != 2 || args[0] != "-gpu" || args[1] != "0" {
 		t.Fatalf("%v", args)
 	}

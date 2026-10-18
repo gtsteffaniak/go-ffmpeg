@@ -13,17 +13,28 @@ func TestParseNVIDIASMIIndexCSV(t *testing.T) {
 	if !ok || idx != 0 {
 		t.Fatalf("idx=%d ok=%v", idx, ok)
 	}
+	idx, ok = MatchNVIDIACUDAIndex("00000000:02:00.0", "", rows)
+	if !ok || idx != 1 {
+		t.Fatalf("second gpu idx=%d ok=%v", idx, ok)
+	}
 }
 
 func TestPCIBusIDFromPNPDeviceID(t *testing.T) {
 	pnp := `PCI\VEN_10DE&DEV_2504&SUBSYS_152F1025&REV_A1\4&2E2E8E9&0&0019`
 	got := PCIBusIDFromPNPDeviceID(pnp)
-	if got == "" {
-		t.Fatal("expected pci from pnp")
+	if got != "" {
+		t.Fatalf("expected empty pci from pnp instance id, got %q", got)
 	}
-	idx, ok := MatchNVIDIACUDAIndex(got, "", []NVIDIAGPUIndex{{Index: 0, PCIBusID: got}})
-	if !ok || idx != 0 {
-		t.Fatalf("match failed %q", got)
+}
+
+func TestPCIEqualDistinctBuses(t *testing.T) {
+	a := NormalizePCIBusID("00000000:01:00.0")
+	b := NormalizePCIBusID("00000000:02:00.0")
+	if PCIEqual(a, b) {
+		t.Fatal("01:00.0 must not equal 02:00.0")
+	}
+	if !PCIEqual(a, NormalizePCIBusID("01:00.0")) {
+		t.Fatal("domain padding should still match")
 	}
 }
 
@@ -31,7 +42,6 @@ func TestNormalizePCIBusID(t *testing.T) {
 	a := NormalizePCIBusID("00000000:01:00.0")
 	b := NormalizePCIBusID("01:00.0")
 	if !PCIEqual(a, b) && a != b {
-		// at least self-consistent
 		if a == "" {
 			t.Fatal("empty")
 		}

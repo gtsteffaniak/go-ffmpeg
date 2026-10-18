@@ -19,6 +19,9 @@ func (r *Resolver) finalizeEncoderSelection(codec capabilities.VideoCodec, profi
 		return sel, nil
 	}
 	reason := capabilities.ExceedsLimitsReason(sel.Encoder, r.Caps, h, fps)
+	if profile.Encoder != "" || (profile.Accel != "" && profile.Accel != capabilities.AccelNone) {
+		return capabilities.EncoderSelection{}, unavailableProfile(codec, sel.Encoder, capabilities.EncoderAccel(sel.Encoder), reason)
+	}
 	return r.fallbackAfterRejected(codec, profile, sel.Encoder, reason)
 }
 

@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -11,8 +10,6 @@ type NVIDIAGPUIndex struct {
 	PCIBusID string
 	Name     string
 }
-
-var pnpPCISlotRE = regexp.MustCompile(`(?i)\\(\d+)&[0-9a-f]+&(\d+)&([0-9a-f]+)$`)
 
 // NormalizePCIBusID canonicalizes PCI bus IDs for comparison (domain:bus:device.function).
 func NormalizePCIBusID(raw string) string {
@@ -45,21 +42,8 @@ func PCIBusIDFromPNPDeviceID(pnp string) string {
 	if pnp == "" {
 		return ""
 	}
-	lower := strings.ToLower(pnp)
-	if m := pnpPCISlotRE.FindStringSubmatch(lower); len(m) == 4 {
-		bus := m[2]
-		devFn := m[3]
-		if len(bus) == 1 {
-			bus = "0" + bus
-		}
-		if len(devFn) <= 2 {
-			devFn = devFn + ".0"
-		} else if !strings.Contains(devFn, ".") && len(devFn) == 4 {
-			devFn = devFn[:2] + "." + devFn[2:]
-		}
-		return NormalizePCIBusID("00000000:" + bus + ":" + devFn)
-	}
-	// VEN_10DE in PNP without slot — match via nvidia-smi name instead.
+	_ = strings.ToLower(pnp)
+	// Windows PNP instance suffixes are not PCI bus:device.function; match by name or location info instead.
 	return ""
 }
 
@@ -130,17 +114,19 @@ func MatchNVIDIACUDAIndex(pciBusID, gpuName string, table []NVIDIAGPUIndex) (int
 func PCIEqual(a, b string) bool {
 	a = NormalizePCIBusID(a)
 	b = NormalizePCIBusID(b)
+	if a == "" || b == "" {
+		return false
+	}
 	if a == b {
 		return true
 	}
-	// Compare without domain prefix when one side lacks it.
-	trim := func(s string) string {
-		if i := strings.LastIndex(s, ":"); i >= 0 && strings.Count(s, ":") >= 2 {
-			return s[i+1:]
+	stripDomain := func(s string) string {
+		if strings.Count(s, ":") >= 2 {
+			return s[strings.Index(s, ":")+1:]
 		}
 		return s
 	}
-	return trim(a) == trim(b) || strings.HasSuffix(a, trim(b)) || strings.HasSuffix(b, trim(a))
+	return stripDomain(a) == stripDomain(b)
 }
 
 // QueryNVIDIAGPUIndexTable runs nvidia-smi when available.

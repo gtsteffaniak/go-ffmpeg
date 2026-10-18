@@ -1,24 +1,28 @@
 package capabilities
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
+var errNoHardwareEncoder = errors.New("no hardware encoder available on selected device chain (software fallback disabled)")
+
 // ApplyDeviceSelection rewrites codec preferred paths using an ordered device chain.
 // When chain is empty, selection follows EncoderHierarchy on the active GPU choice only.
-func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []platform.GPUChoice, active platform.GPUChoice) {
+func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []platform.GPUChoice, active platform.GPUChoice) error {
 	if caps == nil {
-		return
+		return nil
 	}
 	devices := chain
 	if len(devices) == 0 && active.Enabled && !active.SoftwareOnly {
 		devices = []platform.GPUChoice{active}
 	}
 	if len(devices) == 0 {
-		return
+		return nil
 	}
+	var hardwareSelected bool
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
 	for _, codec := range codecs {
 		if caps.PiProfile != nil && codec == CodecH264 && caps.PiProfile.DefaultH264Encoder != "" {
@@ -28,6 +32,10 @@ func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []pla
 		caps.DeviceAttempts = append(caps.DeviceAttempts, attempts...)
 		if sel.Encoder == "" {
 			if !caps.AllowSoftware {
+				if support, ok := caps.CodecMatrix[codec]; ok {
+					support.Preferred = EncoderSelection{}
+					caps.CodecMatrix[codec] = support
+				}
 				continue
 			}
 			support := caps.CodecMatrix[codec]
@@ -38,9 +46,16 @@ func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []pla
 			if ok {
 				support.Preferred = sel
 				caps.CodecMatrix[codec] = support
+				if sel.Accel != AccelNone {
+					hardwareSelected = true
+				}
 			}
 		}
 	}
+	if !caps.AllowSoftware && !hardwareSelected {
+		return errNoHardwareEncoder
+	}
+	return nil
 }
 
 func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []platform.GPUChoice, globalHierarchy []AccelType) (EncoderSelection, []DeviceCodecAttempt) {
