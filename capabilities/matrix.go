@@ -155,34 +155,36 @@ type CodecSupport struct {
 
 // Capabilities is the full capability matrix produced by Detect.
 type Capabilities struct {
-	FFmpegPath       string                       `json:"ffmpegPath"`
-	FFprobePath      string                       `json:"ffprobePath"`
-	FFmpegVersion    string                       `json:"ffmpegVersion"`
-	FFprobeVersion   string                       `json:"ffprobeVersion"`
-	BuildConfig      BuildConfig                  `json:"buildConfig"`
-	BuildProfile     BuildProfile                 `json:"buildProfile"`
-	Encoders         map[string]EncoderCapability `json:"encoders"`
-	Decoders         map[string]DecoderCapability `json:"decoders"`
-	Filters          map[string]bool              `json:"filters"`
-	HWAccels         map[string]HWAccelCapability `json:"hwaccels"`
-	Protocols        map[string]bool              `json:"protocols"`
-	Platform         PlatformInfo                 `json:"platform"`
-	CodecMatrix      map[VideoCodec]CodecSupport  `json:"codecMatrix"`
-	EncodeOptions    []EncodeOption               `json:"encodeOptions"`
-	DecodeOptions    []DecodeOption               `json:"decodeOptions"`
-	EnabledOps       []string                     `json:"enabledOps"`
-	DisabledOps      map[string][]string          `json:"disabledOps"`
-	FeatureFlags     FeatureFlags                 `json:"featureFlags"`
-	GeneratedAt      time.Time                    `json:"generatedAt"`
-	EncoderHierarchy []AccelType                  `json:"encoderHierarchy,omitempty"`
-	SelectedGPU      *platform.GPUChoice          `json:"selectedGpu,omitempty"`
-	GPUSelection     *platform.GPUChoice          `json:"gpuSelection,omitempty"`
-	HardwarePlatform PlatformInfo                 `json:"hardwarePlatform,omitempty"`
-	PiProfile        *platform.PiEncodeProfile    `json:"piProfile,omitempty"`
-	DeviceAttempts   []DeviceCodecAttempt         `json:"deviceAttempts,omitempty"`
-	DeviceChain      []platform.GPUChoice         `json:"deviceChain,omitempty"`
-	Pinning          platform.BackendPinning      `json:"pinning,omitempty"`
-	AllowSoftware    bool                         `json:"allowSoftware,omitempty"`
+	FFmpegPath         string                       `json:"ffmpegPath"`
+	FFprobePath        string                       `json:"ffprobePath"`
+	FFmpegVersion      string                       `json:"ffmpegVersion"`
+	FFprobeVersion     string                       `json:"ffprobeVersion"`
+	BuildConfig        BuildConfig                  `json:"buildConfig"`
+	BuildProfile       BuildProfile                 `json:"buildProfile"`
+	Encoders           map[string]EncoderCapability `json:"encoders"`
+	Decoders           map[string]DecoderCapability `json:"decoders"`
+	Filters            map[string]bool              `json:"filters"`
+	HWAccels           map[string]HWAccelCapability `json:"hwaccels"`
+	Protocols          map[string]bool              `json:"protocols"`
+	Platform           PlatformInfo                 `json:"platform"`
+	CodecMatrix        map[VideoCodec]CodecSupport  `json:"codecMatrix"`
+	EncodeOptions      []EncodeOption               `json:"encodeOptions"`
+	DecodeOptions      []DecodeOption               `json:"decodeOptions"`
+	EnabledOps         []string                     `json:"enabledOps"`
+	DisabledOps        map[string][]string          `json:"disabledOps"`
+	FeatureFlags       FeatureFlags                 `json:"featureFlags"`
+	GeneratedAt        time.Time                    `json:"generatedAt"`
+	EncoderHierarchy   []AccelType                  `json:"encoderHierarchy,omitempty"`
+	SelectedGPU        *platform.GPUChoice          `json:"selectedGpu,omitempty"`
+	GPUSelection       *platform.GPUChoice          `json:"gpuSelection,omitempty"`
+	HardwarePlatform   PlatformInfo                 `json:"hardwarePlatform,omitempty"`
+	PiProfile          *platform.PiEncodeProfile    `json:"piProfile,omitempty"`
+	DeviceAttempts     []DeviceCodecAttempt         `json:"deviceAttempts,omitempty"`
+	DeviceChain        []platform.GPUChoice         `json:"deviceChain,omitempty"`
+	DeviceOrderSummary string                       `json:"deviceOrderSummary,omitempty"`
+	DevicePreference   string                       `json:"devicePreference,omitempty"`
+	Pinning            platform.BackendPinning      `json:"pinning,omitempty"`
+	AllowSoftware      bool                         `json:"allowSoftware,omitempty"`
 }
 
 // DeviceCodecAttempt records why a device/backend was skipped during selection.

@@ -58,6 +58,11 @@ func DefaultRenderNodeForGPUs(gpus []GPUDevice) string {
 	return gpus[0].RenderNode
 }
 
+// GPUChoiceFromDevice converts a detected GPUDevice to a GPUChoice.
+func GPUChoiceFromDevice(d GPUDevice) GPUChoice {
+	return gpuChoiceFromDRM(d)
+}
+
 func gpuChoiceFromDRM(d drmGPU) GPUChoice {
 	c := GPUChoice{
 		Enabled:      true,

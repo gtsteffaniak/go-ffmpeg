@@ -16,17 +16,22 @@ func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 		opts.EncoderPreference = pref
 	}
 
-	ds := s.cfg.effectiveDeviceSelection()
 	strict := s.cfg.effectiveGPUStrictness()
-	choice, fallbacks, err := ResolveDeviceSelection(ds, strict)
+	chain, orderSummary, err := ResolveConfigDeviceChain(s.cfg, strict, platform.DefaultGPUResolveEnv())
 	if err != nil {
 		return opts, fmt.Errorf("gpu selection: %w", err)
 	}
+	var choice platform.GPUChoice
+	if len(chain) > 0 {
+		choice = chain[0]
+	}
 	if choice.Warning != "" && s.cfg.Logger != nil {
-		s.cfg.Logger.Warn(choice.Warning, "gpu", ds.Primary.String())
+		s.cfg.Logger.Warn(choice.Warning, "gpu", choice.Label)
 	}
 	opts.GPU = choice
-	opts.DeviceChain = append([]platform.GPUChoice{choice}, fallbacks...)
+	opts.DeviceChain = chain
+	opts.DeviceOrderSummary = orderSummary
+	opts.DevicePreference = s.cfg.effectiveDevicePreference().String()
 	if choice.RenderDevice != "" {
 		opts.RenderDevice = choice.RenderDevice
 	}

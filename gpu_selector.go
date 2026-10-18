@@ -9,7 +9,9 @@ import (
 type GPUKind int
 
 const (
-	// GPUAuto (zero) uses the platform default backend order on all detected GPUs.
+	// GPUAuto (zero) uses go-ffmpeg's automatic device hierarchy: integrated/SoC GPUs first,
+	// then discrete GPUs, then software, with per-vendor backend order on each device and
+	// per-job fallback along that chain. Use DevicePreference PreferDiscrete to try dGPU first.
 	GPUAuto GPUKind = 0
 	// GPUIntegrated scopes to the integrated GPU (Intel/AMD iGPU).
 	GPUIntegrated GPUKind = 1

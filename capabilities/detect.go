@@ -10,13 +10,15 @@ import (
 
 // DetectOptions configures capability detection.
 type DetectOptions struct {
-	SkipHWTests       bool
-	EncoderHierarchy  []AccelType
-	EncoderPreference EncoderPreference
-	RenderDevice      string
-	GPU               platform.GPUChoice
-	DeviceChain       []platform.GPUChoice
-	AllowSoftware     *bool // nil = true (backward compatible)
+	SkipHWTests        bool
+	EncoderHierarchy   []AccelType
+	EncoderPreference  EncoderPreference
+	RenderDevice       string
+	GPU                platform.GPUChoice
+	DeviceChain        []platform.GPUChoice
+	DeviceOrderSummary string
+	DevicePreference   string
+	AllowSoftware      *bool // nil = true (backward compatible)
 }
 
 // Detect runs the full capability detection pipeline.
@@ -65,6 +67,8 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	}
 	caps.GPUSelection = &sel
 	caps.DeviceChain = append([]platform.GPUChoice(nil), opts.DeviceChain...)
+	caps.DeviceOrderSummary = opts.DeviceOrderSummary
+	caps.DevicePreference = opts.DevicePreference
 	if len(caps.DeviceChain) == 0 && gpuChoice.Enabled && !gpuChoice.SoftwareOnly {
 		caps.DeviceChain = []platform.GPUChoice{gpuChoice}
 	}
@@ -78,7 +82,11 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		gpuChoice.RenderDevice = opts.RenderDevice
 	}
 
-	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, gpuChoice, hardwarePlat)
+	hierarchyGPU := gpuChoice
+	if len(opts.DeviceChain) > 1 {
+		hierarchyGPU = platform.GPUChoice{AutoSelect: true}
+	}
+	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
 	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)

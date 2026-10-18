@@ -53,8 +53,9 @@ func HierarchyForPerformance(plat PlatformInfo) []AccelType {
 	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF}
 }
 
-// ResolveEncoderHierarchy picks the effective encoder preference order.
-// Precedence: explicit EncoderHierarchy, then GPU vendor scoping, then EncoderPreference, then platform default.
+// ResolveEncoderHierarchy picks backend order within a single device when device chain mode is off.
+// Precedence: explicit EncoderHierarchy > GPU vendor scoping > EncoderPreference > platform default.
+// Device order (iGPU vs dGPU) is controlled by DevicePreference / DeviceSelection in the ffmpeg package.
 func ResolveEncoderHierarchy(explicit []AccelType, pref EncoderPreference, gpu platform.GPUChoice, plat PlatformInfo) []AccelType {
 	if len(explicit) > 0 {
 		return append([]AccelType(nil), explicit...)

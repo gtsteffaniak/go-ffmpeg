@@ -7,14 +7,22 @@ func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
 	case "nvidia":
 		return []AccelType{AccelNVENC}
 	case "intel":
+		if plat.OS == "windows" {
+			return []AccelType{AccelQSV}
+		}
 		if plat.WSL {
-			return []AccelType{AccelNVENC, AccelD3D12, AccelVAAPI, AccelQSV}
+			return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12, AccelNVENC}
 		}
 		return []AccelType{AccelVAAPI, AccelQSV}
 	case "amd":
+		if plat.OS == "windows" {
+			return []AccelType{AccelAMF}
+		}
 		return []AccelType{AccelAMF, AccelVAAPI}
 	case "apple":
 		return []AccelType{AccelVideoToolbox}
+	case "soc":
+		return []AccelType{AccelV4L2M2M}
 	default:
 		return nil
 	}

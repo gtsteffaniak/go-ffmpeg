@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
 type hwReportBackend struct {
@@ -128,6 +130,14 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 		return
 	}
 	fmt.Fprintln(w, st.section("GPU configuration:"))
+	if c.DeviceOrderSummary != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device order:"), st.cyan(c.DeviceOrderSummary))
+	} else if len(c.DeviceChain) > 0 {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device order:"), st.dim(formatChainShort(c.DeviceChain)))
+	}
+	if c.DevicePreference != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Device preference:"), st.cyan(c.DevicePreference))
+	}
 	if gpu.Label != "" {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Selector:"), st.cyan(gpu.Label))
 	} else if gpu.RequestedSpec != "" {
@@ -191,6 +201,18 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 			fmt.Fprintln(w, line)
 		}
 	}
+}
+
+func formatChainShort(chain []platform.GPUChoice) string {
+	var parts []string
+	for _, c := range chain {
+		if c.SoftwareOnly {
+			parts = append(parts, "software")
+		} else if c.Name != "" {
+			parts = append(parts, c.Name)
+		}
+	}
+	return strings.Join(parts, " → ")
 }
 
 func writeHardwareGates(w io.Writer, st reportStyle, p PlatformInfo) {

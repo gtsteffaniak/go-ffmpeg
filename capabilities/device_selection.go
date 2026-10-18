@@ -46,6 +46,20 @@ func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []pla
 func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []platform.GPUChoice, globalHierarchy []AccelType) (EncoderSelection, []DeviceCodecAttempt) {
 	var attempts []DeviceCodecAttempt
 	for _, dev := range devices {
+		if dev.SoftwareOnly {
+			att := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
+			for _, sw := range SoftwareFallback(codec) {
+				if caps.EncoderAvailable(sw) {
+					att.Encoder = sw
+					att.Selected = true
+					attempts = append(attempts, att)
+					return EncoderSelection{Encoder: sw, Accel: AccelNone, Kind: encoderKind(sw)}, attempts
+				}
+			}
+			att.Reason = "no software encoder available"
+			attempts = append(attempts, att)
+			continue
+		}
 		h := HierarchyForGPU(dev.Vendor, caps.HardwarePlatform)
 		if len(h) == 0 {
 			h = globalHierarchy

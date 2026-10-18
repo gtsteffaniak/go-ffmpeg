@@ -18,6 +18,11 @@ type GPUResolveEnv struct {
 	Stat          func(path string) error
 }
 
+// DefaultGPUResolveEnv returns host GPU facts for resolution (live detection).
+func DefaultGPUResolveEnv() GPUResolveEnv {
+	return defaultGPUResolveEnv()
+}
+
 func defaultGPUResolveEnv() GPUResolveEnv {
 	env := GPUResolveEnv{
 		GOOS:   runtime.GOOS,
