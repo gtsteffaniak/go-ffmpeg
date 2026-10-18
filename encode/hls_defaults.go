@@ -29,8 +29,9 @@ func HLSDecodeProfileForOnDemand(info probe.StreamInfo) VideoDecodeProfile {
 func DefaultHLSVideoProfile(maxHeight int) VideoProfile {
 	targetKbps := defaultHLSBitrateKbps(maxHeight)
 	return VideoProfile{
-		Codec:   CodecH264,
-		Quality: PresetMedium,
+		Codec:        CodecH264,
+		OutputHeight: maxHeight,
+		Quality:      PresetMedium,
 		Bitrate: BitrateConfig{
 			Target:  fmt.Sprintf("%dk", targetKbps),
 			Min:     fmt.Sprintf("%dk", targetKbps/2),

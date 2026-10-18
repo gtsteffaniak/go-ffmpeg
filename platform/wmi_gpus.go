@@ -31,13 +31,20 @@ func listWindowsGPUs() []GPUDevice {
 		if vendor == "" {
 			vendor = vendorFromDescription(pnp)
 		}
+		pnp = strings.TrimSpace(pnp)
 		gpu := GPUDevice{
 			ID:          stableWindowsGPUID(pnp, name),
 			Name:        name,
 			Vendor:      vendor,
 			DXGIIndex:   idx,
-			PNPDeviceID: strings.TrimSpace(pnp),
+			PNPDeviceID: pnp,
+			PCIAddress:  PCIBusIDFromPNPDeviceID(pnp),
 			Integrated:  classifyWindowsIntegrated(name, pnp),
+			Pinning: BackendPinning{
+				D3D11: PinningBestEffort,
+				AMF:   PinningBestEffort,
+				QSV:   PinningBestEffort,
+			},
 		}
 		gpus = append(gpus, gpu)
 		idx++

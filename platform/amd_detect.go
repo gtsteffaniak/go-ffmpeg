@@ -109,29 +109,6 @@ func PickIntelIGPUDevice(gpus []GPUDevice) *GPUDevice {
 	return nil
 }
 
-func nvidiaCUDADeviceIndex(pciAddr string) int {
-	if pciAddr == "" || !commandAvailable("nvidia-smi") {
-		return 0
-	}
-	out, err := combinedOutputTimeout("nvidia-smi", "--query-gpu=pci.bus_id", "--format=csv,noheader")
-	if err != nil {
-		return 0
-	}
-	want := strings.ToLower(strings.TrimSpace(pciAddr))
-	idx := 0
-	for _, line := range strings.Split(string(out), "\n") {
-		bus := strings.ToLower(strings.TrimSpace(line))
-		if bus == "" {
-			continue
-		}
-		if strings.Contains(bus, want) || strings.Contains(want, bus) {
-			return idx
-		}
-		idx++
-	}
-	return 0
-}
-
 func mergeGPULists(primary, extra []GPUDevice) []GPUDevice {
 	seen := map[string]struct{}{}
 	var out []GPUDevice
@@ -207,7 +184,51 @@ func applyDeviceToChoice(choice *GPUChoice, d GPUDevice) {
 	choice.LUID = d.LUID
 	choice.Integrated = d.Integrated
 	if d.PCIAddress != "" {
-		choice.CUDAIndex = nvidiaCUDADeviceIndex(d.PCIAddress)
+		choice.PCIAddress = d.PCIAddress
+	}
+	choice.Pinning = d.Pinning
+	if d.Vendor == "nvidia" {
+		if d.Pinning.NVENC != "" {
+			choice.Pinning.NVENC = d.Pinning.NVENC
+			choice.Pinning.CUDA = d.Pinning.CUDA
+		}
+		if d.CUDAIndex >= 0 && (d.Pinning.NVENC == PinningExact || d.Pinning.CUDA == PinningExact) {
+			choice.CUDAIndex = d.CUDAIndex
+		} else {
+			table := QueryNVIDIAGPUIndexTable()
+			pci := d.PCIAddress
+			if pci == "" && d.PNPDeviceID != "" {
+				pci = PCIBusIDFromPNPDeviceID(d.PNPDeviceID)
+			}
+			if idx, ok := MatchNVIDIACUDAIndex(pci, d.Name, table); ok {
+				choice.CUDAIndex = idx
+				choice.Pinning.NVENC = PinningExact
+				choice.Pinning.CUDA = PinningExact
+			} else if len(table) == 1 {
+				choice.CUDAIndex = table[0].Index
+				choice.Pinning.NVENC = PinningBestEffort
+				choice.Pinning.CUDA = PinningBestEffort
+			}
+		}
+	}
+	if d.Pinning.D3D11 != "" {
+		choice.Pinning.D3D11 = d.Pinning.D3D11
+		choice.Pinning.AMF = d.Pinning.AMF
+		choice.Pinning.QSV = d.Pinning.QSV
+	}
+	if choice.Pinning.D3D11 == "" {
+		if d.DXGIFromEnum {
+			choice.Pinning.D3D11 = PinningExact
+			choice.Pinning.AMF = PinningExact
+			choice.Pinning.QSV = PinningExact
+		} else if runtime.GOOS == "windows" && d.Vendor != "" {
+			choice.Pinning.D3D11 = PinningBestEffort
+			choice.Pinning.AMF = PinningBestEffort
+			choice.Pinning.QSV = PinningBestEffort
+			if choice.Pinning.Note == "" {
+				choice.Pinning.Note = "D3D11VA/QSV/AMF child_device uses DXGI adapter index; WMI order may differ from DXGI enumeration"
+			}
+		}
 	}
 }
 
@@ -244,6 +265,9 @@ func ListGPUDevices() ([]GPUDevice, error) {
 		if gpus[i].DeviceClass == "" {
 			gpus[i].DeviceClass = deviceClassFor(gpus[i])
 		}
+	}
+	if runtime.GOOS == "windows" {
+		enrichWindowsGPUs(gpus)
 	}
 	return gpus, nil
 }

@@ -8,7 +8,7 @@ func FFmpegHWDeviceInit(backend string, choice GPUChoice, plat Info) []string {
 	pinned := choice.DeviceID != "" || choice.Name != ""
 	switch backend {
 	case "nvenc":
-		if choice.CUDAIndex > 0 {
+		if choice.Pinning.NVENC == PinningExact || choice.Pinning.CUDA == PinningExact || choice.PCIAddress != "" {
 			return []string{"-gpu", fmt.Sprintf("%d", choice.CUDAIndex)}
 		}
 		if plat.OS == "windows" && pinned {

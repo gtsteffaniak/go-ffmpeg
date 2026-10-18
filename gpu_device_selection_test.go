@@ -28,10 +28,17 @@ func TestResolveDeviceSelectionChain(t *testing.T) {
 	}
 }
 
-func TestWindowsAdapterArgs(t *testing.T) {
-	choice := platform.GPUChoice{Enabled: true, DeviceID: "win:abc", Name: "NVIDIA GPU", DXGIIndex: 1}
+func TestWindowsNVENCUsesCUDAIndexFromPCI(t *testing.T) {
+	choice := platform.GPUChoice{
+		Enabled:    true,
+		DeviceID:   "win:abc",
+		Name:       "NVIDIA GPU",
+		CUDAIndex:  0,
+		PCIAddress: "00000000:01:00.0",
+		Pinning:    platform.BackendPinning{NVENC: platform.PinningExact, CUDA: platform.PinningExact},
+	}
 	args := platform.FFmpegHWDeviceInit("nvenc", choice, platform.Info{OS: "windows"})
-	if len(args) != 2 || args[1] != "1" {
+	if len(args) != 2 || args[0] != "-gpu" || args[1] != "0" {
 		t.Fatalf("%v", args)
 	}
 }

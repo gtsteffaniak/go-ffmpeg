@@ -168,6 +168,14 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 	if c.HardwarePlatform.OS != "" {
 		writeHardwareGates(w, st, c.HardwarePlatform)
 	}
+	if c.Pinning.NVENC != "" || c.Pinning.AMF != "" || c.Pinning.D3D11 != "" {
+		fmt.Fprintf(w, "  %s nvenc=%s cuda=%s amf=%s qsv=%s d3d11va=%s\n", st.bold("Pinning confidence:"),
+			st.cyan(string(c.Pinning.NVENC)), st.cyan(string(c.Pinning.CUDA)),
+			st.cyan(string(c.Pinning.AMF)), st.cyan(string(c.Pinning.QSV)), st.cyan(string(c.Pinning.D3D11)))
+		if c.Pinning.Note != "" {
+			fmt.Fprintf(w, "  %s %s\n", st.bold("Pinning note:"), st.dim(c.Pinning.Note))
+		}
+	}
 	if len(c.DeviceAttempts) > 0 {
 		fmt.Fprintf(w, "  %s\n", st.bold("Device selection attempts:"))
 		for _, att := range c.DeviceAttempts {

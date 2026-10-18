@@ -64,6 +64,13 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		sel.AutoSelect = true
 	}
 	caps.GPUSelection = &sel
+	caps.DeviceChain = append([]platform.GPUChoice(nil), opts.DeviceChain...)
+	if len(caps.DeviceChain) == 0 && gpuChoice.Enabled && !gpuChoice.SoftwareOnly {
+		caps.DeviceChain = []platform.GPUChoice{gpuChoice}
+	}
+	if gpuChoice.Pinning.NVENC != "" || gpuChoice.Pinning.AMF != "" {
+		caps.Pinning = gpuChoice.Pinning
+	}
 	if gpuScoped {
 		caps.SelectedGPU = &gpuChoice
 	}

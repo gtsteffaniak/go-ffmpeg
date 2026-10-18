@@ -180,6 +180,8 @@ type Capabilities struct {
 	HardwarePlatform PlatformInfo                 `json:"hardwarePlatform,omitempty"`
 	PiProfile        *platform.PiEncodeProfile    `json:"piProfile,omitempty"`
 	DeviceAttempts   []DeviceCodecAttempt         `json:"deviceAttempts,omitempty"`
+	DeviceChain      []platform.GPUChoice         `json:"deviceChain,omitempty"`
+	Pinning          platform.BackendPinning      `json:"pinning,omitempty"`
 	AllowSoftware    bool                         `json:"allowSoftware,omitempty"`
 }
 

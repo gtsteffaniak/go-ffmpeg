@@ -10,17 +10,20 @@ import (
 
 // GPUDevice describes one DRM render node and its PCI GPU.
 type GPUDevice struct {
-	ID          string // stable id for admin UIs (drm path, WMI PNP id, etc.)
-	RenderNode  string
-	VendorID    string
-	Vendor      string
-	Name        string
-	DeviceClass string // igpu, dgpu, soc
-	Integrated  bool
-	PCIAddress  string
-	DXGIIndex   int
-	LUID        string
-	PNPDeviceID string
+	ID           string // stable id for admin UIs (drm path, WMI PNP id, etc.)
+	RenderNode   string
+	VendorID     string
+	Vendor       string
+	Name         string
+	DeviceClass  string // igpu, dgpu, soc
+	Integrated   bool
+	PCIAddress   string
+	DXGIIndex    int
+	LUID         string
+	PNPDeviceID  string
+	CUDAIndex    int
+	DXGIFromEnum bool // true when DXGIIndex/LUID came from DXGI enumeration
+	Pinning      BackendPinning
 }
 
 type drmGPU = GPUDevice
@@ -69,8 +72,17 @@ func gpuChoiceFromDRM(d drmGPU) GPUChoice {
 	if c.DeviceID == "" {
 		c.DeviceID = gpuStableID(d)
 	}
-	if d.Vendor == "nvidia" && d.PCIAddress != "" {
-		c.CUDAIndex = nvidiaCUDADeviceIndex(d.PCIAddress)
+	if d.Vendor == "nvidia" {
+		if d.CUDAIndex >= 0 && d.Pinning.NVENC != "" {
+			c.CUDAIndex = d.CUDAIndex
+			c.Pinning = d.Pinning
+		} else if d.PCIAddress != "" {
+			if idx, ok := MatchNVIDIACUDAIndex(d.PCIAddress, d.Name, QueryNVIDIAGPUIndexTable()); ok {
+				c.CUDAIndex = idx
+				c.Pinning.NVENC = PinningExact
+				c.Pinning.CUDA = PinningExact
+			}
+		}
 	}
 	return c
 }
