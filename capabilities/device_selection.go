@@ -26,6 +26,9 @@ func ApplyDeviceSelection(caps *Capabilities, hierarchy []AccelType, chain []pla
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
 	for _, codec := range codecs {
 		if caps.PiProfile != nil && codec == CodecH264 && caps.PiProfile.DefaultH264Encoder != "" {
+			if support, ok := caps.CodecMatrix[codec]; ok && support.Preferred.Accel != AccelNone {
+				hardwareSelected = true
+			}
 			continue // Pi profile already pinned mandatory H.264 path
 		}
 		sel, attempts := selectEncodeForDeviceChain(caps, codec, devices, hierarchy)
