@@ -84,7 +84,9 @@ Partial files must not be visible to readers when `temp_file` works; hosts shoul
 - On segment request `k`:
   - If `seg/k.m4s` is ready → serve it.
   - Else if an encode job is running and `k` is within a small **lookahead** of the encode head (e.g. ≤ 2 segments ahead) → **wait** (short timeout, then retry).
-  - Else → **cancel/restart** a job with `StartIndex=k`, `StartSec=starts[k]`, `ClearSegmentsFromIndex=true` when seeking far ahead or behind the current head.
+  - Else → **cancel/restart** a job:
+    - **Transcode:** `StartIndex=k`, `StartSec=starts[k]`, `ClearSegmentsFromIndex=true` when seeking far ahead or behind the current head.
+    - **Remux / video-copy:** always restart from the beginning (`StartIndex=0`, `StartSec=0`). `StartHLSVODSegmentJob` / `BuildHLSVODFFmpegArgs` normalize mid-file copy seeks via `NormalizeHLSVODJobOptions` because ffmpeg measures `hls_time` from the first packet of each job, not the absolute file timeline. Copy/remux is fast enough that the host can wait for segment `k` while ffmpeg runs forward. Use `ClearSegmentsFromIndex=true` when replacing stale segments after a seek.
 - Idle timeout: cancel jobs after no segment requests for the profile (host policy).
 - Serve `BuildVODPlaylist` output for the media playlist route; never expose `.ffmpeg-vod.m3u8` or continuous `ffmpeg.m3u8` EVENT playlists for this mode.
 - Run ffprobe up front for duration, `start_time`, keyframes (copy), and pipeline selection.

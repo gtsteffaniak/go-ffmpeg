@@ -115,11 +115,35 @@ func TestBuildHLSVODFFmpegArgsCopyUsesKeyframeSeek(t *testing.T) {
 		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "-ss 9.500") {
-		t.Fatalf("expected input seek at keyframe 8 + start_time: %s", joined)
+	if strings.Contains(joined, "-ss 9.500") || strings.Contains(joined, "-output_ts_offset 9.") {
+		t.Fatalf("copy mid-file seek must not restart at segment boundary: %s", joined)
 	}
-	if !strings.Contains(joined, "-output_ts_offset 9.000000") {
-		t.Fatalf("playlist offset must stay at segment start: %s", joined)
+	if !strings.Contains(joined, "-ss 1.500") {
+		t.Fatalf("container start_time seek must remain: %s", joined)
+	}
+	if !strings.Contains(joined, "-start_number 0") {
+		t.Fatalf("copy mid-file request must emit from segment 0: %s", joined)
+	}
+}
+
+func TestNormalizeHLSVODJobOptionsCopySeek(t *testing.T) {
+	t.Parallel()
+	in := HLSVODJobOptions{
+		StartIndex:             3,
+		StartSec:               12,
+		ClearSegmentsFromIndex: true,
+		VideoCopy:              true,
+	}
+	out := NormalizeHLSVODJobOptions(in)
+	if out.StartIndex != 0 || out.StartSec != 0 {
+		t.Fatalf("got start %d@%.1f want 0@0", out.StartIndex, out.StartSec)
+	}
+	if !out.ClearSegmentsFromIndex {
+		t.Fatal("ClearSegmentsFromIndex should be preserved")
+	}
+	trans := NormalizeHLSVODJobOptions(HLSVODJobOptions{StartIndex: 5, StartSec: 20})
+	if trans.StartIndex != 5 || trans.StartSec != 20 {
+		t.Fatalf("transcode seek unchanged: %d@%.1f", trans.StartIndex, trans.StartSec)
 	}
 }
 

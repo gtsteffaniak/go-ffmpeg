@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -577,6 +578,16 @@ func HLSVODSegmentBytesReady(data []byte) bool {
 // HLSVODSegmentReadyAfter reports readiness for index when the encode head has advanced.
 func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 	return ops.HLSVODSegmentReadyAfter(outDir, index)
+}
+
+// HLSVODOpenReadySegment opens a publishable segment file for serving (caller closes).
+func HLSVODOpenReadySegment(path string) (*os.File, bool, error) {
+	return ops.HLSVODOpenReadySegment(path)
+}
+
+// NormalizeHLSVODJobOptions applies copy-mode seek normalization (see docs/hls-vod-contract.md).
+func NormalizeHLSVODJobOptions(opts HLSVODJobOptions) HLSVODJobOptions {
+	return ops.NormalizeHLSVODJobOptions(opts)
 }
 
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.

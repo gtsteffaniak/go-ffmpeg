@@ -29,17 +29,7 @@ const hlsVODSegmentTmpSuffix = ".tmp"
 // where temp_file does not apply to fMP4, also use HLSVODSegmentReadyAfter or wait for the
 // next segment index / job completion before serving.
 func HLSVODSegmentReady(path string) (bool, error) {
-	if _, err := os.Stat(path + hlsVODSegmentTmpSuffix); err == nil {
-		return false, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return HLSVODSegmentBytesReady(data), nil
+	return hlsVODSegmentReadyAt(path)
 }
 
 // HLSVODSegmentBytesReady validates in-memory segment bytes for serving.
@@ -55,23 +45,67 @@ func HLSVODSegmentBytesReady(data []byte) bool {
 // temp_file atomic rename is unavailable (older ffmpeg).
 func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 	path := HLSVODSegmentPath(outDir, index)
-	ready, err := HLSVODSegmentReady(path)
+	ready, err := hlsVODSegmentReadyAt(path)
 	if err != nil || ready {
 		return ready, err
 	}
-	nextReady, err := HLSVODSegmentReady(HLSVODSegmentPath(outDir, index+1))
+	nextReady, err := hlsVODSegmentReadyAt(HLSVODSegmentPath(outDir, index+1))
 	if err != nil {
 		return false, err
 	}
 	if !nextReady {
 		return false, nil
 	}
-	data, err := os.ReadFile(path)
+	return hlsVODSegmentReadyAt(path)
+}
+
+func hlsVODSegmentReadyAt(path string) (bool, error) {
+	if _, err := os.Stat(path + hlsVODSegmentTmpSuffix); err == nil {
+		return false, nil
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, err
 	}
-	return HLSVODSegmentBytesReady(data), nil
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if st.Size() < int64(minHLSSegmentMediaBytes) {
+		return false, nil
+	}
+	return mp4.PublishableHLSSegmentReaderAt(f, st.Size()), nil
+}
+
+// HLSVODOpenReadySegment opens path when it is publishable. The caller must close the file.
+// When ready is false the returned file is nil and err is nil for a missing or incomplete segment.
+func HLSVODOpenReadySegment(path string) (f *os.File, ready bool, err error) {
+	if _, err := os.Stat(path + hlsVODSegmentTmpSuffix); err == nil {
+		return nil, false, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	st, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, false, err
+	}
+	if st.Size() < int64(minHLSSegmentMediaBytes) {
+		file.Close()
+		return nil, false, nil
+	}
+	if !mp4.PublishableHLSSegmentReaderAt(file, st.Size()) {
+		file.Close()
+		return nil, false, nil
+	}
+	return file, true, nil
 }

@@ -45,6 +45,28 @@ func (o HLSVODJobOptions) VideoOnly() bool {
 	return o.OmitAudio
 }
 
+// VideoCopyPipeline reports remux or video-copy (non-transcode) HLS VOD jobs.
+func (o HLSVODJobOptions) VideoCopyPipeline() bool {
+	return o.Remux || o.VideoCopy
+}
+
+// NormalizeHLSVODJobOptions applies pipeline-specific seek rules.
+//
+// For remux/video-copy, ffmpeg's HLS muxer measures -hls_time from the first packet
+// of each job, while BuildVODSegmentListKeyframe plans cuts on an absolute timeline.
+// Mid-file StartIndex restarts therefore emit segments whose spans do not match the
+// synthetic playlist. Copy jobs are normalized to StartIndex=0 / StartSec=0 so segment
+// boundaries stay on the planned grid; hosts wait for segment k while ffmpeg runs
+// forward from the beginning. Transcode jobs are unchanged.
+func NormalizeHLSVODJobOptions(opts HLSVODJobOptions) HLSVODJobOptions {
+	if !opts.VideoCopyPipeline() || opts.StartIndex <= 0 {
+		return opts
+	}
+	opts.StartIndex = 0
+	opts.StartSec = 0
+	return opts
+}
+
 // HLSVODSegmentJob runs ffmpeg until EOF, cancellation, or error. Segments are published atomically
 // via ffmpeg's temp_file HLS flag directly under seg/.
 type HLSVODSegmentJob struct {
