@@ -184,6 +184,7 @@ func prepareVODOutputLayout(outDir string, opts HLSVODJobOptions) error {
 // BuildHLSVODFFmpegArgs builds frozen argv for a Model A forward segment encode job.
 // The host must not mutate these flags; see docs/hls-vod-contract.md.
 func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts HLSVODJobOptions) ([]string, error) {
+	opts = NormalizeHLSVODJobOptions(opts)
 	if opts.SegmentSec <= 0 {
 		opts.SegmentSec = DefaultHLSSegmentDurationSec
 	}
@@ -362,6 +363,7 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 	if err := prepareVODOutputLayout(outDir, opts); err != nil {
 		return nil, err
 	}
+	opts = NormalizeHLSVODJobOptions(opts)
 
 	args, err := BuildHLSVODFFmpegArgs(runner, caps, opts)
 	if err != nil {

@@ -20,6 +20,7 @@ func PublishableHLSSegmentReaderAt(r io.ReaderAt, size int64) bool {
 	return PublishableHLSSegmentFragment(moof)
 }
 
+// readTopLevelMoofBoxes concatenates top-level moof box bytes from a segment file.
 func readTopLevelMoofBoxes(r io.ReaderAt, size int64) ([]byte, bool) {
 	var moof []byte
 	off := int64(0)

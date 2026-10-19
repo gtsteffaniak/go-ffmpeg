@@ -59,6 +59,7 @@ func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 	return hlsVODSegmentReadyAt(path)
 }
 
+// hlsVODSegmentReadyAt checks publishability without reading whole segment mdat payloads.
 func hlsVODSegmentReadyAt(path string) (bool, error) {
 	if _, err := os.Stat(path + hlsVODSegmentTmpSuffix); err == nil {
 		return false, nil
