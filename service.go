@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -577,6 +578,56 @@ func HLSVODSegmentBytesReady(data []byte) bool {
 // HLSVODSegmentReadyAfter reports readiness for index when the encode head has advanced.
 func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 	return ops.HLSVODSegmentReadyAfter(outDir, index)
+}
+
+// HLSVODOpenReadySegment opens a publishable segment file for serving (caller closes).
+func HLSVODOpenReadySegment(path string) (*os.File, bool, error) {
+	return ops.HLSVODOpenReadySegment(path)
+}
+
+// HLSVODSegmentAction is the serve/wait/restart decision for on-demand VOD segments.
+type HLSVODSegmentAction = ops.HLSVODSegmentAction
+
+// HLSVODActionServe, HLSVODActionWait, and HLSVODActionRestart are HLSVODSegmentAction values.
+const (
+	HLSVODActionServe   = ops.HLSVODActionServe
+	HLSVODActionWait    = ops.HLSVODActionWait
+	HLSVODActionRestart = ops.HLSVODActionRestart
+)
+
+// HLSVODJobView snapshots the active encode job for segment decisions.
+type HLSVODJobView = ops.HLSVODJobView
+
+// HLSVODDecisionConfig tunes wait/restart thresholds (see docs/hls-vod-contract.md).
+type HLSVODDecisionConfig = ops.HLSVODDecisionConfig
+
+// DefaultHLSVODForwardGapSec is the default forward wait window before restarting (24s media).
+const DefaultHLSVODForwardGapSec = ops.DefaultHLSVODForwardGapSec
+
+// HLSVODMaxWaitSegmentGap returns how many segment indices ahead of the encode head may wait.
+func HLSVODMaxWaitSegmentGap(segmentSec, gapMediaSec float64) int {
+	return ops.HLSVODMaxWaitSegmentGap(segmentSec, gapMediaSec)
+}
+
+// DecideHLSVODSegmentAction implements Jellyfin-style serve/wait/restart rules.
+func DecideHLSVODSegmentAction(cfg HLSVODDecisionConfig, job HLSVODJobView, k int, ready bool) HLSVODSegmentAction {
+	return ops.DecideHLSVODSegmentAction(cfg, job, k, ready)
+}
+
+// VODCopySegmentCutTimesRel returns rebased -segment_times for aligned copy restarts.
+func VODCopySegmentCutTimesRel(list VODSegmentList, keyframeSeekSec float64, startIndex int) []float64 {
+	return ops.VODCopySegmentCutTimesRel(list, keyframeSeekSec, startIndex)
+}
+
+// HLSVODSession coordinates wait/restart for one on-disk VOD cache directory.
+type HLSVODSession = ops.HLSVODSession
+
+// HLSVODSessionOptions configures HLSVODSession.
+type HLSVODSessionOptions = ops.HLSVODSessionOptions
+
+// NewHLSVODSession returns a DynamicHls-style session for a cache directory.
+func NewHLSVODSession(opts HLSVODSessionOptions) *HLSVODSession {
+	return ops.NewHLSVODSession(opts)
 }
 
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.

@@ -123,6 +123,44 @@ func TestBuildHLSVODFFmpegArgsCopyUsesKeyframeSeek(t *testing.T) {
 	}
 }
 
+func TestBuildHLSVODFFmpegArgsCopyExplicitSegmentTimes(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	kf := []float64{0, 6, 9, 12, 18, 21, 24}
+	list := BuildVODSegmentListKeyframe(30, 4, 0, kf)
+	opts := HLSVODJobOptions{
+		Input:             InputSource{URL: "/media/clip.ts"},
+		OutputDir:         "/cache/vod",
+		StartIndex:        1,
+		StartSec:          6,
+		SegmentSec:        4,
+		VideoCopy:         true,
+		KeyframeSeekTimes: kf,
+		SegmentList:       &list,
+		InputVideoCodec:   "h264",
+	}
+	args, err := BuildHLSVODFFmpegArgs(runner, &capabilities.Capabilities{}, opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"-ss 6.000",
+		"-copyts",
+		"-start_at_zero",
+		"-f segment",
+		"-segment_times 3.000,6.000,12.000,15.000,18.000",
+		"-segment_start_number 1",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q: %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "-f hls") {
+		t.Fatalf("explicit copy should use segment muxer, not hls: %s", joined)
+	}
+}
+
 func TestBuildHLSVODFFmpegArgsRemux(t *testing.T) {
 	t.Parallel()
 	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
