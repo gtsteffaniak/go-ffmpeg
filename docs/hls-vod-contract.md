@@ -42,7 +42,7 @@ Hosts must not hand-roll mux flags; use `BuildHLSVODFFmpegArgs` / `StartHLSVODSe
 
 ### Common (all pipelines)
 
-1. `-ss <inputSeek>` **before** `-i` (accurate seek for transcode; keyframe snap for copy).
+1. `-ss <inputSeek>` **before** `-i` (accurate seek for transcode; keyframe seek for copy).
 2. `-output_ts_offset <StartSec>` — playlist-local anchor for segment `StartIndex` (one constant per job).
 3. `-start_number <StartIndex>` — filenames align with playlist indices.
 4. `-f hls -hls_segment_type fmp4 -hls_fmp4_init_filename init.m4s -hls_segment_filename seg/%05d.m4s`
@@ -61,7 +61,8 @@ Hosts must not hand-roll mux flags; use `BuildHLSVODFFmpegArgs` / `StartHLSVODSe
 
 - `-fflags +genpts` before `-i`; `-c:v copy` (+ `-tag:v hvc1` for HEVC).
 - Video-copy audio: transcode to AAC with the same conservative `aresample=async=1` rule as transcode.
-- Input `-ss` snaps to the largest keyframe `<= StartSec`; `-output_ts_offset` stays at playlist `StartSec`.
+- Input `-ss` uses the largest keyframe `<= StartSec` on the media timeline; remux jobs add a small forward pad on container time so ffmpeg lands on the intended keyframe.
+- When `HLSVODJobOptions.SegmentList` is set, copy/remux jobs use **explicit** `-f segment -segment_times …` cuts rebased to the keyframe seek so mid-file restarts (`StartIndex > 0`) match the absolute keyframe grid from a from-zero job. Without `SegmentList`, legacy `-f hls` copy mode applies (from-zero only).
 
 ### Hardware encoders
 
@@ -72,19 +73,22 @@ Same structure; encoder/decoder/filter args come from `encode.Resolver` (NVENC, 
 A segment is **ready** when `HLSVODSegmentReady` returns true:
 
 1. `seg/NNNNN.m4s` exists and `seg/NNNNN.m4s.tmp` does **not** (ffmpeg `hls_flags temp_file` publish in progress).
-2. The file is a publishable fMP4 fragment (`moof` + `tfdt`, monotonic decode times), at least `minHLSSegmentMediaBytes`.
+2. The file is a publishable fMP4 fragment (`moof` + `tfdt`, monotonic decode times), at least `minHLSSegmentMediaBytes`, validated via bounded `moof` reads (`mp4.PublishableHLSSegmentReaderAt`).
+3. **Explicit-cut copy** (`-f segment` + live CSV list): segment `k` is ready only when segment `k+1` appears in `.ffmpeg-vod-segments.csv` or the encode job has ended (multi-`moof` in-progress files are not served).
 
-On ffmpeg builds where `temp_file` does not rename fMP4 segments atomically, a segment file can appear before the muxer finishes. Use `HLSVODSegmentReadyAfter(outDir, k)` (treats segment `k` as complete when segment `k+1` is ready) or wait until the encode job passes index `k` before serving.
+On ffmpeg builds where `temp_file` does not rename fMP4 segments atomically, a segment file can appear before the muxer finishes. Use `HLSVODSegmentReadyAfter(outDir, k)` only as a fallback; prefer moof completeness checks and waiting until segment `k` (not `k+1`) is publishable.
 
 Partial files must not be visible to readers when `temp_file` works; hosts should not bypass the readiness helpers.
 
 ## Host restart guidance
 
-- **One active job per file + transcode profile** (cache fingerprint).
-- On segment request `k`:
-  - If `seg/k.m4s` is ready → serve it.
-  - Else if an encode job is running and `k` is within a small **lookahead** of the encode head (e.g. ≤ 2 segments ahead) → **wait** (short timeout, then retry).
-  - Else → **cancel/restart** a job with `StartIndex=k`, `StartSec=starts[k]`, `ClearSegmentsFromIndex=true` when seeking far ahead or behind the current head.
+- **One active job per file + transcode profile** (cache fingerprint), with optional future support for two concurrent forward jobs (TODO).
+- Use `DecideHLSVODSegmentAction` / `HLSVODSession` (Jellyfin DynamicHls-style):
+  - If `seg/k.m4s` is ready → **serve** (`HLSVODOpenReadySegment`).
+  - Else if no running job, request `k` is behind the job start, or `k` is more than ~**24s of media** ahead of the encode head → **restart** at `StartIndex=k`, `StartSec=starts[k]` (copy jobs pass `SegmentList` for aligned cuts). Do not clear segments `< k` on restart.
+  - Else → **wait** (poll outside the session lock; honor `context` cancel).
+- Restarts **cancel the current job immediately** (seek latency is not blocked by slow clients). Per-path `AcquireServePath` / `ReleaseServePath` only defer unlinking paths that still have open readers; rewrite clears use dentry unlink so ffmpeg creates a new inode while Linux readers keep the old file.
+- On kill remove only the in-progress partial segment (deferred if that path is being read).
 - Idle timeout: cancel jobs after no segment requests for the profile (host policy).
 - Serve `BuildVODPlaylist` output for the media playlist route; never expose `.ffmpeg-vod.m3u8` or continuous `ffmpeg.m3u8` EVENT playlists for this mode.
 - Run ffprobe up front for duration, `start_time`, keyframes (copy), and pipeline selection.
@@ -98,7 +102,9 @@ Partial files must not be visible to readers when `temp_file` works; hosts shoul
 | `BuildVODPlaylist` | Synthetic VOD m3u8 body |
 | `BuildHLSVODFFmpegArgs` | Frozen argv |
 | `StartHLSVODSegmentJob` | Run forward encode to disk |
-| `HLSVODSegmentReady` / `HLSVODSegmentPath` | Readiness + paths |
+| `DecideHLSVODSegmentAction` | Serve / wait / restart decision |
+| `HLSVODSession` | Refcounted wait/restart loop |
+| `HLSVODSegmentReady` / `HLSVODOpenReadySegment` | Readiness + paths |
 
 ## Legacy APIs (deprecated for on-demand file playback)
 
@@ -110,6 +116,6 @@ These remain for existing FileBrowser v1.4.0 consumers; new integrations should 
 ## FileBrowser Quantum adoption (follow-up)
 
 1. **Playlist route:** return `BuildVODPlaylist` for the media m3u8 (static per cache key).
-2. **Segment handler:** readiness check, wait/restart rules, single job per profile.
+2. **Segment handler:** `HLSVODSession` + readiness check, wait/restart rules, single job per profile.
 3. **hlsAdapter:** drop generation offsets / EVENT polling; trust playlist-local times.
 4. **Preflight:** probe duration, keyframes, pipeline; build `VODSegmentList` once per cache entry.

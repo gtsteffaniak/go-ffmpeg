@@ -1,6 +1,6 @@
 # go-ffmpeg
 
-A Go **task wrapper** around FFmpeg and FFprobe. A developer defines the task (probe, transcode, HLS segment, screenshot), then he library picks encoders, flags, and hardware support that best suits the task. So you no longer need to study argv archaeology or keep up-to-date with release notes to use all the features ffmpeg offers.
+A Go **task wrapper** around FFmpeg and FFprobe. A developer defines the task (probe, transcode, HLS segment, screenshot), then the library picks the right encoders, flags, and hardware support that best suits the task. This way a developer can use all of ffmpeg's features without studying argv archaeology or keeping up-to-date with release notes.
 
 ## Why go-ffmpeg
 

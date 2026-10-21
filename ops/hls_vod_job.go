@@ -38,11 +38,20 @@ type HLSVODJobOptions struct {
 	OmitAudio         bool
 	// ClearSegmentsFromIndex removes seg/%05d.m4s for indices >= StartIndex before starting.
 	ClearSegmentsFromIndex bool
+	// SegmentList enables explicit-cut copy/remux jobs aligned to the synthetic playlist grid.
+	SegmentList *VODSegmentList
+	// Session, when set, registers the job and tracks partial segment output for kill cleanup.
+	Session *HLSVODSession
 }
 
 // VideoOnly reports whether audio is omitted.
 func (o HLSVODJobOptions) VideoOnly() bool {
 	return o.OmitAudio
+}
+
+// VideoCopyPipeline reports remux or video-copy (non-transcode) HLS VOD jobs.
+func (o HLSVODJobOptions) VideoCopyPipeline() bool {
+	return o.Remux || o.VideoCopy
 }
 
 // HLSVODSegmentJob runs ffmpeg until EOF, cancellation, or error. Segments are published atomically
@@ -71,6 +80,19 @@ func (j *HLSVODSegmentJob) StartIndex() int {
 		return 0
 	}
 	return j.startIndex
+}
+
+// Running reports whether ffmpeg is still active (non-blocking).
+func (j *HLSVODSegmentJob) Running() bool {
+	if j == nil || j.ffmpegDone == nil {
+		return false
+	}
+	select {
+	case <-j.ffmpegDone:
+		return false
+	default:
+		return true
+	}
 }
 
 // Cancel stops ffmpeg.
@@ -135,28 +157,41 @@ func (j *HLSVODSegmentJob) SoftwareDecodeUnreliable() bool {
 func prepareVODOutputLayout(outDir string, opts HLSVODJobOptions) error {
 	segDir := filepath.Join(outDir, HLSVODSegmentSubdir)
 	if opts.ClearSegmentsFromIndex {
-		entries, err := os.ReadDir(segDir)
-		if err != nil && !os.IsNotExist(err) {
+		if opts.Session != nil {
+			if err := opts.Session.clearSegmentsFromIndex(opts.StartIndex); err != nil {
+				return err
+			}
+		} else if err := clearVODSegmentsFromIndexDir(segDir, opts.StartIndex); err != nil {
 			return err
-		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			if !strings.HasSuffix(name, ".m4s") {
-				continue
-			}
-			var idx int
-			if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
-				continue
-			}
-			if idx >= opts.StartIndex {
-				_ = os.Remove(filepath.Join(segDir, name))
-			}
 		}
 	}
 	return os.MkdirAll(segDir, 0o755)
+}
+
+func clearVODSegmentsFromIndexDir(segDir string, startIndex int) error {
+	entries, err := os.ReadDir(segDir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".m4s") {
+			continue
+		}
+		var idx int
+		if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
+			continue
+		}
+		if idx >= startIndex {
+			path := filepath.Join(segDir, name)
+			_ = os.Remove(path)
+			_ = os.Remove(path + hlsVODSegmentTmpSuffix)
+		}
+	}
+	return nil
 }
 
 // BuildHLSVODFFmpegArgs builds frozen argv for a Model A forward segment encode job.
@@ -173,13 +208,21 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 
 	args := []string{"-hide_banner", "-nostats", "-loglevel", hlsFFmpegLogLevel(runner), "-y"}
 	videoCopyPipeline := opts.Remux || opts.VideoCopy
+	explicitCopyCuts := vodCopyUsesExplicitSegmentCuts(opts)
 	inputSeek := vodInputSeekMediaSec(opts)
 	inputSeek = HLSInputSeekSec(inputSeek, opts.InputStartTimeSec)
+	if opts.Remux && inputSeek > hlsStartTimeEpsilonSec {
+		inputSeek += vodRemuxInputSeekPadSec
+	}
 	if inputSeek > hlsStartTimeEpsilonSec {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", inputSeek))
 	}
 	if videoCopyPipeline {
 		args = appendHLSInputTimestampFlags(args)
+		if explicitCopyCuts {
+			args = appendHLSTranscodeCopyTimestampArgs(args)
+			args = append(args, "-start_at_zero")
+		}
 	}
 	args = appendInputFlags(args, runner, opts.Input, nil, nil)
 	if !videoCopyPipeline {
@@ -259,8 +302,17 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 			args = append(args, "-tag:v", tag)
 		}
 	}
-	// Playlist-local timestamps: one constant offset per job, no per-segment tfdt surgery for transcode.
-	args = appendHLSVODOutputTimestampArgs(args, opts.StartSec)
+	if videoCopyPipeline && explicitCopyCuts {
+		args = append(args, "-max_muxing_queue_size", "128")
+		args = appendVODCopyExplicitSegmentMuxerArgs(args, opts)
+		return args, nil
+	}
+	if videoCopyPipeline {
+		args = appendHLSVODOutputTimestampArgs(args, opts.StartSec)
+	} else {
+		// Playlist-local timestamps: one constant offset per job, no per-segment tfdt surgery for transcode.
+		args = appendHLSVODOutputTimestampArgs(args, opts.StartSec)
+	}
 
 	args = append(args,
 		"-max_muxing_queue_size", "128",
@@ -273,8 +325,11 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 		"-start_number", fmt.Sprintf("%d", opts.StartIndex),
 		"-hls_list_size", "0",
 		"-hls_flags", "temp_file+independent_segments",
-		HLSVODInternalPlaylistName,
 	)
+	if videoCopyPipeline && (opts.StartIndex > 0 || opts.StartSec > hlsStartTimeEpsilonSec) {
+		args = append(args, "-hls_segment_options", "movflags=+frag_discont+skip_sidx")
+	}
+	args = append(args, HLSVODInternalPlaylistName)
 	return args, nil
 }
 
@@ -380,5 +435,8 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 		job.mu.Unlock()
 		close(job.ffmpegDone)
 	}()
+	if opts.Session != nil {
+		opts.Session.InstallJob(job, vodCopyUsesExplicitSegmentCuts(opts))
+	}
 	return job, nil
 }

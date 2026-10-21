@@ -160,7 +160,7 @@ func generateIntegrationH264MP4(t *testing.T, ffmpegPath, outPath string, durati
 		outPath)
 }
 
-func runFFmpeg(t *testing.T, ffmpegPath string, args ...string) {
+func runFFmpeg(t testing.TB, ffmpegPath string, args ...string) {
 	t.Helper()
 	cmd := exec.Command(ffmpegPath, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {

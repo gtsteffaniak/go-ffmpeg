@@ -270,7 +270,7 @@ func firstPacketTimes(t *testing.T, ffprobePath, outDir string) (video, audio fl
 	return video, audio
 }
 
-func integrationFFmpegPaths(t *testing.T) (ffmpeg, ffprobe string) {
+func integrationFFmpegPaths(t testing.TB) (ffmpeg, ffprobe string) {
 	t.Helper()
 	ffmpeg = os.Getenv("GOFFMPEG_FFMPEG_PATH")
 	ffprobe = os.Getenv("GOFFMPEG_FFPROBE_PATH")
