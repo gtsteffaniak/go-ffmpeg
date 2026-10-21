@@ -245,6 +245,79 @@ func TestBuildHLSVODFFmpegArgsVAAPI(t *testing.T) {
 	}
 }
 
+func TestBuildHLSVODFFmpegArgsThrottle(t *testing.T) {
+	t.Parallel()
+	caps := swH264Caps()
+	caps.FeatureFlags = capabilities.FeatureFlagsFromVersion(capabilities.Version{Major: 7, Minor: 1})
+	opts := HLSVODJobOptions{
+		Input:      InputSource{URL: "/media/clip.mkv"},
+		OutputDir:  "/cache/vod",
+		SegmentSec: 4,
+		Profile:    encode.VideoProfile{Codec: encode.CodecH264},
+		Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+		Throttle:   encode.ThrottleConfig{Enabled: true, Rate: 2, Catchup: 3, InitialBurst: 30},
+	}
+	args, err := BuildHLSVODFFmpegArgs(&ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}, caps, opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-readrate 2", "-readrate_initial_burst 30"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q: %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "-readrate_catchup") {
+		t.Fatalf("catchup requires ffmpeg 8+: %s", joined)
+	}
+	if idx := strings.Index(joined, "-readrate"); strings.Index(joined, "-i /media/clip.mkv") < idx {
+		t.Fatalf("readrate must precede -i: %s", joined)
+	}
+}
+
+func TestBuildHLSVODFFmpegArgsThrottleCatchupFFmpeg8(t *testing.T) {
+	t.Parallel()
+	caps := swH264Caps()
+	caps.FeatureFlags = capabilities.FeatureFlagsFromVersion(capabilities.Version{Major: 8, Minor: 0})
+	opts := HLSVODJobOptions{
+		Input:      InputSource{URL: "/media/clip.mkv"},
+		OutputDir:  "/cache/vod",
+		SegmentSec: 4,
+		Profile:    encode.VideoProfile{Codec: encode.CodecH264},
+		Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+		Throttle:   encode.ThrottleConfig{Enabled: true, Rate: 2, Catchup: 3, InitialBurst: 30},
+	}
+	args, err := BuildHLSVODFFmpegArgs(&ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}, caps, opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-readrate 2", "-readrate_catchup 3", "-readrate_initial_burst 30"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q: %s", want, joined)
+		}
+	}
+}
+
+func TestBuildHLSVODFFmpegArgsThrottleIgnoredForCopy(t *testing.T) {
+	t.Parallel()
+	opts := HLSVODJobOptions{
+		Input:           InputSource{URL: "/media/clip.ts"},
+		OutputDir:       "/cache/vod",
+		SegmentSec:      4,
+		VideoCopy:       true,
+		InputVideoCodec: "h264",
+		Throttle:        encode.ThrottleConfig{Enabled: true, Rate: 2},
+	}
+	args, err := BuildHLSVODFFmpegArgs(&ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}, &capabilities.Capabilities{}, opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	if strings.Contains(strings.Join(args, " "), "-readrate") {
+		t.Fatalf("copy pipelines must not emit readrate: %s", strings.Join(args, " "))
+	}
+}
+
 func TestStartHLSVODSegmentJobRejectsEmptyOutputDir(t *testing.T) {
 	t.Parallel()
 	_, err := StartHLSVODSegmentJob(t.Context(), &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}, &capabilities.Capabilities{}, HLSVODJobOptions{
