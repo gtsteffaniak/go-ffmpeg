@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -11,9 +12,14 @@ import (
 func listDarwinGPUs() []GPUDevice {
 	out, err := combinedOutputTimeout("system_profiler", "SPDisplaysDataType")
 	if err != nil {
-		return nil
+		out = nil
 	}
+	return parseDarwinGPUReport(out)
+}
+
+func parseDarwinGPUReport(out []byte) []GPUDevice {
 	var gpus []GPUDevice
+	seen := map[string]int{}
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "Chipset Model:") {
@@ -24,7 +30,16 @@ func listDarwinGPUs() []GPUDevice {
 			continue
 		}
 		vendor := darwinGPUVendor(name)
+		// Same-model GPUs (dual MPX modules, paired eGPUs) share every report
+		// field, so disambiguate identical names with an occurrence suffix.
+		base := "name:" + strings.ToLower(name)
+		id := base
+		if n := seen[base]; n > 0 {
+			id = fmt.Sprintf("%s:%d", base, n)
+		}
+		seen[base]++
 		gpus = append(gpus, GPUDevice{
+			ID:         id,
 			Vendor:     vendor,
 			Name:       name,
 			Integrated: vendor == "apple" || vendor == "intel",
