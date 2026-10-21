@@ -36,6 +36,10 @@ type HLSVODJobOptions struct {
 	GOP               int
 	InputVideoCodec   string
 	OmitAudio         bool
+	// Throttle paces input reading (-readrate) for transcode jobs. Ignored for
+	// remux/video-copy pipelines, which are I/O-bound rather than CPU-bound.
+	// Version-gated flags are emitted only when the ffmpeg build supports them.
+	Throttle encode.ThrottleConfig
 	// ClearSegmentsFromIndex removes seg/%05d.m4s for indices >= StartIndex before starting.
 	ClearSegmentsFromIndex bool
 	// SegmentList enables explicit-cut copy/remux jobs aligned to the synthetic playlist grid.
@@ -224,7 +228,11 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 			args = append(args, "-start_at_zero")
 		}
 	}
-	args = appendInputFlags(args, runner, opts.Input, nil, nil)
+	var inputExtra *InputExtraFlags
+	if !videoCopyPipeline && opts.Throttle.Enabled && caps != nil {
+		inputExtra = &InputExtraFlags{Throttle: &opts.Throttle, Features: caps.FeatureFlags}
+	}
+	args = appendInputFlags(args, runner, opts.Input, nil, inputExtra)
 	if !videoCopyPipeline {
 		resolver := encode.NewResolver(caps)
 		if initArgs := resolver.VideoToolboxPreInputInit(opts.Decode, opts.Profile); len(initArgs) > 0 {
