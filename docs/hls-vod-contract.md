@@ -74,6 +74,7 @@ A segment is **ready** when `HLSVODSegmentReady` returns true:
 
 1. `seg/NNNNN.m4s` exists and `seg/NNNNN.m4s.tmp` does **not** (ffmpeg `hls_flags temp_file` publish in progress).
 2. The file is a publishable fMP4 fragment (`moof` + `tfdt`, monotonic decode times), at least `minHLSSegmentMediaBytes`, validated via bounded `moof` reads (`mp4.PublishableHLSSegmentReaderAt`).
+3. **Explicit-cut copy** (`-f segment` + live CSV list): segment `k` is ready only when segment `k+1` appears in `.ffmpeg-vod-segments.csv` or the encode job has ended (multi-`moof` in-progress files are not served).
 
 On ffmpeg builds where `temp_file` does not rename fMP4 segments atomically, a segment file can appear before the muxer finishes. Use `HLSVODSegmentReadyAfter(outDir, k)` only as a fallback; prefer moof completeness checks and waiting until segment `k` (not `k+1`) is publishable.
 

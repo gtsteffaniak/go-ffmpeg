@@ -61,6 +61,9 @@ func appendVODCopyExplicitSegmentMuxerArgs(args []string, opts HLSVODJobOptions)
 		"-segment_header_filename", HLSVODInitFilename,
 		"-segment_format_options", "movflags=frag_keyframe+empty_moov+default_base_moof+skip_sidx+frag_discont",
 		"-segment_start_number", fmt.Sprintf("%d", opts.StartIndex),
+		"-segment_list", HLSVODInternalSegmentListName,
+		"-segment_list_type", "csv",
+		"-segment_list_flags", "+live",
 	)
 	if timesStr != "" {
 		args = append(args, "-segment_times", timesStr)

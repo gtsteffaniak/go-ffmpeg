@@ -630,6 +630,16 @@ func NewHLSVODSession(opts HLSVODSessionOptions) *HLSVODSession {
 	return ops.NewHLSVODSession(opts)
 }
 
+// HLSVODExplicitCopySegmentReady reports readiness for explicit-cut copy jobs.
+func HLSVODExplicitCopySegmentReady(outDir string, index int, jobRunning bool) (bool, error) {
+	return ops.HLSVODExplicitCopySegmentReady(outDir, index, jobRunning)
+}
+
+// HLSVODOpenReadyExplicitCopySegment opens a publishable explicit-cut copy segment.
+func HLSVODOpenReadyExplicitCopySegment(outDir string, index int, jobRunning bool) (*os.File, bool, error) {
+	return ops.HLSVODOpenReadyExplicitCopySegment(outDir, index, jobRunning)
+}
+
 // DefaultOnDemandHLSDefaults returns on-demand segment defaults.
 func DefaultOnDemandHLSDefaults() OnDemandHLSDefaults {
 	return ops.DefaultOnDemandHLSDefaults()

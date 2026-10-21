@@ -151,6 +151,8 @@ func TestBuildHLSVODFFmpegArgsCopyExplicitSegmentTimes(t *testing.T) {
 		"-f segment",
 		"-segment_times 3.000,6.000,12.000,15.000,18.000",
 		"-segment_start_number 1",
+		"-segment_list .ffmpeg-vod-segments.csv",
+		"-segment_list_type csv",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %q: %s", want, joined)

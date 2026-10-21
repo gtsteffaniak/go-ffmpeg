@@ -158,13 +158,12 @@ func TestHLSVODCopyMidFileSegmentDurationsMatchPlan(t *testing.T) {
 		t.Fatalf("copy restart StartIndex=%d want %d", job1.StartIndex(), startIndex)
 	}
 
-	waitReady := func(outDir string, index int) {
-		path := HLSVODSegmentPath(outDir, index)
+	waitReady := func(outDir string, index int, job *HLSVODSegmentJob) {
 		deadline := time.Now().Add(90 * time.Second)
 		for time.Now().Before(deadline) {
-			ok, err := HLSVODSegmentReady(path)
+			ok, err := HLSVODExplicitCopySegmentReady(outDir, index, job != nil && job.Running())
 			if err != nil {
-				t.Fatalf("ready %s: %v", path, err)
+				t.Fatalf("ready seg %d: %v", index, err)
 			}
 			if ok {
 				return
@@ -174,10 +173,10 @@ func TestHLSVODCopyMidFileSegmentDurationsMatchPlan(t *testing.T) {
 		t.Fatalf("timeout waiting for segment %d in %s", index, outDir)
 	}
 	for i := 0; i <= startIndex+2 && i < list.Count(); i++ {
-		waitReady(outFrom0, i)
+		waitReady(outFrom0, i, job0)
 	}
 	for i := startIndex; i <= startIndex+2 && i < list.Count(); i++ {
-		waitReady(outRestart, i)
+		waitReady(outRestart, i, job1)
 	}
 	job0.Cancel()
 	job1.Cancel()
@@ -212,18 +211,23 @@ func TestHLSVODCopyMidFileSegmentDurationsMatchPlan(t *testing.T) {
 	}
 }
 
-func generateIntegrationH264MP4GOP(t *testing.T, ffmpegPath, outPath string, durationSec, gop int) {
+func generateIntegrationH264MP4GOP(t testing.TB, ffmpegPath, outPath string, durationSec, gop int) {
 	t.Helper()
-	runFFmpeg(t, ffmpegPath, "-hide_banner", "-loglevel", "error", "-y",
+	runFFmpegTB(t, ffmpegPath, "-hide_banner", "-loglevel", "error", "-y",
 		"-f", "lavfi", "-i", "testsrc=duration="+strconv.Itoa(durationSec)+":size=320x240:rate=24",
 		"-c:v", "libx264", "-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-pix_fmt", "yuv420p",
 		outPath)
 }
 
+func runFFmpegTB(t testing.TB, ffmpegPath string, args ...string) {
+	t.Helper()
+	runFFmpeg(t, ffmpegPath, args...)
+}
+
 func BenchmarkHLSVODCopySeekToTail(b *testing.B) {
-	ffmpegPath, ffprobePath := integrationFFmpegPaths(&testing.T{})
+	ffmpegPath, ffprobePath := integrationFFmpegPaths(b)
 	input := filepath.Join(b.TempDir(), "vod-long.mp4")
-	generateIntegrationH264MP4GOP(&testing.T{}, ffmpegPath, input, 120, 72)
+	generateIntegrationH264MP4GOP(b, ffmpegPath, input, 120, 72)
 
 	runner := &ffexec.Runner{FFmpegPath: ffmpegPath, FFprobePath: ffprobePath}
 	ctx := context.Background()
@@ -262,14 +266,15 @@ func BenchmarkHLSVODCopySeekToTail(b *testing.B) {
 		if err != nil {
 			b.Fatalf("job: %v", err)
 		}
-		path := HLSVODSegmentPath(outDir, k)
 		deadline := time.Now().Add(2 * time.Minute)
+		served := false
 		for time.Now().Before(deadline) {
-			ok, err := HLSVODSegmentReady(path)
+			ok, err := HLSVODExplicitCopySegmentReady(outDir, k, job.Running())
 			if err != nil {
 				b.Fatalf("ready: %v", err)
 			}
 			if ok {
+				served = true
 				b.StopTimer()
 				b.ReportMetric(float64(time.Since(start).Milliseconds()), "ms/first-seg")
 				job.Cancel()
@@ -278,6 +283,11 @@ func BenchmarkHLSVODCopySeekToTail(b *testing.B) {
 				break
 			}
 			time.Sleep(50 * time.Millisecond)
+		}
+		if !served {
+			job.Cancel()
+			_ = job.Wait()
+			b.Fatalf("timeout waiting for segment %d", k)
 		}
 	}
 }

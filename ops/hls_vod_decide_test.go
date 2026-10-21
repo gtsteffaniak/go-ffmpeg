@@ -35,6 +35,17 @@ func TestDecideHLSVODSegmentAction(t *testing.T) {
 	}
 }
 
+func TestDecideSeekBackThenFarForwardRestarts(t *testing.T) {
+	t.Parallel()
+	cfg := HLSVODDecisionConfig{SegmentSec: 4, GapMediaSec: 24}
+	job := HLSVODJobView{Running: true, StartIndex: 10, EncodeHead: 10}
+	gap := HLSVODMaxWaitSegmentGap(4, 24)
+	k := 10 + gap + 2
+	if DecideHLSVODSegmentAction(cfg, job, k, false) != HLSVODActionRestart {
+		t.Fatalf("segment %d should restart (not wait) from job head %d", k, job.EncodeHead)
+	}
+}
+
 func TestHLSVODMaxWaitSegmentGap(t *testing.T) {
 	t.Parallel()
 	if g := HLSVODMaxWaitSegmentGap(4, 24); g != 6 {

@@ -25,9 +25,6 @@ func HLSVODInitPath(outDir string) string {
 const hlsVODSegmentTmpSuffix = ".tmp"
 
 // HLSVODSegmentReady reports whether path exists and contains a publishable fMP4 media fragment.
-// A sibling path.tmp means ffmpeg is still writing (hls_flags temp_file); on older ffmpeg builds
-// where temp_file does not apply to fMP4, also use HLSVODSegmentReadyAfter or wait for the
-// encode job to finish segment index before serving.
 func HLSVODSegmentReady(path string) (bool, error) {
 	return hlsVODSegmentReadyAt(path)
 }
@@ -41,8 +38,6 @@ func HLSVODSegmentBytesReady(data []byte) bool {
 }
 
 // HLSVODSegmentReadyAfter reports readiness for index when the encode head has advanced.
-// If nextIndexPath exists and is ready, segment index is treated as complete even when
-// temp_file atomic rename is unavailable (older ffmpeg).
 func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 	path := HLSVODSegmentPath(outDir, index)
 	ready, err := hlsVODSegmentReadyAt(path)
@@ -57,6 +52,19 @@ func HLSVODSegmentReadyAfter(outDir string, index int) (bool, error) {
 		return false, nil
 	}
 	return hlsVODSegmentReadyAt(path)
+}
+
+// HLSVODExplicitCopySegmentReady reports readiness for explicit-cut (-f segment) copy jobs.
+// Segment k is complete only when k+1 is listed in the live CSV, or the encode job has ended.
+func HLSVODExplicitCopySegmentReady(outDir string, index int, jobRunning bool) (bool, error) {
+	nextListed, err := hlsVODSegmentListHas(outDir, index+1)
+	if err != nil {
+		return false, err
+	}
+	if !nextListed && jobRunning {
+		return false, nil
+	}
+	return hlsVODSegmentReadyAt(HLSVODSegmentPath(outDir, index))
 }
 
 // hlsVODSegmentReadyAt checks publishability without reading whole segment mdat payloads.
@@ -83,8 +91,24 @@ func hlsVODSegmentReadyAt(path string) (bool, error) {
 }
 
 // HLSVODOpenReadySegment opens path when it is publishable. The caller must close the file.
-// When ready is false the returned file is nil and err is nil for a missing or incomplete segment.
 func HLSVODOpenReadySegment(path string) (f *os.File, ready bool, err error) {
+	ok, err := hlsVODSegmentReadyAt(path)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	return hlsVODOpenPublishableFile(path)
+}
+
+// HLSVODOpenReadyExplicitCopySegment opens a publishable explicit-cut copy segment.
+func HLSVODOpenReadyExplicitCopySegment(outDir string, index int, jobRunning bool) (*os.File, bool, error) {
+	ok, err := HLSVODExplicitCopySegmentReady(outDir, index, jobRunning)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	return hlsVODOpenPublishableFile(HLSVODSegmentPath(outDir, index))
+}
+
+func hlsVODOpenPublishableFile(path string) (*os.File, bool, error) {
 	if _, err := os.Stat(path + hlsVODSegmentTmpSuffix); err == nil {
 		return nil, false, nil
 	}

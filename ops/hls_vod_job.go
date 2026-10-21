@@ -40,6 +40,8 @@ type HLSVODJobOptions struct {
 	ClearSegmentsFromIndex bool
 	// SegmentList enables explicit-cut copy/remux jobs aligned to the synthetic playlist grid.
 	SegmentList *VODSegmentList
+	// Session, when set, registers the job and tracks partial segment output for kill cleanup.
+	Session *HLSVODSession
 }
 
 // VideoOnly reports whether audio is omitted.
@@ -78,6 +80,19 @@ func (j *HLSVODSegmentJob) StartIndex() int {
 		return 0
 	}
 	return j.startIndex
+}
+
+// Running reports whether ffmpeg is still active (non-blocking).
+func (j *HLSVODSegmentJob) Running() bool {
+	if j == nil || j.ffmpegDone == nil {
+		return false
+	}
+	select {
+	case <-j.ffmpegDone:
+		return false
+	default:
+		return true
+	}
 }
 
 // Cancel stops ffmpeg.
@@ -407,5 +422,8 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 		job.mu.Unlock()
 		close(job.ffmpegDone)
 	}()
+	if opts.Session != nil {
+		opts.Session.InstallJob(job, vodCopyUsesExplicitSegmentCuts(opts))
+	}
 	return job, nil
 }
