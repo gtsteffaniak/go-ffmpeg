@@ -253,6 +253,9 @@ func ListGPUDevices() ([]GPUDevice, error) {
 	if runtime.GOOS == "windows" {
 		gpus = mergeGPULists(gpus, listWindowsGPUs())
 	}
+	if runtime.GOOS == "darwin" {
+		gpus = mergeGPULists(gpus, listDarwinGPUs())
+	}
 	if !hasNVIDIAGPUDevice(gpus) && nvidiaAvailable() {
 		g := syntheticNVIDIAGPU()
 		g.ID = gpuStableID(g)

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
 func TestBuildDetectOptionsEmptyGPUIsAuto(t *testing.T) {
@@ -12,6 +13,16 @@ func TestBuildDetectOptionsEmptyGPUIsAuto(t *testing.T) {
 	opts, err := svc.buildDetectOptions()
 	if err != nil {
 		t.Fatal(err)
+	}
+	devices, _ := platform.ListGPUDevices()
+	devices = appendPiSOCDevice(devices)
+	if len(devices) > 0 {
+		// Hosts with a GPU: auto scopes detection to the preferred device
+		// (integrated/SoC first); software remains the chain fallback.
+		if !opts.GPU.Enabled || opts.GPU.SoftwareOnly {
+			t.Fatalf("auto should resolve the preferred GPU device, got %+v", opts.GPU)
+		}
+		return
 	}
 	if opts.GPU.Enabled {
 		t.Fatalf("auto should not scope to a device, got %+v", opts.GPU)
