@@ -2,7 +2,10 @@ package ops
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,8 +23,9 @@ type HLSVODSession struct {
 	head         int
 	explicitCopy bool
 
-	activeServes int
-	partialPath  string
+	pathReaders   map[string]int
+	pendingUnlink map[string]bool
+	partialPath   string
 
 	pollInterval time.Duration
 }
@@ -46,24 +50,34 @@ func NewHLSVODSession(opts HLSVODSessionOptions) *HLSVODSession {
 		cfg:            opts.Decision,
 		pollInterval:   poll,
 		explicitCopy:   opts.ExplicitCopyCuts,
+		pathReaders:    make(map[string]int),
+		pendingUnlink:  make(map[string]bool),
 	}
 }
 
-// AcquireServe increments the active serve refcount (protects open files from deletion).
-func (s *HLSVODSession) AcquireServe() {
+// AcquireServePath marks path as being read (defers unlink until ReleaseServePath).
+func (s *HLSVODSession) AcquireServePath(path string) {
 	s.mu.Lock()
-	s.activeServes++
+	s.pathReaders[path]++
 	s.mu.Unlock()
 }
 
-// ReleaseServe decrements the active serve refcount.
-func (s *HLSVODSession) ReleaseServe() {
+// ReleaseServePath ends a read lease on path and runs any deferred unlink.
+func (s *HLSVODSession) ReleaseServePath(path string) {
 	s.mu.Lock()
-	s.activeServes--
-	if s.activeServes < 0 {
-		s.activeServes = 0
+	s.pathReaders[path]--
+	refs := s.pathReaders[path]
+	if refs <= 0 {
+		delete(s.pathReaders, path)
+	}
+	pending := s.pendingUnlink[path]
+	if pending && refs <= 0 {
+		delete(s.pendingUnlink, path)
 	}
 	s.mu.Unlock()
+	if pending && refs <= 0 {
+		s.unlinkSegmentPath(path)
+	}
 }
 
 // SetJob records a newly started encode job.
@@ -142,7 +156,6 @@ func (s *HLSVODSession) refreshEncodeHead() {
 		}
 		return
 	}
-	// HLS temp_file path: advance head while consecutive segments are publishable.
 	for {
 		path := HLSVODSegmentPath(s.outDir, s.head)
 		ready, err := hlsVODSegmentReadyAt(path)
@@ -184,7 +197,9 @@ func (s *HLSVODSession) jobRunning() bool {
 }
 
 // WaitForSegment blocks until segment k is ready, the context is canceled, or an error occurs.
+// Call ReleaseServePath on the segment path when the returned file is closed.
 func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func() (*HLSVODSegmentJob, error)) (*os.File, error) {
+	segPath := HLSVODSegmentPath(s.outDir, k)
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -196,15 +211,14 @@ func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func
 		if s.explicitCopy {
 			f, ready, err = HLSVODOpenReadyExplicitCopySegment(s.outDir, k, s.jobRunning())
 		} else {
-			path := HLSVODSegmentPath(s.outDir, k)
-			f, ready, err = HLSVODOpenReadySegment(path)
+			f, ready, err = HLSVODOpenReadySegment(segPath)
 		}
 		if err != nil {
 			return nil, err
 		}
 		if ready {
 			s.refreshEncodeHead()
-			s.AcquireServe()
+			s.AcquireServePath(segPath)
 			return f, nil
 		}
 		if f != nil {
@@ -236,23 +250,14 @@ func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func
 }
 
 func (s *HLSVODSession) performRestart(ctx context.Context, k int, startJob func() (*HLSVODSegmentJob, error)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.restartMu.Lock()
 	defer s.restartMu.Unlock()
 
 	if DecideHLSVODSegmentAction(s.cfg, s.jobView(), k, false) != HLSVODActionRestart {
 		return nil
-	}
-
-	for {
-		s.mu.Lock()
-		serves := s.activeServes
-		s.mu.Unlock()
-		if serves == 0 {
-			break
-		}
-		if err := sleepCtx(ctx, s.pollInterval); err != nil {
-			return err
-		}
 	}
 
 	s.mu.Lock()
@@ -265,7 +270,7 @@ func (s *HLSVODSession) performRestart(ctx context.Context, k int, startJob func
 		old.Cancel()
 		_ = old.Wait()
 	}
-	s.removePartialAt(partial)
+	s.deferUnlinkPath(partial)
 
 	job, err := startJob()
 	if err != nil {
@@ -294,12 +299,58 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (s *HLSVODSession) removePartialAt(path string) {
+// clearSegmentsFromIndex removes segment files at indices >= startIndex before a rewrite job.
+// Unlink is immediate so ffmpeg creates a new inode; open readers on Linux keep the old inode.
+func (s *HLSVODSession) clearSegmentsFromIndex(startIndex int) error {
+	segDir := filepath.Join(s.outDir, HLSVODSegmentSubdir)
+	entries, err := os.ReadDir(segDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".m4s") {
+			continue
+		}
+		var idx int
+		if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
+			continue
+		}
+		if idx >= startIndex {
+			s.unlinkSegmentForRewrite(filepath.Join(segDir, name))
+		}
+	}
+	return nil
+}
+
+// unlinkSegmentForRewrite unlinks dentry before ffmpeg recreates the segment (open readers keep the old file on Linux).
+func (s *HLSVODSession) unlinkSegmentForRewrite(path string) {
+	s.unlinkSegmentPath(path)
+}
+
+func (s *HLSVODSession) unlinkSegmentPath(path string) {
+	_ = os.Remove(path)
+	_ = os.Remove(path + hlsVODSegmentTmpSuffix)
+}
+
+func (s *HLSVODSession) deferUnlinkPath(path string) {
 	if path == "" {
 		return
 	}
-	_ = os.Remove(path)
-	_ = os.Remove(path + hlsVODSegmentTmpSuffix)
+	s.mu.Lock()
+	if s.pathReaders[path] > 0 {
+		s.pendingUnlink[path] = true
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+	s.unlinkSegmentPath(path)
 }
 
 // TrackPartialSegment marks the path ffmpeg is currently writing (for cleanup on kill).

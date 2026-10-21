@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -10,10 +11,18 @@ import (
 )
 
 func newTestVODJob(startIndex int) *HLSVODSegmentJob {
-	return &HLSVODSegmentJob{
-		ffmpegDone: make(chan struct{}),
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	j := &HLSVODSegmentJob{
+		ffmpegDone: done,
 		startIndex: startIndex,
+		stop:       cancel,
 	}
+	go func() {
+		<-ctx.Done()
+		close(done)
+	}()
+	return j
 }
 
 func TestInstallJobResetsHeadOnBackwardRestart(t *testing.T) {
@@ -50,36 +59,74 @@ func TestJobViewDeadJobNotRunning(t *testing.T) {
 	}
 }
 
-func TestPerformRestartWaitsForActiveServe(t *testing.T) {
+func TestPerformRestartDoesNotWaitForSlowReader(t *testing.T) {
 	t.Parallel()
-	s := NewHLSVODSession(HLSVODSessionOptions{OutDir: t.TempDir()})
-	job := newTestVODJob(0)
-	s.InstallJob(job, false)
-	s.AcquireServe()
-	var started atomic.Int32
+	dir := t.TempDir()
+	segDir := filepath.Join(dir, "seg")
+	if err := os.MkdirAll(segDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	const wantStart = 20
+	segPath := filepath.Join(segDir, "00005.m4s")
+	original := minimalPublishableFMP4Fragment()
+	if err := os.WriteFile(segPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewHLSVODSession(HLSVODSessionOptions{OutDir: dir})
+	old := newTestVODJob(0)
+	s.InstallJob(old, false)
+
+	f, err := os.Open(segPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AcquireServePath(segPath)
+
+	var started atomic.Int32
 	startJob := func() (*HLSVODSegmentJob, error) {
 		started.Add(1)
 		return newTestVODJob(wantStart), nil
 	}
-	go func() {
-		time.Sleep(150 * time.Millisecond)
-		s.ReleaseServe()
-		close(job.ffmpegDone)
-	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	start := time.Now()
 	if err := s.performRestart(ctx, wantStart, startJob); err != nil {
 		t.Fatalf("restart: %v", err)
 	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("restart waited %v for slow reader; want immediate cancel", elapsed)
+	}
 	if started.Load() != 1 {
 		t.Fatalf("startJob calls=%d want 1", started.Load())
+	}
+	if old.Running() {
+		t.Fatal("old job still running after restart")
 	}
 	s.mu.Lock()
 	got := s.jobStart
 	s.mu.Unlock()
 	if got != wantStart {
 		t.Fatalf("jobStart=%d want %d", got, wantStart)
+	}
+
+	gotBytes, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotBytes) != len(original) {
+		t.Fatalf("reader got %d bytes want %d after restart unlink", len(gotBytes), len(original))
+	}
+	f.Close()
+	s.ReleaseServePath(segPath)
+
+	s.mu.Lock()
+	j := s.job
+	s.mu.Unlock()
+	if j != nil {
+		j.Cancel()
+		_ = j.Wait()
 	}
 }
 

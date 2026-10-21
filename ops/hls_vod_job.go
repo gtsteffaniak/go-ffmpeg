@@ -157,28 +157,41 @@ func (j *HLSVODSegmentJob) SoftwareDecodeUnreliable() bool {
 func prepareVODOutputLayout(outDir string, opts HLSVODJobOptions) error {
 	segDir := filepath.Join(outDir, HLSVODSegmentSubdir)
 	if opts.ClearSegmentsFromIndex {
-		entries, err := os.ReadDir(segDir)
-		if err != nil && !os.IsNotExist(err) {
+		if opts.Session != nil {
+			if err := opts.Session.clearSegmentsFromIndex(opts.StartIndex); err != nil {
+				return err
+			}
+		} else if err := clearVODSegmentsFromIndexDir(segDir, opts.StartIndex); err != nil {
 			return err
-		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			if !strings.HasSuffix(name, ".m4s") {
-				continue
-			}
-			var idx int
-			if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
-				continue
-			}
-			if idx >= opts.StartIndex {
-				_ = os.Remove(filepath.Join(segDir, name))
-			}
 		}
 	}
 	return os.MkdirAll(segDir, 0o755)
+}
+
+func clearVODSegmentsFromIndexDir(segDir string, startIndex int) error {
+	entries, err := os.ReadDir(segDir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".m4s") {
+			continue
+		}
+		var idx int
+		if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
+			continue
+		}
+		if idx >= startIndex {
+			path := filepath.Join(segDir, name)
+			_ = os.Remove(path)
+			_ = os.Remove(path + hlsVODSegmentTmpSuffix)
+		}
+	}
+	return nil
 }
 
 // BuildHLSVODFFmpegArgs builds frozen argv for a Model A forward segment encode job.

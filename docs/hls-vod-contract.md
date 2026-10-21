@@ -87,7 +87,8 @@ Partial files must not be visible to readers when `temp_file` works; hosts shoul
   - If `seg/k.m4s` is ready → **serve** (`HLSVODOpenReadySegment`).
   - Else if no running job, request `k` is behind the job start, or `k` is more than ~**24s of media** ahead of the encode head → **restart** at `StartIndex=k`, `StartSec=starts[k]` (copy jobs pass `SegmentList` for aligned cuts). Do not clear segments `< k` on restart.
   - Else → **wait** (poll outside the session lock; honor `context` cancel).
-- Never cancel a job while `HLSVODSession` active serve refcounts are non-zero; on kill remove only the in-progress partial segment file.
+- Restarts **cancel the current job immediately** (seek latency is not blocked by slow clients). Per-path `AcquireServePath` / `ReleaseServePath` only defer unlinking paths that still have open readers; rewrite clears use dentry unlink so ffmpeg creates a new inode while Linux readers keep the old file.
+- On kill remove only the in-progress partial segment (deferred if that path is being read).
 - Idle timeout: cancel jobs after no segment requests for the profile (host policy).
 - Serve `BuildVODPlaylist` output for the media playlist route; never expose `.ffmpeg-vod.m3u8` or continuous `ffmpeg.m3u8` EVENT playlists for this mode.
 - Run ffprobe up front for duration, `start_time`, keyframes (copy), and pipeline selection.
