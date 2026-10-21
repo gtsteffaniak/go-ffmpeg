@@ -35,7 +35,7 @@ func HLSVODMaxWaitSegmentGap(segmentSec, gapMediaSec float64) int {
 	if gapMediaSec <= 0 {
 		gapMediaSec = DefaultHLSVODForwardGapSec
 	}
-	gap := int(math.Floor(gapMediaSec/segmentSec))
+	gap := int(math.Floor(gapMediaSec / segmentSec))
 	if gap < 1 {
 		gap = 1
 	}

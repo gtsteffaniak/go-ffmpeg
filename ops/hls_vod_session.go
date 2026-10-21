@@ -46,12 +46,12 @@ func NewHLSVODSession(opts HLSVODSessionOptions) *HLSVODSession {
 		poll = 100 * time.Millisecond
 	}
 	return &HLSVODSession{
-		outDir:         opts.OutDir,
-		cfg:            opts.Decision,
-		pollInterval:   poll,
-		explicitCopy:   opts.ExplicitCopyCuts,
-		pathReaders:    make(map[string]int),
-		pendingUnlink:  make(map[string]bool),
+		outDir:        opts.OutDir,
+		cfg:           opts.Decision,
+		pollInterval:  poll,
+		explicitCopy:  opts.ExplicitCopyCuts,
+		pathReaders:   make(map[string]int),
+		pendingUnlink: make(map[string]bool),
 	}
 }
 

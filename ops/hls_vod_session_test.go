@@ -28,7 +28,7 @@ func newTestVODJob(startIndex int) *HLSVODSegmentJob {
 func TestInstallJobResetsHeadOnBackwardRestart(t *testing.T) {
 	t.Parallel()
 	s := NewHLSVODSession(HLSVODSessionOptions{
-		OutDir: t.TempDir(),
+		OutDir:   t.TempDir(),
 		Decision: HLSVODDecisionConfig{SegmentSec: 4, GapMediaSec: 24},
 	})
 	s.head = 50
