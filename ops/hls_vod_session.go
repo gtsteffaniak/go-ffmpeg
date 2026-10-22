@@ -2,10 +2,7 @@ package ops
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -309,41 +306,6 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
-}
-
-// clearSegmentsFromIndex removes segment files at indices >= startIndex before a rewrite job.
-// Unlink is immediate so ffmpeg creates a new inode; open readers on Linux keep the old inode.
-func (s *HLSVODSession) clearSegmentsFromIndex(startIndex int) error {
-	segDir := filepath.Join(s.outDir, HLSVODSegmentSubdir)
-	entries, err := os.ReadDir(segDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".m4s") {
-			continue
-		}
-		var idx int
-		if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
-			continue
-		}
-		if idx >= startIndex {
-			s.unlinkSegmentForRewrite(filepath.Join(segDir, name))
-		}
-	}
-	return nil
-}
-
-// unlinkSegmentForRewrite unlinks dentry before ffmpeg recreates the segment (open readers keep the old file on Linux).
-func (s *HLSVODSession) unlinkSegmentForRewrite(path string) {
-	s.unlinkSegmentPath(path)
 }
 
 func (s *HLSVODSession) unlinkSegmentPath(path string) {

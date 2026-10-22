@@ -318,6 +318,56 @@ func TestBuildHLSVODFFmpegArgsThrottleIgnoredForCopy(t *testing.T) {
 	}
 }
 
+func TestBuildHLSVODFFmpegArgsStopIndexEmitsDurationBound(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	opts := HLSVODJobOptions{
+		Input:      InputSource{URL: "/media/clip.mkv"},
+		OutputDir:  "/cache/vod",
+		StartIndex: 5,
+		StopIndex:  8,
+		StartSec:   20,
+		SegmentSec: 4,
+		Profile:    encode.VideoProfile{Codec: encode.CodecH264},
+		Decode:     encode.VideoDecodeProfile{Codec: capabilities.CodecH264},
+	}
+	args, err := BuildHLSVODFFmpegArgs(runner, swH264Caps(), opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-t 11.800") {
+		t.Fatalf("expected -t bound before the ready tail: %s", joined)
+	}
+}
+
+func TestBuildHLSVODFFmpegArgsCopyStopIndexEmitsDurationBound(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}
+	kf := []float64{0, 6, 9, 12, 18, 21, 24}
+	list := BuildVODSegmentListKeyframe(30, 4, 0, kf)
+	opts := HLSVODJobOptions{
+		Input:             InputSource{URL: "/media/clip.ts"},
+		OutputDir:         "/cache/vod",
+		StartIndex:        1,
+		StopIndex:         4,
+		StartSec:          6,
+		SegmentSec:        4,
+		VideoCopy:         true,
+		KeyframeSeekTimes: kf,
+		SegmentList:       &list,
+		InputVideoCodec:   "h264",
+	}
+	args, err := BuildHLSVODFFmpegArgs(runner, &capabilities.Capabilities{}, opts)
+	if err != nil {
+		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-t 11.800") {
+		t.Fatalf("expected -t bound before the ready tail: %s", joined)
+	}
+}
+
 func TestStartHLSVODSegmentJobRejectsEmptyOutputDir(t *testing.T) {
 	t.Parallel()
 	_, err := StartHLSVODSegmentJob(t.Context(), &ffexec.Runner{FFmpegPath: "/usr/bin/ffmpeg"}, &capabilities.Capabilities{}, HLSVODJobOptions{

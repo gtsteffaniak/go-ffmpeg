@@ -40,8 +40,15 @@ type HLSVODJobOptions struct {
 	// remux/video-copy pipelines, which are I/O-bound rather than CPU-bound.
 	// Version-gated flags are emitted only when the ffmpeg build supports them.
 	Throttle encode.ThrottleConfig
-	// ClearSegmentsFromIndex removes seg/%05d.m4s for indices >= StartIndex before starting.
+	// ClearSegmentsFromIndex removes stale segment output at indices >= StartIndex
+	// before starting, stopping at the first already-ready segment — which also
+	// bounds the job (see StopIndex) so a repositioned run fills the gap and
+	// hands off to the cached tail instead of deleting and re-encoding over it.
 	ClearSegmentsFromIndex bool
+	// StopIndex, when greater than StartIndex, ends the job just before that
+	// segment via an output -t bound. ClearSegmentsFromIndex sets it to the
+	// first ready segment it finds at or after StartIndex.
+	StopIndex int
 	// SegmentList enables explicit-cut copy/remux jobs aligned to the synthetic playlist grid.
 	SegmentList *VODSegmentList
 	// Session, when set, registers the job and tracks partial segment output for kill cleanup.
@@ -158,44 +165,83 @@ func (j *HLSVODSegmentJob) SoftwareDecodeUnreliable() bool {
 	return j.stderrMon.SoftwareDecodeUnreliable()
 }
 
-func prepareVODOutputLayout(outDir string, opts HLSVODJobOptions) error {
+func prepareVODOutputLayout(outDir string, opts *HLSVODJobOptions) error {
 	segDir := filepath.Join(outDir, HLSVODSegmentSubdir)
 	if opts.ClearSegmentsFromIndex {
-		if opts.Session != nil {
-			if err := opts.Session.clearSegmentsFromIndex(opts.StartIndex); err != nil {
-				return err
-			}
-		} else if err := clearVODSegmentsFromIndexDir(segDir, opts.StartIndex); err != nil {
+		bound, err := clearStaleVODSegments(outDir, *opts)
+		if err != nil {
 			return err
+		}
+		if bound > opts.StartIndex && (opts.StopIndex <= opts.StartIndex || bound < opts.StopIndex) {
+			opts.StopIndex = bound
 		}
 	}
 	return os.MkdirAll(segDir, 0o755)
 }
 
-func clearVODSegmentsFromIndexDir(segDir string, startIndex int) error {
+// clearStaleVODSegments removes stale output at or after a rewrite's
+// StartIndex: leftover *.m4s.tmp partials (never publishable once the writing
+// job is gone) and any not-ready segment, stopping at the first already-ready
+// segment. That index is the hand-off bound a repositioned job should stop at
+// instead of re-encoding over it. Returns 0 when nothing ready follows.
+func clearStaleVODSegments(outDir string, opts HLSVODJobOptions) (int, error) {
+	segDir := filepath.Join(outDir, HLSVODSegmentSubdir)
 	entries, err := os.ReadDir(segDir)
-	if err != nil && !os.IsNotExist(err) {
-		return err
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
 	}
+	explicitCopy := vodCopyUsesExplicitSegmentCuts(opts)
+	bound := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if !strings.HasSuffix(name, ".m4s") {
+		tmp := strings.HasSuffix(name, hlsVODSegmentTmpSuffix)
+		base := strings.TrimSuffix(name, hlsVODSegmentTmpSuffix)
+		if !strings.HasSuffix(base, ".m4s") {
 			continue
 		}
 		var idx int
-		if _, err := fmt.Sscanf(name, "%05d.m4s", &idx); err != nil {
+		if _, err := fmt.Sscanf(base, "%05d.m4s", &idx); err != nil {
 			continue
 		}
-		if idx >= startIndex {
-			path := filepath.Join(segDir, name)
+		path := filepath.Join(segDir, name)
+		if tmp {
 			_ = os.Remove(path)
-			_ = os.Remove(path + hlsVODSegmentTmpSuffix)
+			continue
 		}
+		if idx < opts.StartIndex || bound > 0 {
+			continue
+		}
+		if opts.StopIndex > opts.StartIndex && idx >= opts.StopIndex {
+			continue
+		}
+		ready, err := vodSegmentReadyForRewrite(outDir, idx, explicitCopy)
+		if err != nil {
+			return 0, err
+		}
+		if ready {
+			bound = idx
+			continue
+		}
+		_ = os.Remove(path)
+		_ = os.Remove(path + hlsVODSegmentTmpSuffix)
 	}
-	return nil
+	return bound, nil
+}
+
+// vodSegmentReadyForRewrite reports whether a segment already on disk is
+// publishable at rewrite time (no job running). Explicit-cut copy segments
+// fall back to fragment checks since the dead job's CSV stopped updating.
+func vodSegmentReadyForRewrite(outDir string, index int, explicitCopy bool) (bool, error) {
+	if explicitCopy {
+		return HLSVODExplicitCopySegmentReady(outDir, index, false)
+	}
+	return hlsVODSegmentReadyAt(HLSVODSegmentPath(outDir, index))
 }
 
 // BuildHLSVODFFmpegArgs builds frozen argv for a Model A forward segment encode job.
@@ -310,8 +356,12 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 			args = append(args, "-tag:v", tag)
 		}
 	}
+	stopSec := vodJobStopDurationSec(opts)
 	if videoCopyPipeline && explicitCopyCuts {
 		args = append(args, "-max_muxing_queue_size", "128")
+		if stopSec > 0 {
+			args = append(args, "-t", fmt.Sprintf("%.3f", stopSec))
+		}
 		args = appendVODCopyExplicitSegmentMuxerArgs(args, opts)
 		return args, nil
 	}
@@ -322,6 +372,9 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 		args = appendHLSVODOutputTimestampArgs(args, opts.StartSec)
 	}
 
+	if stopSec > 0 {
+		args = append(args, "-t", fmt.Sprintf("%.3f", stopSec))
+	}
 	args = append(args,
 		"-max_muxing_queue_size", "128",
 		"-f", "hls",
@@ -339,6 +392,38 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 	}
 	args = append(args, HLSVODInternalPlaylistName)
 	return args, nil
+}
+
+// vodJobStopGuardSec keeps a bounded job from touching the first already-ready
+// segment; -t ends the encode just before the hand-off boundary.
+const vodJobStopGuardSec = 0.2
+
+// vodJobStopDurationSec returns the -t output-duration bound that stops a
+// repositioned job before StopIndex, or 0 when unbounded.
+func vodJobStopDurationSec(opts HLSVODJobOptions) float64 {
+	if opts.StopIndex <= opts.StartIndex {
+		return 0
+	}
+	bound := opts.StartSec + float64(opts.StopIndex-opts.StartIndex)*opts.SegmentSec
+	if opts.SegmentList != nil && opts.StopIndex < opts.SegmentList.Count() {
+		bound = opts.SegmentList.Starts[opts.StopIndex]
+	}
+	base := opts.StartSec
+	if opts.VideoCopyPipeline() {
+		base = vodCopyKeyframeSeekSec(opts)
+		if opts.Remux && HLSInputSeekSec(base, opts.InputStartTimeSec) > hlsStartTimeEpsilonSec {
+			base += vodRemuxInputSeekPadSec
+		}
+	}
+	d := bound - base
+	if d <= 0 {
+		return 0
+	}
+	guard := vodJobStopGuardSec
+	if guard > d/2 {
+		guard = d / 2
+	}
+	return d - guard
 }
 
 func vodInputSeekMediaSec(opts HLSVODJobOptions) float64 {
@@ -400,7 +485,7 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 	if inputURL != opts.Input.URL {
 		opts.Input = InputSource{URL: inputURL, StreamType: opts.Input.StreamType}
 	}
-	if err := prepareVODOutputLayout(outDir, opts); err != nil {
+	if err := prepareVODOutputLayout(outDir, &opts); err != nil {
 		return nil, err
 	}
 
