@@ -304,9 +304,13 @@ func TestHLSVODSessionConcurrentRefreshWaitInstallRace(t *testing.T) {
 					s.InstallJob(newTestVODJob(id%3), id%2 == 0)
 				case 3:
 					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-					_, _ = s.WaitForSegment(ctx, 0, func() (*HLSVODSegmentJob, error) {
+					f, err := s.WaitForSegment(ctx, 0, func() (*HLSVODSegmentJob, error) {
 						return newTestVODJob(0), nil
 					})
+					if err == nil {
+						_ = f.Close()
+						s.ReleaseServePath(HLSVODSegmentPath(dir, 0))
+					}
 					cancel()
 				}
 			}
