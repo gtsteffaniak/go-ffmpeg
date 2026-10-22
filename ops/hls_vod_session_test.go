@@ -2,9 +2,12 @@ package ops
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -204,4 +207,120 @@ func minimalPublishableFMP4Fragment() []byte {
 
 func appendU32(b []byte, v uint32) []byte {
 	return append(b, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+}
+
+func writeReadyVODSegment(t *testing.T, dir string, index int) string {
+	t.Helper()
+	segDir := filepath.Join(dir, "seg")
+	if err := os.MkdirAll(segDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(segDir, fmt.Sprintf("%05d.m4s", index))
+	if err := os.WriteFile(path, minimalPublishableFMP4Fragment(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestRefreshEncodeHeadDoesNotSpinWhenJobCleared(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const idx = 5
+	writeReadyVODSegment(t, dir, idx)
+
+	s := NewHLSVODSession(HLSVODSessionOptions{OutDir: dir})
+	job := newTestVODJob(idx)
+	s.InstallJob(job, false)
+
+	s.mu.Lock()
+	s.job = nil
+	s.mu.Unlock()
+
+	start := time.Now()
+	s.refreshEncodeHead()
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("refreshEncodeHead took %v; want prompt return when job cleared", elapsed)
+	}
+}
+
+func TestWaitForSegmentReturnsWhenRestartStartJobFails(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := NewHLSVODSession(HLSVODSessionOptions{
+		OutDir:       dir,
+		Decision:     HLSVODDecisionConfig{SegmentSec: 4, GapMediaSec: 24},
+		PollInterval: 5 * time.Millisecond,
+	})
+	job := newTestVODJob(0)
+	s.InstallJob(job, false)
+	close(job.ffmpegDone)
+
+	wantErr := errors.New("start failed")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err := s.WaitForSegment(ctx, 10, func() (*HLSVODSegmentJob, error) {
+		return nil, wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("WaitForSegment err=%v want %v", err, wantErr)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("WaitForSegment took %v after startJob failure; want prompt error", elapsed)
+	}
+}
+
+func TestHLSVODSessionConcurrentRefreshWaitInstallRace(t *testing.T) {
+	dir := t.TempDir()
+	writeReadyVODSegment(t, dir, 0)
+	writeReadyVODSegment(t, dir, 1)
+
+	s := NewHLSVODSession(HLSVODSessionOptions{
+		OutDir:       dir,
+		Decision:     HLSVODDecisionConfig{SegmentSec: 4, GapMediaSec: 24},
+		PollInterval: 2 * time.Millisecond,
+	})
+
+	const workers = 8
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	stop := make(chan struct{})
+	for i := 0; i < workers; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				switch id % 4 {
+				case 0:
+					s.refreshEncodeHead()
+				case 1:
+					_ = s.jobView()
+				case 2:
+					s.InstallJob(newTestVODJob(id%3), id%2 == 0)
+				case 3:
+					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+					_, _ = s.WaitForSegment(ctx, 0, func() (*HLSVODSegmentJob, error) {
+						return newTestVODJob(0), nil
+					})
+					cancel()
+				}
+			}
+		}(i)
+	}
+	time.Sleep(300 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	s.mu.Lock()
+	j := s.job
+	s.mu.Unlock()
+	if j != nil {
+		j.Cancel()
+		_ = j.Wait()
+	}
 }

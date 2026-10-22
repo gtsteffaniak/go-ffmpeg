@@ -157,14 +157,22 @@ func (s *HLSVODSession) refreshEncodeHead() {
 		return
 	}
 	for {
-		path := HLSVODSegmentPath(s.outDir, s.head)
+		s.mu.Lock()
+		if s.job != job {
+			s.mu.Unlock()
+			break
+		}
+		head := s.head
+		s.mu.Unlock()
+
+		path := HLSVODSegmentPath(s.outDir, head)
 		ready, err := hlsVODSegmentReadyAt(path)
 		if err != nil || !ready {
 			break
 		}
 		s.mu.Lock()
 		if s.job == job {
-			s.head++
+			s.head = head + 1
 		}
 		s.mu.Unlock()
 	}
@@ -205,10 +213,14 @@ func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func
 			return nil, err
 		}
 
+		s.mu.Lock()
+		explicitCopy := s.explicitCopy
+		s.mu.Unlock()
+
 		var f *os.File
 		var ready bool
 		var err error
-		if s.explicitCopy {
+		if explicitCopy {
 			f, ready, err = HLSVODOpenReadyExplicitCopySegment(s.outDir, k, s.jobRunning())
 		} else {
 			f, ready, err = HLSVODOpenReadySegment(segPath)
