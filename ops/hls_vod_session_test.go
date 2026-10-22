@@ -253,7 +253,8 @@ func TestWaitForSegmentReturnsWhenRestartStartJobFails(t *testing.T) {
 	})
 	job := newTestVODJob(0)
 	s.InstallJob(job, false)
-	close(job.ffmpegDone)
+	job.stop()
+	<-job.ffmpegDone
 
 	wantErr := errors.New("start failed")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
