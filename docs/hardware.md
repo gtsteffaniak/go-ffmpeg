@@ -77,7 +77,7 @@ Deprecated: `Config.GPU` string is still accepted when `GPUSelector` is zero.
 
 `platform.Detect()` → FFmpeg inventory → optional smoke tests → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
 
-Skip HW tests: `SkipHWTests`, `GPUSoftware`, or `GOFFMPEG_SKIP_HW=1`.
+Skip HW tests: `SkipHWTests` or `GOFFMPEG_SKIP_HW=1`. A software selection still detects hardware so hosts can show what is available.
 
 ## Default device order (`GPUAuto`)
 

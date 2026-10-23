@@ -18,9 +18,18 @@ func amdGPUPresent() bool {
 }
 
 func amdLinuxPresent() bool {
+	if isWSLEnvironment() {
+		return wslVendorPresent("amd", func() bool {
+			return amdFromPCI()
+		})
+	}
 	if drmVendorPresent("0x1002") {
 		return true
 	}
+	return amdFromPCI()
+}
+
+func amdFromPCI() bool {
 	if commandAvailable("lspci") {
 		out, err := combinedOutputTimeout("lspci", "-nn")
 		if err == nil {
@@ -249,6 +258,12 @@ func ListGPUDevices() ([]GPUDevice, error) {
 			return nil, err
 		}
 		gpus = drm
+		if isWSLEnvironment() {
+			// Host adapters invisible to the guest (Intel/AMD iGPUs, and the
+			// NVIDIA adapter when nvidia-smi naming differs) come from
+			// powershell.exe interop.
+			gpus = mergeGPULists(gpus, listWSLGPUs())
+		}
 	}
 	if runtime.GOOS == "windows" {
 		gpus = mergeGPULists(gpus, listWindowsGPUs())
@@ -301,5 +316,3 @@ func deviceClassFor(g GPUDevice) string {
 func DetectDevices() ([]GPUDevice, error) {
 	return ListGPUDevices()
 }
-
-// Remove duplicate amdGPUPresent from detect.go - I need to update detect.go to remove old function

@@ -104,7 +104,23 @@ func nvidiaAvailable() bool {
 
 func intelGPUPresent() bool {
 	if runtime.GOOS == "windows" {
-		return true // validated at encode time
+		gpus := listWindowsGPUs()
+		if len(gpus) == 0 {
+			return true // enumeration unavailable; validated at encode time
+		}
+		for _, g := range gpus {
+			if g.Vendor == "intel" {
+				return true
+			}
+		}
+		return false
+	}
+	if isWSLEnvironment() {
+		// WSL guests cannot see PCI/DRM adapters the paravirt channel did not
+		// register; the host's own adapter list is the source of truth.
+		return wslVendorPresent("intel", func() bool {
+			return intelFromCPUInfo() || intelFromPCI()
+		})
 	}
 	if drmVendorPresent("0x8086") {
 		return true
@@ -189,7 +205,9 @@ func driAvailable() bool {
 
 func qsvAvailable(wsl, intel bool) bool {
 	if wsl {
-		return wslGPUPartitioning() || intel
+		// GPU paravirtualization alone says nothing about the vendor: an
+		// NVIDIA- or AMD-only WSL host must not report Quick Sync.
+		return intel
 	}
 	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
 		return intel
@@ -272,10 +290,6 @@ func oneVPLDispatcherAvailable() (string, bool) {
 	return "", false
 }
 
-func wslIntelGPU() bool {
-	return wslGPUPartitioning()
-}
-
 func vaapiAvailableDetailed() (bool, string) {
 	globs := []string{
 		"/usr/lib/x86_64-linux-gnu/dri/*_drv_video.so",
@@ -288,6 +302,12 @@ func vaapiAvailableDetailed() (bool, string) {
 		all = append(all, matches...)
 	}
 	if len(all) == 0 {
+		return false, ""
+	}
+
+	// On WSL every VA driver (iHD, radeonsi, d3d12) still opens a DRM render
+	// node underneath; without /dev/dri the driver stack is unusable.
+	if isWSLEnvironment() && !driAvailable() {
 		return false, ""
 	}
 
@@ -317,14 +337,43 @@ func vaapiAvailableDetailed() (bool, string) {
 		}
 	}
 
-	for _, name := range []string{"nouveau_drv_video.so", "d3d12_drv_video.so", "virtio_gpu_drv_video.so"} {
-		for _, m := range all {
-			if filepath.Base(m) == name {
+	// Remaining drivers each serve a specific device class. Distros ship the
+	// nouveau/d3d12 blobs with Mesa on every machine, so the file existing says
+	// nothing — credit it only when the matching kernel driver/device is bound.
+	for _, m := range all {
+		switch filepath.Base(m) {
+		case "nouveau_drv_video.so":
+			if drmDriverBound("nouveau") {
+				return true, m
+			}
+		case "d3d12_drv_video.so":
+			if isWSLEnvironment() && wslGPUPartitioning() {
+				return true, m
+			}
+		case "virtio_gpu_drv_video.so":
+			if drmVendorPresent("0x1af4") || drmDriverBound("virtio_gpu") {
+				return true, m
+			}
+		default:
+			// Unknown VA driver (e.g. the nvidia-vaapi-driver shim): only credit
+			// it when a DRM render node exists for it to open.
+			if driAvailable() {
 				return true, m
 			}
 		}
 	}
-	return true, all[0]
+	return false, ""
+}
+
+// drmDriverBound reports whether a DRM card's device is bound to the named kernel driver.
+func drmDriverBound(name string) bool {
+	matches, _ := filepath.Glob("/sys/class/drm/card*/device/driver")
+	for _, link := range matches {
+		if target, err := filepath.EvalSymlinks(link); err == nil && filepath.Base(target) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func d3d12Available(wsl bool) bool {
@@ -350,6 +399,22 @@ func d3d12Available(wsl bool) bool {
 
 func detectGPUDescription() string {
 	var parts []string
+	if runtime.GOOS == "windows" {
+		for _, g := range listWindowsGPUs() {
+			parts = append(parts, g.Name)
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "; ")
+		}
+	}
+	if isWSLEnvironment() {
+		for _, g := range listWSLGPUs() {
+			parts = append(parts, g.Name)
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "; ")
+		}
+	}
 	if name := NVIDIAGPUName(); name != "" {
 		parts = append(parts, name)
 	}

@@ -51,3 +51,37 @@ func TestEncoderMatchesCodec(t *testing.T) {
 		t.Fatal("libx264 should not match av1")
 	}
 }
+
+func TestBuildEncodeOptionsSoftwareSelectionStillListsHardwareBackends(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.Platform = capabilities.PlatformInfo{OS: "linux", Details: map[string]string{}}
+	caps.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Kind: "software", Compiled: true, Available: true}
+	caps.Encoders["h264_nvenc"] = capabilities.EncoderCapability{Name: "h264_nvenc", Kind: "nvenc", Compiled: true, Available: true}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{Preferred: capabilities.EncoderSelection{Encoder: "libx264", Accel: capabilities.AccelNone}}
+	capabilities.BuildEncodeOptions(caps)
+
+	var nvenc, software, defaultName string
+	for _, opt := range caps.EncodeOptions {
+		if opt.Codec != capabilities.CodecH264 {
+			continue
+		}
+		switch opt.Encoder {
+		case "h264_nvenc":
+			if opt.Available {
+				nvenc = opt.Encoder
+			}
+		case "libx264":
+			software = opt.Encoder
+		}
+		if opt.Default {
+			defaultName = opt.Encoder
+		}
+	}
+	if nvenc == "" || software == "" {
+		t.Fatalf("options must cover hardware and software, got %+v", caps.EncodeOptions)
+	}
+	if defaultName != "libx264" {
+		t.Fatalf("default = %q, want the software selection", defaultName)
+	}
+}

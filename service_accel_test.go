@@ -38,8 +38,11 @@ func TestBuildDetectOptionsDeprecatedGPUString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.GPU.SoftwareOnly || !opts.SkipHWTests {
+	if !opts.GPU.SoftwareOnly {
 		t.Fatalf("opts = %+v", opts)
+	}
+	if opts.SkipHWTests {
+		t.Fatal("software selection must not skip hardware detection")
 	}
 }
 

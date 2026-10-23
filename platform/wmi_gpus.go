@@ -3,21 +3,60 @@ package platform
 import (
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
+
+// windowsGPUCacheTTL bounds how long a WMI enumeration is reused. Detection
+// and device listing each ask several times per start, and every query spawns
+// PowerShell.
+const windowsGPUCacheTTL = 30 * time.Second
+
+var windowsGPUCache struct {
+	mu   sync.Mutex
+	at   time.Time
+	gpus []GPUDevice
+}
 
 // listWindowsGPUs enumerates display adapters via WMI (enumeration order; may differ from CUDA order).
 func listWindowsGPUs() []GPUDevice {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
+	windowsGPUCache.mu.Lock()
+	defer windowsGPUCache.mu.Unlock()
+	if !windowsGPUCache.at.IsZero() && time.Since(windowsGPUCache.at) < windowsGPUCacheTTL {
+		return append([]GPUDevice(nil), windowsGPUCache.gpus...)
+	}
+	gpus := queryWindowsGPUs()
+	windowsGPUCache.at, windowsGPUCache.gpus = time.Now(), gpus
+	return append([]GPUDevice(nil), gpus...)
+}
+
+func queryWindowsGPUs() []GPUDevice {
 	out, err := combinedOutputTimeout("powershell", "-NoProfile", "-NonInteractive", "-Command",
 		"Get-CimInstance Win32_VideoController | ForEach-Object { $_.PNPDeviceID + '|' + $_.Name }")
 	if err != nil {
 		return nil
 	}
+	gpus := parseWindowsAdapterList(string(out))
+	for i := range gpus {
+		gpus[i].Pinning = BackendPinning{
+			D3D11: PinningBestEffort,
+			AMF:   PinningBestEffort,
+			QSV:   PinningBestEffort,
+		}
+	}
+	return gpus
+}
+
+// parseWindowsAdapterList parses "PNPDeviceID|Name" rows emitted by
+// Get-CimInstance Win32_VideoController — shared by Windows WMI and WSL
+// powershell.exe interop.
+func parseWindowsAdapterList(out string) []GPUDevice {
 	var gpus []GPUDevice
 	idx := 0
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -40,11 +79,6 @@ func listWindowsGPUs() []GPUDevice {
 			PNPDeviceID: pnp,
 			PCIAddress:  PCIBusIDFromPNPDeviceID(pnp),
 			Integrated:  classifyWindowsIntegrated(name, pnp),
-			Pinning: BackendPinning{
-				D3D11: PinningBestEffort,
-				AMF:   PinningBestEffort,
-				QSV:   PinningBestEffort,
-			},
 		}
 		gpus = append(gpus, gpu)
 		idx++

@@ -24,6 +24,27 @@ type DecodeOption struct {
 	UnavailableReason string     `json:"unavailableReason,omitempty"`
 }
 
+// optionAccels lists every backend an option list should cover: the selection
+// hierarchy first, then the remaining backends the platform could use. A
+// software-only or single-device selection must not hide the other backends.
+func optionAccels(caps *Capabilities) []AccelType {
+	out := append([]AccelType(nil), caps.EncoderHierarchy...)
+	if len(out) == 0 {
+		out = HierarchyForPlatform(caps.Platform)
+	} else {
+		have := map[AccelType]bool{}
+		for _, a := range out {
+			have[a] = true
+		}
+		for _, a := range HierarchyForPlatform(caps.Platform) {
+			if !have[a] {
+				out = append(out, a)
+			}
+		}
+	}
+	return out
+}
+
 // BuildEncodeOptions fills EncodeOptions from the codec matrix and encoder catalog.
 func BuildEncodeOptions(caps *Capabilities) {
 	if caps == nil {
@@ -31,10 +52,7 @@ func BuildEncodeOptions(caps *Capabilities) {
 	}
 	var out []EncodeOption
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
-	hierarchy := caps.EncoderHierarchy
-	if len(hierarchy) == 0 {
-		hierarchy = HierarchyForPlatform(caps.Platform)
-	}
+	hierarchy := optionAccels(caps)
 	for _, codec := range codecs {
 		support, ok := caps.CodecMatrix[codec]
 		if !ok {
@@ -71,10 +89,7 @@ func BuildDecodeOptions(caps *Capabilities) {
 	}
 	var out []DecodeOption
 	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
-	hierarchy := caps.EncoderHierarchy
-	if len(hierarchy) == 0 {
-		hierarchy = HierarchyForPlatform(caps.Platform)
-	}
+	hierarchy := optionAccels(caps)
 	for _, codec := range codecs {
 		support, ok := caps.CodecMatrix[codec]
 		if !ok {

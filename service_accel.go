@@ -38,11 +38,10 @@ func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 	if s.cfg.AllowSoftwareEncoderFallback != nil {
 		opts.AllowSoftware = s.cfg.AllowSoftwareEncoderFallback
 	}
-	if choice.SoftwareOnly {
-		opts.SkipHWTests = true
-		if len(opts.EncoderHierarchy) == 0 {
-			opts.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
-		}
+	if choice.SoftwareOnly && len(opts.EncoderHierarchy) == 0 {
+		// Software selection steers preference only. Smoke tests still run so
+		// hosts can show what the machine could do and switch at runtime.
+		opts.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
 	}
 	return opts, nil
 }

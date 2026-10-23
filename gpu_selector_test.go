@@ -62,6 +62,22 @@ func TestResolveGPUSelectorHybrid(t *testing.T) {
 	}
 }
 
+// A configured device that is absent must degrade to auto with a diagnostic
+// warning, never silently fall back.
+func TestResolveGPUSelectorMissingDeviceWarns(t *testing.T) {
+	env := hybridEnv()
+	c, err := ffmpeg.ResolveGPUSelectorWithEnv(ffmpeg.GPUByName("Radeon RX 7900"), ffmpeg.GPUFallbackOnUnavailable, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.AutoSelect || !c.Fallback {
+		t.Fatalf("expected auto fallback, got %+v", c)
+	}
+	if c.Warning == "" || c.FallbackReason == "" {
+		t.Fatalf("expected a diagnostic warning, got %+v", c)
+	}
+}
+
 func TestResolveGPUSelectorStrict(t *testing.T) {
 	env := platform.GPUResolveEnv{GOOS: "linux"}
 	_, err := ffmpeg.ResolveGPUSelectorWithEnv(ffmpeg.GPUSelector{Kind: ffmpeg.GPUDiscrete}, ffmpeg.GPUStrictOnUnavailable, env)

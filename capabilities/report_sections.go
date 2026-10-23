@@ -147,7 +147,7 @@ func writeSelectedGPUSection(w io.Writer, st reportStyle, c *Capabilities) {
 	}
 	fmt.Fprintf(w, "  %s %s\n", st.bold("Resolved mode:"), st.cyan(string(gpu.Mode)))
 	if gpu.SoftwareOnly {
-		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.cyan("CPU only — hardware smoke tests skipped"))
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.cyan("CPU only — hardware still detected, not selected"))
 	} else if gpu.AutoSelect {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Behavior:"), st.dim("Autoselect — platform default backend order on all detected GPUs"))
 	} else if gpu.Enabled {

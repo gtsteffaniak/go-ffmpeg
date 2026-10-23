@@ -171,6 +171,8 @@ func summarizeHWError(output string) string {
 			return "Intel QSV session failed (MFX -9)"
 		case strings.Contains(lower, "cannot load lib"):
 			return "required hardware library missing at runtime"
+		case strings.Contains(lower, "no va display found"):
+			return "no VAAPI render device (no /dev/dri node — expected on WSL without GPU-pv DRI)"
 		case strings.Contains(lower, "failed to initialise vaapi"):
 			if strings.Contains(lower, "unknown libva error") {
 				return "Intel VAAPI driver missing or broken (install intel-media-va-driver-non-free)"
@@ -200,7 +202,23 @@ func summarizeHWError(output string) string {
 		msg := picks[len(picks)-1]
 		return truncateErr(msg, 160)
 	}
-	return truncateErr(output, 160)
+	return tailErr(lines, 3, 300)
+}
+
+// tailErr keeps the last n non-empty lines. ffmpeg prints its input banner
+// first and the failure last, so the head of the output hides the real error.
+func tailErr(lines []string, n, max int) string {
+	var tail []string
+	for i := len(lines) - 1; i >= 0 && len(tail) < n; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			tail = append([]string{line}, tail...)
+		}
+	}
+	msg := strings.Join(tail, " | ")
+	if len(msg) > max {
+		msg = "..." + msg[len(msg)-max:]
+	}
+	return msg
 }
 
 func truncateErr(s string, max int) string {
@@ -264,13 +282,20 @@ func platformGateForEncoder(kind string, plat platform.Info) bool {
 	case "nvenc":
 		return plat.NVIDIA
 	case "amf":
-		return plat.AMD
+		// AMF is a Windows-only API; an AMD adapter listed on Linux/WSL has
+		// no AMF path.
+		return plat.AMD && plat.OS == "windows"
 	case "v4l2m2m":
 		if plat.Details != nil && plat.Details["pi_model"] != "" {
 			return len(platform.ListV4L2M2MDevices()) > 0 || plat.Details["pi_model"] == string(platform.Pi4)
 		}
 		return len(platform.ListV4L2M2MDevices()) > 0
 	case "qsv":
+		if plat.OS == "windows" {
+			// Quick Sync on Windows runs through the Intel graphics driver
+			// (D3D11/oneVPL); VAAPI does not exist there. The smoke test decides.
+			return plat.Intel
+		}
 		return plat.QSV && plat.Intel && plat.VAAPI && plat.QSVRuntime
 	case "vaapi":
 		return plat.VAAPI
@@ -297,10 +322,16 @@ func platformSkipReason(kind string, plat platform.Info) string {
 		if !plat.Intel {
 			return "[platform] no Intel GPU detected for Quick Sync"
 		}
+		if plat.OS == "windows" {
+			return ""
+		}
 		if !plat.QSV {
 			return "[platform] Intel Quick Sync not detected on this host"
 		}
 		if !plat.VAAPI {
+			if plat.WSL && !plat.DRI {
+				return "[platform] no VAAPI render device (no /dev/dri node — expected on WSL without GPU-pv DRI)"
+			}
 			fix := platform.NewPackageHints(plat.Distro).IntelVADriverFix()
 			return "[driver] Intel Quick Sync requires Intel VAAPI driver\nFix: " + fix
 		}
@@ -309,6 +340,9 @@ func platformSkipReason(kind string, plat platform.Info) string {
 		}
 	case "vaapi":
 		if !plat.VAAPI {
+			if plat.WSL && !plat.DRI {
+				return "[platform] no VAAPI render device (no /dev/dri node — expected on WSL without GPU-pv DRI)"
+			}
 			if plat.Intel {
 				fix := platform.NewPackageHints(plat.Distro).IntelVADriverFix()
 				return "[driver] Intel VAAPI driver not installed\nFix: " + fix

@@ -33,6 +33,37 @@ func hybridIntelNVEnv() platform.GPUResolveEnv {
 	}
 }
 
+// hybridWSLAMDNVEnv models a WSL2 guest whose adapters come from powershell.exe
+// interop: no DRM render nodes, AMD iGPU + NVIDIA dGPU.
+func hybridWSLAMDNVEnv() platform.GPUResolveEnv {
+	return platform.GPUResolveEnv{
+		GOOS: "linux",
+		WSL:  true,
+		Devices: []platform.GPUDevice{
+			{ID: "win:PCI\\VEN_1002&DEV_164E", Name: "AMD Radeon(TM) Graphics", Vendor: "amd", Integrated: true, DeviceClass: "igpu"},
+			{ID: "win:PCI\\VEN_10DE&DEV_25A2", Name: "NVIDIA GeForce RTX 3050 Laptop GPU", Vendor: "nvidia", Integrated: false, DeviceClass: "dgpu"},
+		},
+		NVIDIA: true,
+		AMD:    true,
+	}
+}
+
+func TestDefaultDeviceOrderWSLHybrid(t *testing.T) {
+	chain, summary, err := ffmpeg.ResolveConfigDeviceChain(ffmpeg.Config{}, ffmpeg.GPUFallbackOnUnavailable, hybridWSLAMDNVEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chain) != 3 {
+		t.Fatalf("chain %+v", chain)
+	}
+	if chain[0].Vendor != "amd" || chain[1].Vendor != "nvidia" || !chain[2].SoftwareOnly {
+		t.Fatalf("%+v %+v %+v", chain[0], chain[1], chain[2])
+	}
+	if !strings.Contains(summary, "AMD Radeon") || !strings.Contains(summary, "RTX 3050") || !strings.Contains(summary, "software") {
+		t.Fatalf("summary %q", summary)
+	}
+}
+
 func TestZeroValueConfigUsesAutoDeviceHierarchy(t *testing.T) {
 	var cfg ffmpeg.Config
 	if !cfg.GPUSelector.IsZero() {
