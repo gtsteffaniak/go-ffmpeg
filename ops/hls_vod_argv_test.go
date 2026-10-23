@@ -149,7 +149,7 @@ func TestBuildHLSVODFFmpegArgsCopyExplicitSegmentTimes(t *testing.T) {
 		"-copyts",
 		"-start_at_zero",
 		"-f segment",
-		"-segment_times 3.000,6.000,12.000,15.000,18.000",
+		"-segment_times 2.999,5.999,11.999,14.999,17.999",
 		"-segment_start_number 1",
 		"-segment_list .ffmpeg-vod-segments.csv",
 		"-segment_list_type csv",

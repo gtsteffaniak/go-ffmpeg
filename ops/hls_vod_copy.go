@@ -2,6 +2,7 @@ package ops
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -75,7 +76,10 @@ func appendVODCopyExplicitSegmentMuxerArgs(args []string, opts HLSVODJobOptions)
 func floatsToArgStrings(vals []float64) []string {
 	out := make([]string, len(vals))
 	for i, v := range vals {
-		out[i] = fmt.Sprintf("%.3f", v)
+		// Floor to milliseconds with a 1ms bias so the emitted cut lands just
+		// before its planned boundary: rounding up could put it past the
+		// keyframe it names and the muxer would cut at the next keyframe.
+		out[i] = fmt.Sprintf("%.3f", math.Floor((v-0.001)*1000)/1000)
 	}
 	return out
 }

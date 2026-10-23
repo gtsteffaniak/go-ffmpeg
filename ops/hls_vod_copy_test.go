@@ -17,3 +17,16 @@ func TestVODCopySegmentCutTimesRel(t *testing.T) {
 		}
 	}
 }
+
+func TestFloatsToArgStringsFloorsCutTimes(t *testing.T) {
+	t.Parallel()
+	// A cut at 10.0005 must not round up to 10.001 — that would land after the
+	// 10.0005 keyframe and push the boundary to the next one.
+	got := floatsToArgStrings([]float64{10.0005, 12})
+	want := []string{"9.999", "11.999"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%q want %q", i, got[i], want[i])
+		}
+	}
+}
