@@ -311,30 +311,10 @@ func vaapiAvailableDetailed() (bool, string) {
 		return false, ""
 	}
 
-	intel := intelGPUPresent()
-	amd := amdGPUPresent()
-
-	// Intel Quick Sync / VAAPI on Linux needs the Intel media driver (iHD for Gen8+ / Lunar Lake).
-	if intel {
-		for _, name := range []string{"iHD_drv_video.so", "i965_drv_video.so", "intel_drv_video.so"} {
-			for _, m := range all {
-				if filepath.Base(m) == name {
-					return true, m
-				}
-			}
-		}
-		// Intel GPU but no Intel VA driver — do not treat unrelated Mesa drivers as VAAPI-ready.
+	if driver, blocked := vaapiVendorDriver(all, intelGPUPresent(), amdGPUPresent()); driver != "" {
+		return true, driver
+	} else if blocked {
 		return false, ""
-	}
-
-	if amd {
-		for _, name := range []string{"radeonsi_drv_video.so", "r600_drv_video.so"} {
-			for _, m := range all {
-				if filepath.Base(m) == name {
-					return true, m
-				}
-			}
-		}
 	}
 
 	// Remaining drivers each serve a specific device class. Distros ship the
@@ -363,6 +343,41 @@ func vaapiAvailableDetailed() (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+var (
+	intelVADrivers = []string{"iHD_drv_video.so", "i965_drv_video.so", "intel_drv_video.so"}
+	amdVADrivers   = []string{"radeonsi_drv_video.so", "r600_drv_video.so"}
+)
+
+// vaapiVendorDriver returns the VA driver blob bound to a detected GPU vendor.
+// blocked is true when a recognized vendor is present but its driver stack is
+// missing — unrelated Mesa blobs must not be credited for it. Each vendor is
+// checked before the block so a hybrid box (e.g. driverless Intel iGPU plus an
+// AMD dGPU with radeonsi) still finds its usable driver.
+func vaapiVendorDriver(all []string, intel, amd bool) (driver string, blocked bool) {
+	if intel {
+		if d := firstVADriver(all, intelVADrivers); d != "" {
+			return d, false
+		}
+	}
+	if amd {
+		if d := firstVADriver(all, amdVADrivers); d != "" {
+			return d, false
+		}
+	}
+	return "", intel || amd
+}
+
+func firstVADriver(all []string, names []string) string {
+	for _, name := range names {
+		for _, m := range all {
+			if filepath.Base(m) == name {
+				return m
+			}
+		}
+	}
+	return ""
 }
 
 // drmDriverBound reports whether a DRM card's device is bound to the named kernel driver.
