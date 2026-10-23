@@ -44,11 +44,11 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.FFprobeVersion = ParseFFprobeVersion(probeVerRes.Stdout)
 
 	gpuChoice := opts.GPU
-	if gpuChoice.SoftwareOnly {
-		if len(opts.EncoderHierarchy) == 0 {
-			opts.EncoderHierarchy = []AccelType{AccelNone}
-		}
-		opts.SkipHWTests = true
+	if gpuChoice.SoftwareOnly && len(opts.EncoderHierarchy) == 0 {
+		// Software selection only steers which encoder is preferred. Hardware
+		// backends are still smoke-tested (unless SkipHWTests is set) so hosts
+		// can list what the machine could do and switch devices at runtime.
+		opts.EncoderHierarchy = []AccelType{AccelNone}
 	}
 	gpuScoped := gpuChoice.Enabled && !gpuChoice.SoftwareOnly
 	hardwarePlat := platform.Detect()
@@ -83,7 +83,9 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	}
 
 	hierarchyGPU := gpuChoice
-	if len(opts.DeviceChain) > 1 {
+	if nonSoftwareChainDevices(opts.DeviceChain) > 1 {
+		// Multiple real devices in the chain may resolve different codecs to
+		// different GPUs; a trailing software fallback entry must not count.
 		hierarchyGPU = platform.GPUChoice{AutoSelect: true}
 	}
 	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
@@ -101,6 +103,48 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	if err := ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice); err != nil {
 		return nil, err
 	}
+	if len(opts.EncoderHierarchy) == 0 {
+		// The resolved (non-explicit) hierarchy reports what this hardware can
+		// actually run; selection already gates on availability so this only
+		// scopes the stored/displayed order.
+		caps.EncoderHierarchy = usableHierarchy(hierarchy, caps)
+	}
 
 	return caps, nil
+}
+
+// nonSoftwareChainDevices counts real GPU devices in a resolved device chain,
+// ignoring the trailing software fallback entry.
+func nonSoftwareChainDevices(chain []platform.GPUChoice) int {
+	n := 0
+	for _, c := range chain {
+		if !c.SoftwareOnly {
+			n++
+		}
+	}
+	return n
+}
+
+// usableHierarchy prunes a resolved hierarchy to backends that passed encode
+// detection for at least one codec; falls back to software so the report never
+// advertises a backend the hardware cannot run.
+func usableHierarchy(hierarchy []AccelType, caps *Capabilities) []AccelType {
+	codecs := []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9}
+	out := make([]AccelType, 0, len(hierarchy))
+	for _, accel := range hierarchy {
+		if accel == AccelNone {
+			out = append(out, accel)
+			continue
+		}
+		for _, codec := range codecs {
+			if caps.CodecEncodeAvailable(codec, accel) {
+				out = append(out, accel)
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		return []AccelType{AccelNone}
+	}
+	return out
 }

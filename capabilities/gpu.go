@@ -11,7 +11,9 @@ func HierarchyForGPU(vendor string, plat PlatformInfo) []AccelType {
 			return []AccelType{AccelQSV}
 		}
 		if plat.WSL {
-			return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12, AccelNVENC}
+			// An Intel adapter can never run NVENC; WSL Intel reaches encode
+			// through VAAPI/QSV or the D3D12 VA-API bridge.
+			return []AccelType{AccelVAAPI, AccelQSV, AccelD3D12}
 		}
 		return []AccelType{AccelVAAPI, AccelQSV}
 	case "amd":

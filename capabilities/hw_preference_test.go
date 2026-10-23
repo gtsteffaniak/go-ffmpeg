@@ -55,6 +55,16 @@ func TestResolveEncoderHierarchyExplicitWins(t *testing.T) {
 	}
 }
 
+func TestHierarchyForGPUDropsCrossVendor(t *testing.T) {
+	plat := capabilities.PlatformInfo{OS: "linux", WSL: true, Intel: true}
+	h := capabilities.HierarchyForGPU("intel", plat)
+	for _, a := range h {
+		if a == capabilities.AccelNVENC {
+			t.Fatalf("intel hierarchy must not include nvenc: %v", h)
+		}
+	}
+}
+
 func TestParseEncoderPreferenceAliases(t *testing.T) {
 	for _, s := range []string{"powersave", "igpu-first", "integrated"} {
 		p, err := capabilities.ParseEncoderPreference(s)
