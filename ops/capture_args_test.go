@@ -42,6 +42,45 @@ func TestBuildFrameCaptureArgsFastSeek(t *testing.T) {
 	if !strings.HasSuffix(joined, "image2pipe -") {
 		t.Fatalf("expected image2pipe stdout: %s", joined)
 	}
+	if !containsArg(args, "-probesize", CaptureDefaultLightProbeSize) {
+		t.Fatalf("expected default light probesize: %v", args)
+	}
+	if !containsArg(args, "-analyzeduration", CaptureDefaultLightAnalyzeDuration) {
+		t.Fatalf("expected default light analyzeduration: %v", args)
+	}
+}
+
+func TestBuildFrameCaptureArgsLightProbeOverride(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{}
+	input := InputSource{URL: "in.ts", StreamType: probe.StreamFile}
+	args := BuildFrameCaptureArgs(runner, input, nil, FrameCaptureArgs{
+		SkipProbe: true,
+		LightProbe: &CaptureLightProbe{
+			ProbeSize:       "5242880",
+			AnalyzeDuration: "2000000",
+		},
+		MJPEG: true,
+	})
+	if !containsArg(args, "-probesize", "5242880") {
+		t.Fatalf("custom probesize: %v", args)
+	}
+	if !containsArg(args, "-analyzeduration", "2000000") {
+		t.Fatalf("custom analyzeduration: %v", args)
+	}
+}
+
+func TestBuildFrameCaptureArgsNoLightProbeWhenFullProbe(t *testing.T) {
+	t.Parallel()
+	runner := &ffexec.Runner{}
+	input := InputSource{URL: "in.mp4", StreamType: probe.StreamFile}
+	args := BuildFrameCaptureArgs(runner, input, nil, FrameCaptureArgs{
+		SkipProbe: false,
+		MJPEG:     true,
+	})
+	if sliceContains(args, "-probesize") {
+		t.Fatalf("full probe mode should not set probesize: %v", args)
+	}
 }
 
 func TestBuildFrameCaptureArgsExactSeek(t *testing.T) {

@@ -41,9 +41,11 @@ type ScreenshotOptions struct {
 	SeekPercent float64
 	// DurationSec when > 0 skips ffprobe for seek-percent and enables lightweight input probing.
 	DurationSec float64
-	Width       int
-	Height      int
-	ScaleMode   ScaleMode
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	Width      int
+	Height     int
+	ScaleMode  ScaleMode
 	// Accuracy defaults to CaptureFast (nearest keyframe).
 	Accuracy CaptureAccuracy
 }
@@ -103,6 +105,8 @@ type PreviewOptions struct {
 	ScaleMode   ScaleMode
 	Quality     int
 	Timeout     time.Duration
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
 	// Accuracy defaults to CaptureFast (nearest keyframe).
 	Accuracy CaptureAccuracy
 }
@@ -152,6 +156,7 @@ func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, 
 		SeekSec:      seekSec,
 		Accuracy:     opts.Accuracy,
 		SkipProbe:    opts.DurationSec > 0 || seekSec > 0,
+		LightProbe:   opts.LightProbe,
 		KeyframeOnly: opts.Accuracy == CaptureFast,
 		ScaleFilter:  scale,
 		QScale:       encode.QualityToQScale(q),

@@ -41,7 +41,9 @@ type SpriteSheetOptions struct {
 	EndSec      float64 // 0 = full duration
 
 	DurationSec float64
-	Decode      encode.VideoDecodeProfile
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration is known.
+	LightProbe *CaptureLightProbe
+	Decode     encode.VideoDecodeProfile
 	// KeyframeOnly limits decode to keyframes when true (default when IntervalSec >= 2).
 	KeyframeOnly *bool
 	Accuracy     CaptureAccuracy
@@ -116,7 +118,7 @@ func SpriteSheet(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 
 	args := []string{"-hide_banner", "-nostats"}
 	args = appendCaptureSeekArgs(args, layout.StartSec, opts.Accuracy)
-	args = appendCaptureInputTuning(args, opts.DurationSec > 0, keyframeOnly)
+	args = appendCaptureInputTuning(args, opts.DurationSec > 0, keyframeOnly, opts.LightProbe)
 	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
 	args = append(args, decodeArgs...)
 	args = append(args, "-i", opts.Input.URL)

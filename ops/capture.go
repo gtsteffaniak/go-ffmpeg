@@ -23,12 +23,24 @@ const (
 )
 
 const (
-	captureProbeSize        = "32768"
-	captureAnalyzeDuration  = "0"
+	// CaptureDefaultLightProbeSize is ffmpeg -probesize for lightweight capture when
+	// duration/seek is already known. Well below libavformat defaults (~5M) but large
+	// enough for MPEG-TS, late-stream MKV, and brittle AVI indexes (32KiB breaks these).
+	CaptureDefaultLightProbeSize = "3145728" // 3 MiB
+	// CaptureDefaultLightAnalyzeDuration is ffmpeg -analyzeduration in microseconds.
+	CaptureDefaultLightAnalyzeDuration = "1500000" // 1.5s
+
 	captureSWSFlags         = "fast_bilinear"
 	captureDefaultThreads   = "1"
 	captureImagePipeBufSize = 256 * 1024
 )
+
+// CaptureLightProbe optionally overrides lightweight input probing for frame capture.
+// Empty fields use CaptureDefaultLightProbeSize and CaptureDefaultLightAnalyzeDuration.
+type CaptureLightProbe struct {
+	ProbeSize       string
+	AnalyzeDuration string
+}
 
 var capturePipeBufPool = sync.Pool{
 	New: func() interface{} {
@@ -70,9 +82,24 @@ func appendCaptureSeekArgs(args []string, seekSec float64, accuracy CaptureAccur
 	return args
 }
 
-func appendCaptureInputTuning(args []string, skipHeavyProbe bool, keyframeOnly bool) []string {
+func lightProbeValues(custom *CaptureLightProbe) (probeSize, analyzeDuration string) {
+	probeSize = CaptureDefaultLightProbeSize
+	analyzeDuration = CaptureDefaultLightAnalyzeDuration
+	if custom != nil {
+		if custom.ProbeSize != "" {
+			probeSize = custom.ProbeSize
+		}
+		if custom.AnalyzeDuration != "" {
+			analyzeDuration = custom.AnalyzeDuration
+		}
+	}
+	return probeSize, analyzeDuration
+}
+
+func appendCaptureInputTuning(args []string, skipHeavyProbe bool, keyframeOnly bool, lightProbe *CaptureLightProbe) []string {
 	if skipHeavyProbe {
-		args = append(args, "-probesize", captureProbeSize, "-analyzeduration", captureAnalyzeDuration)
+		ps, ad := lightProbeValues(lightProbe)
+		args = append(args, "-probesize", ps, "-analyzeduration", ad)
 	}
 	if keyframeOnly {
 		args = append(args, "-skip_frame", "nokey")
@@ -97,6 +124,7 @@ type FrameCaptureArgs struct {
 	SeekSec      float64
 	Accuracy     CaptureAccuracy
 	SkipProbe    bool
+	LightProbe   *CaptureLightProbe
 	KeyframeOnly bool
 	ScaleFilter  string
 	QScale       string
@@ -107,7 +135,7 @@ type FrameCaptureArgs struct {
 func BuildFrameCaptureArgs(runner *ffexec.Runner, input InputSource, rtsp *RTSPInputOptions, cfg FrameCaptureArgs) []string {
 	args := []string{"-hide_banner", "-nostats"}
 	args = appendCaptureSeekArgs(args, cfg.SeekSec, cfg.Accuracy)
-	args = appendCaptureInputTuning(args, cfg.SkipProbe, cfg.KeyframeOnly)
+	args = appendCaptureInputTuning(args, cfg.SkipProbe, cfg.KeyframeOnly, cfg.LightProbe)
 	args = appendInputFlags(args, runner, input, rtsp, nil)
 	args = append(args, "-i", input.URL)
 	args = appendCaptureOutputTuning(args)
@@ -195,6 +223,7 @@ func buildScreenshotArgs(runner *ffexec.Runner, opts ScreenshotOptions, seekSec 
 		SeekSec:      seekSec,
 		Accuracy:     accuracy,
 		SkipProbe:    skipProbe,
+		LightProbe:   opts.LightProbe,
 		KeyframeOnly: accuracy == CaptureFast,
 		ScaleFilter:  screenshotScaleFilter(opts),
 		QScale:       encode.QualityToQScale(q),

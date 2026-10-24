@@ -265,6 +265,15 @@ const (
 	CaptureExact = ops.CaptureExact
 )
 
+// CaptureDefaultLightProbeSize is the default ffmpeg -probesize for lightweight capture.
+const CaptureDefaultLightProbeSize = ops.CaptureDefaultLightProbeSize
+
+// CaptureDefaultLightAnalyzeDuration is the default ffmpeg -analyzeduration (µs) for lightweight capture.
+const CaptureDefaultLightAnalyzeDuration = ops.CaptureDefaultLightAnalyzeDuration
+
+// CaptureLightProbe optionally overrides lightweight input probing for frame capture.
+type CaptureLightProbe = ops.CaptureLightProbe
+
 // SpriteFormat identifies sprite sheet still encoding.
 type SpriteFormat = ops.SpriteFormat
 
