@@ -1,15 +1,12 @@
 package capabilities
 
 import (
-	"context"
 	"sort"
 	"strings"
-
-	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
-	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
 // EncoderProbeResults returns structured probe rows for hardware encoders (stable order).
+// Populated once during startup detection; the library does not update these at runtime.
 func (c *Capabilities) EncoderProbeResults() []EncoderProbeResult {
 	if c == nil {
 		return nil
@@ -57,33 +54,6 @@ func (c *Capabilities) HardwareProbeSummaryLine() string {
 	return "hw probes: ffmpeg=" + string(link) + " | available: " + strings.Join(available, ", ")
 }
 
-// MarkEncoderUnhealthy flags an encoder as failed at runtime and clears availability.
-func (c *Capabilities) MarkEncoderUnhealthy(encoderName, stderr string) EncoderProbeResult {
-	if c == nil {
-		return EncoderProbeResult{Encoder: encoderName}
-	}
-	kind := encoderKind(encoderName)
-	code, hint := ClassifyHWProbeFailure(stderr, nil, kind)
-	if code == HWProbeOK {
-		code = HWProbeUnknown
-		hint = HintForProbeCode(code)
-	}
-	probe := EncoderProbeResult{
-		Encoder:   encoderName,
-		Accel:     accelForEncoderKind(kind),
-		Available: false,
-		Code:      code,
-		Hint:      hint,
-		Detail:    truncateProbeDetail(stderr, 400),
-	}
-	if enc, ok := c.Encoders[encoderName]; ok {
-		ApplyEncoderProbe(&enc, probe)
-		c.Encoders[encoderName] = enc
-	}
-	c.refreshEncoderProbeIndex(probe)
-	return probe
-}
-
 func (c *Capabilities) refreshEncoderProbeIndex(probe EncoderProbeResult) {
 	for i, p := range c.EncoderProbes {
 		if p.Encoder == probe.Encoder {
@@ -92,62 +62,4 @@ func (c *Capabilities) refreshEncoderProbeIndex(probe EncoderProbeResult) {
 		}
 	}
 	c.EncoderProbes = append(c.EncoderProbes, probe)
-}
-
-// ReProbeHardwareEncoders re-runs layered detection for the given encoders (or all HW encoders when empty).
-func ReProbeHardwareEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Runner, plat platform.Info, hierarchy []AccelType, gpuScoped bool, encoderNames ...string) error {
-	if caps == nil || runner == nil {
-		return nil
-	}
-	targets := encoderNames
-	if len(targets) == 0 {
-		for _, known := range KnownEncoders {
-			if known.HW {
-				targets = append(targets, known.Name)
-			}
-		}
-	}
-	gpus, _ := platform.ListGPUDevices()
-	binary := caps.FFmpegBinary
-	if binary.Kind == "" {
-		binary = ProbeFFmpegBinary(runner.FFmpegPath)
-		caps.FFmpegBinary = binary
-	}
-	for _, name := range targets {
-		knownKind := encoderKind(name)
-		enc := caps.Encoders[name]
-		if !enc.Compiled && !encoderActuallyCompiled(ctx, runner, name, false) {
-			continue
-		}
-		if reason := platformSkipReason(knownKind, plat); reason != "" {
-			probe := EncoderProbeResult{Encoder: name, Accel: accelForEncoderKind(knownKind), Code: HWProbeSkipped, Hint: reason}
-			ApplyEncoderProbe(&enc, probe)
-			enc.TestError = reason
-			caps.Encoders[name] = enc
-			caps.refreshEncoderProbeIndex(probe)
-			continue
-		}
-		smokePlat := PlatformForEncoderKind(plat, knownKind, gpus)
-		probe := ProbeHardwareEncoder(ctx, runner, LayeredProbeInput{
-			EncoderName: name,
-			EncoderKind: knownKind,
-			Platform:    plat,
-			Binary:      binary,
-		}, smokePlat)
-		enc.Tested = true
-		ApplyEncoderProbe(&enc, probe)
-		outOfSelection := gpuScoped && !encoderKindInHierarchy(knownKind, hierarchy)
-		enc.OutOfSelection = outOfSelection
-		if outOfSelection {
-			if probe.Available {
-				enc.SelectionNote = "available, not selected"
-			} else {
-				enc.SelectionNote = "skipped: outside selected device"
-			}
-		}
-		caps.Encoders[name] = enc
-		caps.refreshEncoderProbeIndex(probe)
-	}
-	BuildCodecMatrix(caps, hierarchy)
-	return nil
 }

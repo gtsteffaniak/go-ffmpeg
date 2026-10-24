@@ -1,6 +1,8 @@
 # Hardware encoder detection
 
-go-ffmpeg uses **layered detection** so `-hwaccels` / `-encoders` (compile-time lists) are not mistaken for working GPU encode paths. Results are cached in the capability matrix at startup and can be refreshed with `Service.ReProbeHardware`.
+go-ffmpeg uses **layered detection** so `-hwaccels` / `-encoders` (compile-time lists) are not mistaken for working GPU encode paths. Detection runs **once** when the service is initialized (`ffmpeg.New` / `capabilities.Detect`). The resulting capability matrix is **final for that process**: go-ffmpeg does **not** re-probe encoders, mutate availability after transcode failures, or automatically re-run jobs with software after a hardware error.
+
+To pick up driver or container changes, create a new service (`New`) or call `Service.Reload` explicitly — there is no per-encoder or automatic retry API.
 
 ## Layers
 
@@ -67,6 +69,8 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 | `timeout` | Probe hung | Driver/GPU health, load |
 | `unknown` | Unclassified stderr | Inspect `detail` |
 
+These codes describe **startup detection**. A later transcode may still fail at runtime; the library returns that error to the caller and does not change the cached capability matrix or retry the job.
+
 ## Platform matrix
 
 | Environment | Notes |
@@ -79,24 +83,20 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 | **macOS** | VideoToolbox; prerequisite layer skipped |
 | **Raspberry Pi** | V4L2 M2M allowed on static builds; Pi profile docs still apply |
 
-## Runtime API
+## Transcode failures
 
-```go
-// Re-run probes after driver/container changes
-_ = svc.ReProbeHardware(ctx) // all HW encoders
-_ = svc.ReProbeHardware(ctx, "h264_nvenc")
+When a hardware encode fails, `OperationError` / stderr may still be classified (e.g. `FailureHardware`) for logging or HTTP mapping. go-ffmpeg **does not**:
 
-// After a failed transcode
-svc.NotifyHardwareEncodeFailure("h264_nvenc", stderr)
-// or
-svc.MarkHardwareEncoderFailed("h264_nvenc", stderr)
-```
+- mark encoders unhealthy or flip `available` flags
+- re-run detection or smoke tests
+- automatically retry the same transcode with software
 
-GPU **selection** (PR #34) still walks device hierarchy, but only chooses encoders that passed layered detection. Software fallback is logged with the probe `hint`.
+Callers that want software after a failure must start a **new** operation with an explicit software profile or restart the service after fixing the environment (`Reload`).
 
 ## Detection vs selection
 
 - `platform.Detect()` and smoke tests stay **unscoped** (all vendors probed).
-- `DeviceSelection` / `GPUSelector` only affect which available encoder is **preferred**, not whether others are probed.
+- `DeviceSelection` / `GPUSelector` only affect which **detected-available** encoder is **preferred**, not whether others are probed.
+- Per-job **software fallback** during resolution (e.g. `AllowSoftware`) uses the one-shot detection snapshot only — it is not a runtime re-probe or retry after failure.
 
 See also [hardware.md](hardware.md) for GPU configuration and FileBrowser-style device lists.

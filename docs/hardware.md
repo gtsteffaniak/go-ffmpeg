@@ -80,18 +80,16 @@ Layered hardware encoder detection runs at startup (binary link type → host pr
 `platform.Detect()` → FFmpeg inventory → layered HW probes → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
 
 ```go
-// Compact line for admin UIs (also logged at info on Reload)
+// Compact line for admin UIs (logged at info on New/Reload)
 caps.HardwareProbeSummaryLine()
 
-// Structured per-encoder rows
+// Structured per-encoder rows (fixed after startup detection)
 for _, row := range caps.EncoderProbeResults() {
     // row.Encoder, row.Available, row.Code, row.Hint, row.Detail
 }
-
-// After driver/container fixes or a runtime HW failure
-svc.ReProbeHardware(ctx, "h264_vaapi")
-svc.NotifyHardwareEncodeFailure("h264_nvenc", stderr)
 ```
+
+Detection is **one-shot** per service instance: no runtime re-probe, no capability mutation on transcode failure, no automatic retry. Use `Service.Reload` only when you intentionally re-run full detection (e.g. after fixing drivers).
 
 Skip HW tests: `SkipHWTests` or `GOFFMPEG_SKIP_HW=1`. A software selection still detects hardware so hosts can show what is available.
 

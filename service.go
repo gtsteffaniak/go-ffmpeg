@@ -379,14 +379,7 @@ func (s *Service) Transcode(ctx context.Context, opts TranscodeOptions) error {
 	caps := s.caps
 	s.mu.RUnlock()
 	return s.runWithClass(ctx, concurrency.SlotEncode, opts.Input.URL, func() error {
-		err := ops.Transcode(ctx, s.runner, caps, opts)
-		if err != nil {
-			if sel, selErr := s.ResolveVideoEncoder(opts.Profile); selErr == nil {
-				s.NotifyHardwareEncodeFailure(sel.Encoder, stderrFromErr(err))
-			}
-			return wrapOp("Transcode", ErrEncodeFailed, err)
-		}
-		return nil
+		return wrapOp("Transcode", ErrEncodeFailed, ops.Transcode(ctx, s.runner, caps, opts))
 	})
 }
 
