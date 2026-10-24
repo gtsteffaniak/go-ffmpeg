@@ -19,6 +19,7 @@ func init() {
 	Register(extractSubtitleOp{})
 	Register(convertHEICOp{})
 	Register(detectSubtitlesOp{})
+	Register(spriteSheetOp{})
 }
 
 type probeStreamOp struct{}
@@ -147,4 +148,14 @@ type detectSubtitlesOp struct{}
 func (detectSubtitlesOp) Name() string { return "DetectSubtitles" }
 func (detectSubtitlesOp) Requirements() RequirementSet {
 	return RequirementSet{Protocols: []string{"file"}}
+}
+
+type spriteSheetOp struct{}
+
+func (spriteSheetOp) Name() string { return "SpriteSheet" }
+func (spriteSheetOp) Requirements() RequirementSet {
+	return RequirementSet{
+		Filters:   []string{"scale", "tile", "select"},
+		Protocols: []string{"file", "tcp"},
+	}
 }
