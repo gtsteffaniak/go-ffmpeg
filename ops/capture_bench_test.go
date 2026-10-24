@@ -14,12 +14,12 @@ import (
 
 // CaptureTiming splits software frame capture into probe vs ffmpeg (seek+decode).
 type CaptureTiming struct {
-	ProbeSec   float64
-	FFmpegSec  float64
-	TotalSec   float64
-	SeekSec    float64
-	Accuracy   CaptureAccuracy
-	SkipProbe  bool
+	ProbeSec  float64
+	FFmpegSec float64
+	TotalSec  float64
+	SeekSec   float64
+	Accuracy  CaptureAccuracy
+	SkipProbe bool
 }
 
 func measureSoftwareCapture(ctx context.Context, runner *ffexec.Runner, input string, seekSec float64, accuracy CaptureAccuracy, skipProbe bool) (CaptureTiming, error) {

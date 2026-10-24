@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
+	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 )
 
 // CaptureAccuracy controls how closely frame capture matches the requested timestamp.

@@ -180,13 +180,13 @@ func SpriteSheet(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 }
 
 type spriteLayout struct {
-	Columns   int
-	Rows      int
-	TileWidth int
+	Columns    int
+	Rows       int
+	TileWidth  int
 	TileHeight int
-	TileCount int
-	StartSec  float64
-	EndSec    float64
+	TileCount  int
+	StartSec   float64
+	EndSec     float64
 }
 
 func resolveSpriteLayout(ctx context.Context, runner *ffexec.Runner, opts SpriteSheetOptions) (spriteLayout, float64, error) {
