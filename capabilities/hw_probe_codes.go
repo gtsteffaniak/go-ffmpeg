@@ -6,20 +6,21 @@ import "strings"
 type HWProbeCode string
 
 const (
-	HWProbeOK                 HWProbeCode = ""
-	HWProbeStaticBinary       HWProbeCode = "static_binary"
-	HWProbeNoDevice           HWProbeCode = "no_device"
-	HWProbeDevicePermission   HWProbeCode = "device_permission_denied"
-	HWProbeLibvaMissing       HWProbeCode = "libva_missing"
-	HWProbeVADriverMissing    HWProbeCode = "va_driver_missing"
-	HWProbeVADriverInitFailed HWProbeCode = "va_driver_init_failed"
-	HWProbeNvidiaLibsMissing  HWProbeCode = "nvidia_libs_missing"
-	HWProbeNVENCUnsupported   HWProbeCode = "nvenc_unsupported_gpu"
-	HWProbeNVENCSessionLimit  HWProbeCode = "nvenc_session_limit"
-	HWProbeTimeout            HWProbeCode = "timeout"
-	HWProbeSkipped            HWProbeCode = "skipped"
-	HWProbeNotCompiled        HWProbeCode = "not_compiled"
-	HWProbeUnknown            HWProbeCode = "unknown"
+	HWProbeOK                      HWProbeCode = ""
+	HWProbeStaticBinary            HWProbeCode = "static_binary"
+	HWProbeNoDevice                HWProbeCode = "no_device"
+	HWProbeDevicePermission        HWProbeCode = "device_permission_denied"
+	HWProbeLibvaMissing            HWProbeCode = "libva_missing"
+	HWProbeVADriverMissing         HWProbeCode = "va_driver_missing"
+	HWProbeVADriverInitFailed      HWProbeCode = "va_driver_init_failed"
+	HWProbeNvidiaLibsMissing       HWProbeCode = "nvidia_libs_missing"
+	HWProbeNVENCUnsupported        HWProbeCode = "nvenc_unsupported_gpu"
+	HWProbeNVENCSessionLimit       HWProbeCode = "nvenc_session_limit"
+	HWProbeTimeout                 HWProbeCode = "timeout"
+	HWProbeSkipped                 HWProbeCode = "skipped"
+	HWProbeNotCompiled             HWProbeCode = "not_compiled"
+	HWProbeGPUPresentDriverMissing HWProbeCode = "gpu_present_driver_missing"
+	HWProbeUnknown                 HWProbeCode = "unknown"
 )
 
 // EncoderProbeResult is the structured outcome of layered hardware detection.
@@ -59,6 +60,8 @@ func HintForProbeCode(code HWProbeCode) string {
 		return "encoder is not compiled into this ffmpeg binary"
 	case HWProbeSkipped:
 		return "hardware probe skipped by configuration"
+	case HWProbeGPUPresentDriverMissing:
+		return "GPU hardware is present but the userspace driver/stack required for hardware encode is missing or unusable"
 	default:
 		return ""
 	}

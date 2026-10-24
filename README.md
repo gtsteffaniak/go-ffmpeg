@@ -8,7 +8,7 @@ Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-
 
 1. **Seamless capability support with fallback** — Startup (or lazy) detection learns what the host ffmpeg actually supports. Unsupported codecs, missing HW encoders, or stripped distro builds degrade gracefully instead of failing opaquely at runtime.
 2. **Task-optimized flags** — Each operation (`Transcode`, `HLSSegment`, `Screenshot`, …) maps typed options to the right ffmpeg flags for that job. No hand-rolling `-movflags`, `-readrate`, or fMP4 fragment options per call site.
-3. **Hardware-aware command selection** — Layered encoder detection (binary link type, host prerequisites, functional encode probes) with actionable error codes. NVENC, QSV, VAAPI, VideoToolbox, AMF, V4L2 M2M, and software fallback are chosen only from **probed-available** encoders. See [docs/hardware-detection.md](docs/hardware-detection.md).
+3. **Hardware-aware command selection** — One-shot layered encoder detection at startup (binary link type, host prerequisites, functional encode probes) with actionable error codes; no runtime re-probe or automatic retry on transcode failure. See [docs/hardware-detection.md](docs/hardware-detection.md).
 4. **Support matrix, reports, and testing** — `go-ffmpeg` CLI emits human or JSON capability reports. CI runs unit, race, integration, and HLS fixture matrices across software and hardware paths so behavior stays pinned.
 5. **Plex-class transcoding and HLS** — Deep support for browser MSE playback: fMP4 segment timelines, `tfdt` alignment, continuous disk-cache HLS, remux/copy/transcode pipelines, and watch-while-transcode pacing — the features streaming servers need, without mastering ffmpeg internals.
 

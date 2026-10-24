@@ -28,6 +28,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.FFprobePath = runner.FFprobePath
 	caps.GeneratedAt = time.Now()
 	caps.FFmpegBinary = ProbeFFmpegBinary(runner.FFmpegPath)
+	caps.DetectionHost = NewDetectionHost()
 
 	verRes, err := runner.RunFFmpeg(ctx, "-version")
 	if err != nil {

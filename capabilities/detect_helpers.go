@@ -76,6 +76,7 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 				EncoderKind: known.Kind,
 				Platform:    plat,
 				Binary:      caps.FFmpegBinary,
+				Host:        caps.DetectionHost,
 				SkipSmoke:   false,
 			}, smokePlat)
 			ApplyEncoderProbe(&enc, probe)

@@ -17,6 +17,7 @@ type LayeredProbeInput struct {
 	EncoderKind string
 	Platform    platform.Info
 	Binary      FFmpegBinaryInfo
+	Host        DetectionHost
 	SkipSmoke   bool
 }
 
@@ -31,6 +32,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 		res.Code = HWProbeStaticBinary
 		res.Hint = HintForProbeCode(res.Code)
 		res.Detail = "ffmpeg binary is statically linked on Linux"
+		res.Code, res.Hint = ApplyHostRemediation(in.Host, in.EncoderKind, in.Binary, res.Code, res.Hint)
 		return res
 	}
 
@@ -40,6 +42,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 		if res.Hint == "" {
 			res.Hint = HintForProbeCode(code)
 		}
+		res.Code, res.Hint = ApplyHostRemediation(in.Host, in.EncoderKind, in.Binary, res.Code, res.Hint)
 		return res
 	}
 
@@ -59,6 +62,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 		res.Hint = HintForProbeCode(res.Code)
 	}
 	res.Detail = truncateProbeDetail(detail, 400)
+	res.Code, res.Hint = ApplyHostRemediation(in.Host, in.EncoderKind, in.Binary, res.Code, res.Hint)
 	return res
 }
 

@@ -53,6 +53,28 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 
 **UI log line:** `Capabilities.HardwareProbeSummaryLine()` — e.g. `hw probes: ffmpeg=dynamic | available: h264_nvenc, hevc_nvenc`.
 
+When a GPU is present in sysfs but probes fail, startup logs a **warn** line per encoder (`Service.Reload` / `New`) and probe `hint` fields include distro-specific remediation. Code may be upgraded to `gpu_present_driver_missing`.
+
+### GPU presence (driver-independent)
+
+Detected from `/sys/class/drm/card*/device/vendor` (`0x8086` Intel, `0x1002` AMD, `0x10de` NVIDIA), `/dev/nvidia*`, and `/dev/dxg` (WSL). This is separate from `platform.Detect()` driver gates.
+
+### Host context
+
+- **Distro:** `/etc/os-release` `ID` / `ID_LIKE` (Fedora/RHEL, Arch, Debian/Ubuntu, Alpine, …)
+- **Container:** `/.dockerenv` or `/proc/1/cgroup` (docker, containerd, kubernetes)
+
+### Remediation matrix (informational)
+
+| Vendor | Fedora / RHEL | Arch | Debian / Ubuntu | Containers |
+|--------|----------------|------|-----------------|------------|
+| **Intel** H.264/HEVC/QSV | `intel-media-driver` + `intel-vpl-gpu-rt` | `intel-media-driver`, `vpl-gpu-rt` | `intel-media-va-driver-non-free`, `libmfx-gen1.2` | `--device /dev/dri` + render group |
+| **AMD** VAAPI encode | `mesa-va-drivers-freeworld` (**RPM Fusion**; stock Mesa often lacks encode) | `libva-mesa-driver` | `mesa-va-drivers` | `--device /dev/dri` + render group |
+| **NVIDIA** NVENC | Proprietary driver + `libnvidia-encode` | `nvidia` driver package | `nvidia-driver` + encode libs | `--gpus all`, NVIDIA Container Toolkit, **non-static** ffmpeg image |
+| **Any** + static ffmpeg | — | — | — | Use full dynamic/glibc ffmpeg build |
+
+Alpine and other families get generic `apk`/`install` hints derived from the same tables in `platform.DistroContext`.
+
 ## Error codes
 
 | Code | Typical cause | Fix |
@@ -67,6 +89,7 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 | `nvenc_unsupported_gpu` | GPU/driver cannot encode | Update driver or pick another encoder |
 | `nvenc_session_limit` | Too many NVENC sessions | Reduce concurrent NVENC jobs |
 | `timeout` | Probe hung | Driver/GPU health, load |
+| `gpu_present_driver_missing` | GPU in sysfs but VA/NVENC stack missing | See remediation matrix above; check container devices and static vs dynamic ffmpeg |
 | `unknown` | Unclassified stderr | Inspect `detail` |
 
 These codes describe **startup detection**. A later transcode may still fail at runtime; the library returns that error to the caller and does not change the cached capability matrix or retry the job.
