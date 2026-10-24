@@ -17,6 +17,7 @@ const (
 	AccelD3D12        AccelType = "d3d12"
 	AccelVideoToolbox AccelType = "videotoolbox"
 	AccelV4L2M2M      AccelType = "v4l2m2m"
+	AccelVulkan       AccelType = "vulkan"
 	AccelNone         AccelType = "none"
 )
 
@@ -37,7 +38,7 @@ func DefaultHierarchy() []AccelType {
 
 // AllEncoderAccelTypes lists every hardware backend the library understands.
 func AllEncoderAccelTypes() []AccelType {
-	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox, AccelV4L2M2M}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox, AccelV4L2M2M, AccelVulkan}
 }
 
 // HierarchyForPlatform returns encoder preference order for the detected host.

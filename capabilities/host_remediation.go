@@ -27,7 +27,8 @@ func probeCodeDriverRelated(code HWProbeCode) bool {
 	switch code {
 	case HWProbeStaticBinary, HWProbeNoDevice, HWProbeDevicePermission,
 		HWProbeLibvaMissing, HWProbeVADriverMissing, HWProbeVADriverInitFailed,
-		HWProbeNvidiaLibsMissing, HWProbeUnknown:
+		HWProbeNvidiaLibsMissing, HWProbeVulkanLoaderMissing, HWProbeVulkanNoDevice,
+		HWProbeVulkanNoVideoEncode, HWProbeVulkanDriverTooOld, HWProbeUnknown:
 		return true
 	default:
 		return false
@@ -48,6 +49,16 @@ func vendorForEncoderKind(kind string, presence platform.GPUPresence) string {
 			return "intel"
 		}
 	case "qsv":
+		if presence.Intel {
+			return "intel"
+		}
+	case "vulkan":
+		if presence.NVIDIA {
+			return "nvidia"
+		}
+		if presence.AMD {
+			return "amd"
+		}
 		if presence.Intel {
 			return "intel"
 		}
@@ -171,6 +182,8 @@ func encoderBackendLabel(kind string) string {
 		return "VAAPI"
 	case "amf":
 		return "AMF"
+	case "vulkan":
+		return "Vulkan"
 	default:
 		return kind
 	}
@@ -214,7 +227,7 @@ func (c *Capabilities) vendorLevelRemediation() map[string]string {
 		return out
 	}
 	kinds := map[string]string{
-		"nvenc": "nvidia", "qsv": "intel", "vaapi": "", "amf": "amd",
+		"nvenc": "nvidia", "qsv": "intel", "vaapi": "", "amf": "amd", "vulkan": "",
 	}
 	for _, known := range KnownEncoders {
 		if !known.HW {

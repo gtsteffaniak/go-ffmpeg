@@ -28,6 +28,8 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 		return r.vaapiVideoFilters(decode, maxHeight)
 	case capabilities.AccelQSV:
 		return qsvVideoFilters(maxHeight)
+	case capabilities.AccelVulkan:
+		return r.vulkanVideoFilters(decode, maxHeight)
 	case capabilities.AccelVideoToolbox:
 		return r.videotoolboxVideoFilters(decode, maxHeight)
 	default:
@@ -51,6 +53,54 @@ func scaleVTFilter(maxHeight int) string {
 		"scale_vt=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)",
 		maxHeight, maxHeight,
 	)
+}
+
+func (r *Resolver) vulkanVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
+	choice := platform.GPUChoice{}
+	if r != nil && r.Caps != nil && r.Caps.SelectedGPU != nil {
+		choice = *r.Caps.SelectedGPU
+	}
+	plat := platform.Info{}
+	if r != nil && r.Caps != nil {
+		plat = r.Caps.Platform
+	}
+	useScaleVulkan := r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vulkan")
+	vkDecode := decodeUsesVulkan(r, decode)
+
+	var parts []string
+	switch {
+	case vkDecode && useScaleVulkan && maxHeight > 0:
+		parts = append(parts, fmt.Sprintf("scale_vulkan=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)", maxHeight, maxHeight))
+	case vkDecode && maxHeight > 0:
+		parts = append(parts, "hwdownload", fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight), "format=nv12", "hwupload")
+	case useScaleVulkan && maxHeight > 0:
+		parts = append(parts, "format=nv12", "hwupload", fmt.Sprintf("scale_vulkan=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)", maxHeight, maxHeight))
+	default:
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+		}
+		parts = append(parts, "format=nv12", "hwupload")
+	}
+	args := []string{"-filter_hw_device", "vk", "-vf", strings.Join(parts, ",")}
+	if decode.ForceSoftware || decode.Accel == capabilities.AccelNone || decode.Accel == "" {
+		init := platform.FFmpegVulkanDeviceInit(choice, plat)
+		args = append(init, args...)
+	}
+	return args, nil
+}
+
+func decodeUsesVulkan(r *Resolver, decode VideoDecodeProfile) bool {
+	if decode.ForceSoftware {
+		return false
+	}
+	if r == nil {
+		return false
+	}
+	sel, err := r.ResolveDecoder(decode)
+	if err != nil {
+		return false
+	}
+	return sel.Accel == capabilities.AccelVulkan
 }
 
 func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {

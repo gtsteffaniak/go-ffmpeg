@@ -55,6 +55,8 @@ func checkHostPrerequisites(encoderKind string, plat platform.Info, deps prereqD
 		return checkVAStackPrereq(encoderKind, plat, deps)
 	case "nvenc":
 		return checkNVENCPrereq(plat, deps)
+	case "vulkan":
+		return checkVulkanPrereq(plat, deps)
 	case "amf":
 		if plat.OS == "windows" {
 			return HWProbeOK, ""
@@ -109,6 +111,33 @@ func checkVAStackPrereq(encoderKind string, plat platform.Info, deps prereqDeps)
 		if !libResolvable(deps, "libva.so.2") {
 			return HWProbeLibvaMissing, HintForProbeCode(HWProbeLibvaMissing)
 		}
+	}
+	return HWProbeOK, ""
+}
+
+func checkVulkanPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string) {
+	if plat.OS == "darwin" {
+		return HWProbeSkipped, "Vulkan video encode is not supported on macOS"
+	}
+	if plat.Details != nil && plat.Details["pi_model"] == string(platform.PiLegacy) {
+		return HWProbeNoDevice, "Vulkan video encode is not supported on this Raspberry Pi model"
+	}
+	if !libResolvable(deps, "libvulkan.so.1") {
+		return HWProbeVulkanLoaderMissing, HintForProbeCode(HWProbeVulkanLoaderMissing)
+	}
+	if plat.OS == "windows" {
+		return HWProbeOK, ""
+	}
+	if !renderNodeOpenable(deps) {
+		code := HWProbeVulkanNoDevice
+		hint := HintForProbeCode(code)
+		if plat.WSL {
+			hint += "; WSL: ensure wsl --update and pass /dev/dxg; mount /dev/dri when using DRI render nodes"
+		}
+		if gid, ok := renderGroupGID(deps); ok {
+			hint += fmt.Sprintf(" (render group gid %d)", gid)
+		}
+		return code, hint
 	}
 	return HWProbeOK, ""
 }

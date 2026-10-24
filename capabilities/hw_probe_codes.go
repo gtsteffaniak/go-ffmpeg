@@ -20,6 +20,10 @@ const (
 	HWProbeSkipped                 HWProbeCode = "skipped"
 	HWProbeNotCompiled             HWProbeCode = "not_compiled"
 	HWProbeGPUPresentDriverMissing HWProbeCode = "gpu_present_driver_missing"
+	HWProbeVulkanLoaderMissing     HWProbeCode = "vulkan_loader_missing"
+	HWProbeVulkanNoDevice          HWProbeCode = "vulkan_no_device"
+	HWProbeVulkanNoVideoEncode     HWProbeCode = "vulkan_no_video_encode_driver"
+	HWProbeVulkanDriverTooOld      HWProbeCode = "vulkan_driver_too_old"
 	HWProbeUnknown                 HWProbeCode = "unknown"
 )
 
@@ -62,6 +66,14 @@ func HintForProbeCode(code HWProbeCode) string {
 		return "hardware probe skipped by configuration"
 	case HWProbeGPUPresentDriverMissing:
 		return "GPU hardware is present but the userspace driver/stack required for hardware encode is missing or unusable"
+	case HWProbeVulkanLoaderMissing:
+		return "install libvulkan (Vulkan loader); containers need the loader package and GPU device mounts"
+	case HWProbeVulkanNoDevice:
+		return "pass --device /dev/dri/renderD128 (or correct render node); Docker NVIDIA needs --gpus all with NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute"
+	case HWProbeVulkanNoVideoEncode:
+		return "GPU driver lacks Vulkan video encode (VK_KHR_video_encode_queue); update Mesa RADV/ANV or NVIDIA driver"
+	case HWProbeVulkanDriverTooOld:
+		return "Vulkan driver is too old for FFmpeg video encode; upgrade Mesa (RADV/ANV) or NVIDIA driver"
 	default:
 		return ""
 	}
@@ -81,6 +93,8 @@ func accelForEncoderKind(kind string) AccelType {
 		return AccelVideoToolbox
 	case "v4l2m2m":
 		return AccelV4L2M2M
+	case "vulkan":
+		return AccelVulkan
 	default:
 		return AccelNone
 	}

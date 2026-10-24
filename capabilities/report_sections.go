@@ -22,6 +22,7 @@ var hwReportBackends = []hwReportBackend{
 	{Title: "VAAPI", Kinds: []string{"vaapi"}, Accel: AccelVAAPI},
 	{Title: "AMD AMF", Kinds: []string{"amf"}, Accel: AccelAMF},
 	{Title: "Apple VideoToolbox", Kinds: []string{"videotoolbox"}, Accel: AccelVideoToolbox},
+	{Title: "Vulkan", Kinds: []string{"vulkan"}, Accel: AccelVulkan},
 }
 
 func encodersForKinds(kinds []string) []string {

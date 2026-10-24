@@ -22,6 +22,7 @@ func TestParseAccelSelection(t *testing.T) {
 		{"qsv", capabilities.AccelQSV, false},
 		{"NVENC", capabilities.AccelNVENC, false},
 		{"vaapi", capabilities.AccelVAAPI, false},
+		{"vulkan", capabilities.AccelVulkan, false},
 		{"unknown-backend", "", true},
 	}
 
