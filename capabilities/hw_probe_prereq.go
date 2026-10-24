@@ -19,7 +19,7 @@ type prereqDeps struct {
 	ReadFile func(name string) ([]byte, error)
 	LookPath func(file string) (string, error)
 	Ldconfig func() ([]byte, error)
-	Env func(key string) string
+	Env      func(key string) string
 }
 
 func defaultPrereqDeps() prereqDeps {

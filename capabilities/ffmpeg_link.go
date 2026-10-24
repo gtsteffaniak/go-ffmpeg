@@ -89,10 +89,10 @@ func gpuAccelBlockedByStaticBinary(info FFmpegBinaryInfo, encoderKind string) bo
 }
 
 const (
-	elfMagic0 = 0x7f
-	elfMagic1 = 'E'
-	elfMagic2 = 'L'
-	elfMagic3 = 'F'
+	elfMagic0  = 0x7f
+	elfMagic1  = 'E'
+	elfMagic2  = 'L'
+	elfMagic3  = 'F'
 	elfClass64 = 2
 	elfDataLE  = 1
 	ptInterp   = 3

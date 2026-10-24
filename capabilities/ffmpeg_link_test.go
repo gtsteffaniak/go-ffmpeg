@@ -50,9 +50,9 @@ func writeELF64NoInterp(path string) {
 	hdr := make([]byte, 64)
 	hdr[0] = 0x7f
 	hdr[1], hdr[2], hdr[3] = 'E', 'L', 'F'
-	hdr[4] = 2 // ELFCLASS64
-	hdr[5] = 1 // ELFDATA2LSB
-	binary.LittleEndian.PutUint16(hdr[18:20], 1) // e_machine x86_64
+	hdr[4] = 2                                    // ELFCLASS64
+	hdr[5] = 1                                    // ELFDATA2LSB
+	binary.LittleEndian.PutUint16(hdr[18:20], 1)  // e_machine x86_64
 	binary.LittleEndian.PutUint64(hdr[32:40], 64) // e_phoff
 	binary.LittleEndian.PutUint16(hdr[54:56], 56) // e_phentsize
 	binary.LittleEndian.PutUint16(hdr[56:58], 0)  // e_phnum
