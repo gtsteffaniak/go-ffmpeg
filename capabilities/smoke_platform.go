@@ -40,6 +40,16 @@ func PlatformForEncoderKind(base platform.Info, kind string, gpus []platform.GPU
 			plat.Details["render_device"] = g.RenderNode
 			plat.Details["smoke_gpu"] = g.Name
 		}
+	case "vulkan":
+		if dev := platform.DefaultRenderNodeForGPUs(gpus); dev != "" {
+			plat.Details["render_device"] = dev
+		}
+		for _, g := range gpus {
+			if g.RenderNode != "" {
+				plat.Details["smoke_gpu"] = g.Name
+				break
+			}
+		}
 	case "v4l2m2m":
 		if devs := platform.ListV4L2M2MDevices(); len(devs) > 0 {
 			plat.Details["v4l2_device"] = devs[0].Path

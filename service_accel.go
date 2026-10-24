@@ -15,6 +15,9 @@ func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 	if pref, err := capabilities.ParseEncoderPreference(s.cfg.EncoderPreference); err == nil {
 		opts.EncoderPreference = pref
 	}
+	if mode, err := capabilities.ParseVulkanEncoderMode(s.cfg.VulkanEncoder); err == nil {
+		opts.VulkanEncoder = mode
+	}
 
 	strict := s.cfg.effectiveGPUStrictness()
 	chain, orderSummary, err := ResolveConfigDeviceChain(s.cfg, strict, platform.DefaultGPUResolveEnv())

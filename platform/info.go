@@ -12,6 +12,7 @@ type Info struct {
 	QSVRuntime         bool              `json:"qsvRuntime"`
 	D3D12              bool              `json:"d3d12"`
 	VAAPI              bool              `json:"vaapi"`
+	Vulkan             bool              `json:"vulkan"`
 	VideoToolbox       bool              `json:"videotoolbox"`
 	WSL                bool              `json:"wsl"`
 	WSLGPUPartitioning bool              `json:"wslGpuPartitioning"`

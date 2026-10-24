@@ -166,7 +166,7 @@ func h264Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		}
 	case capabilities.AccelQSV:
 		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max, "-g", gop)
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan:
 		return []string{
 			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
 			"-pix_fmt", o.pixFmt, "-g", gop,
@@ -218,7 +218,7 @@ func av1Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o en
 		}
 	case capabilities.AccelQSV:
 		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max, "-g", gop)
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan:
 		return []string{
 			"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize,
 			"-g", gop, "-pix_fmt", o.pixFmt,
@@ -246,7 +246,7 @@ func vp9Args(accel capabilities.AccelType, encoder string, b BitrateConfig, o en
 		}
 	case capabilities.AccelQSV:
 		return qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan:
 		return []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize}
 	default:
 		return []string{"-c:v", "libvpx-vp9", "-b:v", b.Target, "-bufsize", b.BufSize, "-deadline", vp9Deadline(o.quality)}
@@ -263,7 +263,7 @@ func hevcArgs(accel capabilities.AccelType, encoder string, b BitrateConfig, o e
 		}
 	case capabilities.AccelQSV:
 		args = qsvEncoderArgs(encoder, o.quality, "-b:v", b.Target, "-maxrate", b.Max)
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan:
 		args = []string{"-c:v", encoder, "-b:v", b.Target, "-maxrate", b.Max, "-bufsize", b.BufSize, "-pix_fmt", o.pixFmt}
 	case capabilities.AccelVideoToolbox:
 		args = []string{

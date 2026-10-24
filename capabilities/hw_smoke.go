@@ -32,35 +32,11 @@ var hwFailurePatterns = []string{
 
 // SmokeTestHardwareEncoder runs an encode smoke test appropriate for the encoder backend.
 func SmokeTestHardwareEncoder(ctx context.Context, runner *ffexec.Runner, encoderName string, plat platform.Info) (bool, string) {
-	testCtx, cancel := context.WithTimeout(ctx, hwTestTimeout)
-	defer cancel()
-
-	args := hwSmokeArgs(encoderName, plat)
-	if args == nil {
-		return false, "unsupported hardware encoder for smoke test"
+	ok, detail := functionalHWProbe(ctx, runner, encoderName, plat)
+	if ok {
+		return true, ""
 	}
-
-	res, err := runner.RunFFmpeg(testCtx, args...)
-	output := res.Stdout + res.Stderr
-	if err != nil {
-		kind := encoderKindForName(encoderName)
-		primary, hints := hwTroubleshoot(encoderName, kind, output, plat)
-		if primary == "" {
-			primary = summarizeHWError(output)
-		}
-		return false, formatTestMessages(primary, hints)
-	}
-	for _, pattern := range hwFailurePatterns {
-		if strings.Contains(output, pattern) {
-			kind := encoderKindForName(encoderName)
-			primary, hints := hwTroubleshoot(encoderName, kind, output, plat)
-			if primary == "" {
-				primary = summarizeHWError(output)
-			}
-			return false, formatTestMessages(primary, hints)
-		}
-	}
-	return true, ""
+	return false, strings.TrimSpace(detail)
 }
 
 func hwSmokeArgs(encoderName string, plat platform.Info) []string {
@@ -70,30 +46,30 @@ func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 	switch encoderKindForName(encoderName) {
 	case "nvenc":
 		args := []string{"-hide_banner",
-			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
 		}
 		args = append(args, platform.FFmpegEncoderDeviceArgs("nvenc", choice, plat)...)
-		args = append(args, "-c:v", encoderName, "-t", "0.1", "-f", "null", "-")
+		args = append(args, "-c:v", encoderName, "-t", "0.5", "-f", "null", "-")
 		return args
 	case "amf":
 		args := []string{"-hide_banner"}
 		args = append(args, platform.FFmpegHWDeviceInit("amf", choice, plat)...)
 		args = append(args,
-			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
-			"-c:v", encoderName, "-t", "0.1", "-f", "null", "-",
+			"-c:v", encoderName, "-t", "0.5", "-f", "null", "-",
 		)
 		return args
 	case "v4l2m2m":
 		args := []string{
-			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
 			"-pix_fmt", "yuv420p",
 		}
 		if strings.Contains(encoderName, "h264") {
 			args = append(args, "-b:v", "2M")
 		}
-		args = append(args, "-c:v", encoderName, "-t", "0.1", "-f", "null", "-")
+		args = append(args, "-c:v", encoderName, "-t", "0.5", "-f", "null", "-")
 		return args
 	case "qsv":
 		args := []string{"-hide_banner"}
@@ -102,10 +78,10 @@ func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 			args = append(args, "-init_hw_device", "qsv=hw", "-filter_hw_device", "hw")
 		}
 		args = append(args,
-			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
 			"-vf", "format=nv12,hwupload=extra_hw_frames=64,format=qsv",
 			"-c:v", encoderName,
-			"-t", "0.1", "-f", "null", "-",
+			"-t", "0.5", "-f", "null", "-",
 		)
 		return args
 	case "vaapi":
@@ -113,15 +89,25 @@ func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 			"-hide_banner",
 			"-init_hw_device", "vaapi=va:" + renderDev,
 			"-filter_hw_device", "va",
-			"-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
 			"-vf", "format=nv12,hwupload",
 			"-c:v", encoderName,
-			"-t", "0.1", "-f", "null", "-",
+			"-t", "0.5", "-f", "null", "-",
 		}
+	case "vulkan":
+		args := []string{"-hide_banner"}
+		args = append(args, platform.FFmpegHWDeviceInit("vulkan", choice, plat)...)
+		args = append(args,
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
+			"-vf", "format=nv12,hwupload",
+			"-c:v", encoderName,
+			"-t", "0.5", "-f", "null", "-",
+		)
+		return args
 	default:
 		return []string{
-			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=320x240:rate=30",
-			"-c:v", encoderName, "-t", "0.1", "-f", "null", "-",
+			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
+			"-c:v", encoderName, "-t", "0.5", "-f", "null", "-",
 		}
 	}
 }
@@ -146,6 +132,9 @@ func encoderKindForName(name string) string {
 	}
 	if strings.Contains(name, "videotoolbox") {
 		return "videotoolbox"
+	}
+	if strings.Contains(name, "vulkan") {
+		return "vulkan"
 	}
 	return "unknown"
 }
@@ -299,6 +288,14 @@ func platformGateForEncoder(kind string, plat platform.Info) bool {
 		return plat.QSV && plat.Intel && plat.VAAPI && plat.QSVRuntime
 	case "vaapi":
 		return plat.VAAPI
+	case "vulkan":
+		if plat.OS == "darwin" {
+			return false
+		}
+		if plat.Details != nil && plat.Details["pi_model"] == string(platform.PiLegacy) {
+			return false
+		}
+		return plat.Vulkan
 	default:
 		return true
 	}
@@ -337,6 +334,13 @@ func platformSkipReason(kind string, plat platform.Info) string {
 		}
 		if !plat.QSVRuntime {
 			return qsvRuntimeSkipReason(plat)
+		}
+	case "vulkan":
+		if plat.OS == "darwin" {
+			return "[platform] Vulkan video encode is not supported on macOS"
+		}
+		if !plat.Vulkan {
+			return "[platform] Vulkan loader or GPU device not available for video encode"
 		}
 	case "vaapi":
 		if !plat.VAAPI {

@@ -52,6 +52,8 @@ func EncoderAccel(encoder string) AccelType {
 			return AccelVideoToolbox
 		case "v4l2m2m":
 			return AccelV4L2M2M
+		case "vulkan":
+			return AccelVulkan
 		default:
 			return AccelNone
 		}
@@ -74,6 +76,8 @@ func DecoderAccel(decoder string) AccelType {
 			return AccelVAAPI
 		case "videotoolbox":
 			return AccelVideoToolbox
+		case "vulkan":
+			return AccelVulkan
 		default:
 			return AccelNone
 		}
@@ -83,6 +87,9 @@ func DecoderAccel(decoder string) AccelType {
 	}
 	if decoderKindForName(decoder) == "videotoolbox" {
 		return AccelVideoToolbox
+	}
+	if decoderKindForName(decoder) == "vulkan" {
+		return AccelVulkan
 	}
 	return AccelNone
 }

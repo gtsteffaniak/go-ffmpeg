@@ -71,6 +71,12 @@ func (s *Service) Reload(ctx context.Context) error {
 	ops.EvaluateOps(caps)
 	log := WithGroup(s.cfg.Logger, "ffmpeg")
 	log.Info(caps.SummaryLine())
+	for _, line := range caps.GPUPresentRemediationLogLines() {
+		log.Warn(line)
+	}
+	for _, line := range caps.VulkanProbeWarnLines() {
+		log.Warn(line)
+	}
 	report := caps.ReportString()
 	for _, line := range splitLines(report) {
 		log.Debug(line)

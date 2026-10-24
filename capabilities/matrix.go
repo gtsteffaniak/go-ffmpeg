@@ -17,6 +17,7 @@ const (
 	AccelD3D12        AccelType = "d3d12"
 	AccelVideoToolbox AccelType = "videotoolbox"
 	AccelV4L2M2M      AccelType = "v4l2m2m"
+	AccelVulkan       AccelType = "vulkan"
 	AccelNone         AccelType = "none"
 )
 
@@ -37,7 +38,7 @@ func DefaultHierarchy() []AccelType {
 
 // AllEncoderAccelTypes lists every hardware backend the library understands.
 func AllEncoderAccelTypes() []AccelType {
-	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox, AccelV4L2M2M}
+	return []AccelType{AccelNVENC, AccelVAAPI, AccelQSV, AccelAMF, AccelD3D12, AccelVideoToolbox, AccelV4L2M2M, AccelVulkan}
 }
 
 // HierarchyForPlatform returns encoder preference order for the detected host.
@@ -117,14 +118,17 @@ type DecoderSelection struct {
 
 // EncoderCapability describes a single encoder's availability.
 type EncoderCapability struct {
-	Name           string `json:"name"`
-	Compiled       bool   `json:"compiled"`
-	Tested         bool   `json:"tested"`
-	Available      bool   `json:"available"`
-	Kind           string `json:"kind"`
-	TestError      string `json:"testError,omitempty"`
-	SelectionNote  string `json:"selectionNote,omitempty"` // e.g. available, not selected
-	OutOfSelection bool   `json:"outOfSelection,omitempty"`
+	Name           string      `json:"name"`
+	Compiled       bool        `json:"compiled"`
+	Tested         bool        `json:"tested"`
+	Available      bool        `json:"available"`
+	Kind           string      `json:"kind"`
+	TestError      string      `json:"testError,omitempty"`
+	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`
+	ProbeHint      string      `json:"probeHint,omitempty"`
+	ProbeDetail    string      `json:"probeDetail,omitempty"`
+	SelectionNote  string      `json:"selectionNote,omitempty"` // e.g. available, not selected
+	OutOfSelection bool        `json:"outOfSelection,omitempty"`
 }
 
 // HWAccelCapability describes a hardware acceleration method.
@@ -185,6 +189,9 @@ type Capabilities struct {
 	DevicePreference   string                       `json:"devicePreference,omitempty"`
 	Pinning            platform.BackendPinning      `json:"pinning,omitempty"`
 	AllowSoftware      bool                         `json:"allowSoftware"`
+	FFmpegBinary       FFmpegBinaryInfo             `json:"ffmpegBinary,omitempty"`
+	EncoderProbes      []EncoderProbeResult         `json:"encoderProbes,omitempty"`
+	DetectionHost      DetectionHost                `json:"detectionHost,omitempty"`
 }
 
 // DeviceCodecAttempt records why a device/backend was skipped during selection.
