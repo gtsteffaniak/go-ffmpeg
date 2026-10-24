@@ -71,12 +71,19 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 			}
 			smokePlat := PlatformForEncoderKind(plat, known.Kind, gpus)
 			enc.Tested = true
-			ok, testErr := SmokeTestHardwareEncoder(ctx, runner, known.Name, smokePlat)
-			enc.Available = ok
-			enc.TestError = testErr
+			probe := ProbeHardwareEncoder(ctx, runner, LayeredProbeInput{
+				EncoderName: known.Name,
+				EncoderKind: known.Kind,
+				Platform:    plat,
+				Binary:      caps.FFmpegBinary,
+				Host:        caps.DetectionHost,
+				SkipSmoke:   false,
+			}, smokePlat)
+			ApplyEncoderProbe(&enc, probe)
+			caps.refreshEncoderProbeIndex(probe)
 			if outOfSelection {
 				enc.OutOfSelection = true
-				if ok {
+				if probe.Available {
 					enc.SelectionNote = "available, not selected"
 				} else {
 					enc.SelectionNote = "skipped: outside selected device"

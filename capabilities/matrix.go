@@ -117,14 +117,17 @@ type DecoderSelection struct {
 
 // EncoderCapability describes a single encoder's availability.
 type EncoderCapability struct {
-	Name           string `json:"name"`
-	Compiled       bool   `json:"compiled"`
-	Tested         bool   `json:"tested"`
-	Available      bool   `json:"available"`
-	Kind           string `json:"kind"`
-	TestError      string `json:"testError,omitempty"`
-	SelectionNote  string `json:"selectionNote,omitempty"` // e.g. available, not selected
-	OutOfSelection bool   `json:"outOfSelection,omitempty"`
+	Name           string      `json:"name"`
+	Compiled       bool        `json:"compiled"`
+	Tested         bool        `json:"tested"`
+	Available      bool        `json:"available"`
+	Kind           string      `json:"kind"`
+	TestError      string      `json:"testError,omitempty"`
+	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`
+	ProbeHint      string      `json:"probeHint,omitempty"`
+	ProbeDetail    string      `json:"probeDetail,omitempty"`
+	SelectionNote  string      `json:"selectionNote,omitempty"` // e.g. available, not selected
+	OutOfSelection bool        `json:"outOfSelection,omitempty"`
 }
 
 // HWAccelCapability describes a hardware acceleration method.
@@ -185,6 +188,9 @@ type Capabilities struct {
 	DevicePreference   string                       `json:"devicePreference,omitempty"`
 	Pinning            platform.BackendPinning      `json:"pinning,omitempty"`
 	AllowSoftware      bool                         `json:"allowSoftware"`
+	FFmpegBinary       FFmpegBinaryInfo             `json:"ffmpegBinary,omitempty"`
+	EncoderProbes      []EncoderProbeResult         `json:"encoderProbes,omitempty"`
+	DetectionHost      DetectionHost                `json:"detectionHost,omitempty"`
 }
 
 // DeviceCodecAttempt records why a device/backend was skipped during selection.

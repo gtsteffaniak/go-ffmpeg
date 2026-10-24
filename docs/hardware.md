@@ -75,7 +75,21 @@ Deprecated: `Config.GPU` string is still accepted when `GPUSelector` is zero.
 
 ## Detection
 
-`platform.Detect()` → FFmpeg inventory → optional smoke tests → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
+Layered hardware encoder detection runs at startup (binary link type → host prerequisites → functional encode probes). Compile-time `-encoders` lists alone are not trusted on static Linux builds. Full step-by-step detail, error codes, and platform notes: **[hardware-detection.md](hardware-detection.md)**.
+
+`platform.Detect()` → FFmpeg inventory → layered HW probes → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
+
+```go
+// Compact line for admin UIs (logged at info on New/Reload)
+caps.HardwareProbeSummaryLine()
+
+// Structured per-encoder rows (fixed after startup detection)
+for _, row := range caps.EncoderProbeResults() {
+    // row.Encoder, row.Available, row.Code, row.Hint, row.Detail
+}
+```
+
+Detection is **one-shot** per service instance: no runtime re-probe, no capability mutation on transcode failure, no automatic retry. Use `Service.Reload` only when you intentionally re-run full detection (e.g. after fixing drivers).
 
 Skip HW tests: `SkipHWTests` or `GOFFMPEG_SKIP_HW=1`. A software selection still detects hardware so hosts can show what is available.
 
