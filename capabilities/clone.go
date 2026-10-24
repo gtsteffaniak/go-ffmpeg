@@ -18,6 +18,7 @@ func (c *Capabilities) Clone() *Capabilities {
 	out.EnabledOps = append([]string(nil), c.EnabledOps...)
 	out.DisabledOps = cloneDisabledOps(c.DisabledOps)
 	out.EncoderHierarchy = append([]AccelType(nil), c.EncoderHierarchy...)
+	out.EncoderProbes = append([]EncoderProbeResult(nil), c.EncoderProbes...)
 	if c.SelectedGPU != nil {
 		gpu := *c.SelectedGPU
 		out.SelectedGPU = &gpu

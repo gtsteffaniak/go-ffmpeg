@@ -135,6 +135,9 @@ func encodeOptionFromName(caps *Capabilities, codec VideoCodec, name string, acc
 	}
 	if enc, ok := caps.Encoders[name]; ok && !enc.Available {
 		opt.UnavailableReason = enc.TestError
+		if opt.UnavailableReason == "" && enc.ProbeHint != "" {
+			opt.UnavailableReason = formatProbeError(enc.ProbeCode, enc.ProbeHint, enc.ProbeDetail)
+		}
 		if opt.UnavailableReason == "" && !enc.Compiled {
 			opt.UnavailableReason = "encoder not compiled in this FFmpeg build"
 		}

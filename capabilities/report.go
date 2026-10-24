@@ -148,6 +148,9 @@ func (c *Capabilities) SummaryLine() string {
 	} else {
 		parts = append(parts, "hardware encoders: none")
 	}
+	if c.FFmpegBinary.Kind != "" {
+		parts = append(parts, "ffmpeg link: "+string(c.FFmpegBinary.Kind))
+	}
 
 	ops := fmt.Sprintf("operations: %d enabled", len(c.EnabledOps))
 	if len(c.DisabledOps) > 0 {
