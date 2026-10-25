@@ -15,7 +15,7 @@ Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-
 ## Tasks
 
 - Probe streams, duration, dimensions, subtitles
-- Single-frame capture (JPEG/WebP/PNG) to files or `io.Writer`
+- Single-frame capture (JPEG/WebP/PNG) to files or `io.Writer`, plus thumbnail sprite sheets (WebVTT-ready)
 - Transcode, segmented record, live fMP4 to `io.Writer`
 - **HLS** for browser playback (on-demand fMP4 segments + continuous disk cache) — Plex/Jellyfin-class depth
 - Timelapse compile
@@ -122,6 +122,7 @@ Runnable programs under `examples/` (each is `go run ./examples/<name>`):
 |---------|------|
 | [`examples/basic`](examples/basic) | Probe + capability report |
 | [`examples/capture-frame`](examples/capture-frame) | Single-frame capture |
+| [`examples/sprite-sheet`](examples/sprite-sheet) | Tiled thumbnails + WebVTT |
 | [`examples/transcode`](examples/transcode) | File transcode to H.264 MP4 |
 | [`examples/hls`](examples/hls) | On-demand fMP4 HLS segment |
 | [`examples/timelapse`](examples/timelapse) | Image sequence → MP4 |

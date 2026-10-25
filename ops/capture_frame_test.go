@@ -75,37 +75,30 @@ func TestPreviewNeedsDurationProbe(t *testing.T) {
 	}
 }
 
-func TestBuildCaptureFrameArgsSeekPlacement(t *testing.T) {
+func TestFrameCaptureArgsSeekPlacement(t *testing.T) {
 	t.Parallel()
-	runner := &ffexec.Runner{FFmpegPath: "ffmpeg"}
-	enc := frameEncoder{vcodec: "mjpeg", format: "image2"}
-	opts := FrameOptions{
-		Input: InputSource{URL: "in.mp4"},
-	}
+	runner := &ffexec.Runner{}
+	opts := FrameOptions{Input: InputSource{URL: "in.mp4"}}
+	enc := frameEncoder{vcodec: "mjpeg", muxer: "image2pipe"}
 
-	fast, err := buildCaptureFrameArgs(runner, opts, enc, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fast := BuildFrameCaptureArgs(runner, opts.Input, nil, frameCaptureArgs(opts, enc, 5))
 	joined := strings.Join(fast, " ")
-	if !strings.HasPrefix(joined, "-hide_banner -nostats -ss 5.000") {
-		t.Fatalf("fast seek before input: %s", joined)
+	if !strings.Contains(joined, "-ss 5.000") {
+		t.Fatalf("fast seek: %s", joined)
 	}
-	if strings.Count(joined, "-ss") != 1 {
-		t.Fatalf("expected one -ss in fast mode: %s", joined)
+	ssIdx := indexOf(fast, "-ss")
+	iIdx := indexOf(fast, "-i")
+	if ssIdx < 0 || iIdx < 0 || ssIdx > iIdx {
+		t.Fatalf("expected -ss before -i: %v", fast)
+	}
+	if !sliceContains(fast, "-noaccurate_seek") {
+		t.Fatalf("expected fast accuracy: %v", fast)
 	}
 
 	opts.Accuracy = CaptureExact
-	exact, err := buildCaptureFrameArgs(runner, opts, enc, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ex := strings.Join(exact, " ")
-	if strings.HasPrefix(ex, "-hide_banner -nostats -ss") {
-		t.Fatalf("exact seek should not lead with -ss: %s", ex)
-	}
-	if !strings.Contains(ex, "-i in.mp4 -ss 5.000") {
-		t.Fatalf("exact seek after -i: %s", ex)
+	exact := BuildFrameCaptureArgs(runner, opts.Input, nil, frameCaptureArgs(opts, enc, 5))
+	if !sliceContains(exact, "-accurate_seek") {
+		t.Fatalf("expected exact accuracy: %v", exact)
 	}
 }
 

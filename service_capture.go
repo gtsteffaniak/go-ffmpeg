@@ -9,14 +9,6 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
-// CaptureAccuracy re-export.
-type CaptureAccuracy = ops.CaptureAccuracy
-
-const (
-	CaptureFast  = ops.CaptureFast
-	CaptureExact = ops.CaptureExact
-)
-
 // FrameFormat re-export.
 type FrameFormat = ops.FrameFormat
 
@@ -34,9 +26,6 @@ var (
 	AtSec     = ops.AtSec
 	AtPercent = ops.AtPercent
 )
-
-// CaptureLightProbe re-export.
-type CaptureLightProbe = ops.CaptureLightProbe
 
 // FrameOptions configures single-frame capture.
 type FrameOptions = ops.FrameOptions

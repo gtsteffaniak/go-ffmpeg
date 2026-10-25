@@ -1,26 +1,16 @@
-# Frame capture
+# Frame capture and sprite sheets
 
-v1.6.0 unifies single-frame extraction behind `CaptureFrame` and `CaptureFrameFile`. Legacy `Screenshot` and `VideoPreview` remain as deprecated wrappers with the same behavior.
+## Unified API (`CaptureFrame`, `CaptureFrameFile`) — v1.6.0
 
-## API
+`CaptureFrame` streams one encoded frame to any `io.Writer`. `CaptureFrameFile` publishes via a temp file in the target directory and atomic rename. Legacy `Screenshot` and `VideoPreview` delegate to the same argv builder but keep their historical defaults (see migration below).
 
 ```go
-// Stream JPEG to an HTTP response
-_ = svc.CaptureFrame(ctx, w, ffmpeg.FrameOptions{
-    Input: ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
-    At:    ffmpeg.AtPercent(25),
-    DurationSec: dur, // skip ffprobe when set
-})
-
-// Atomic file write
 _ = svc.CaptureFrameFile(ctx, "thumb.jpg", ffmpeg.FrameOptions{
-    Input: ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
-    At:    ffmpeg.AtSec(4.5),
-    Quality: 85,
+    Input:       ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
+    At:          ffmpeg.AtPercent(25),
+    DurationSec: dur,
 })
 ```
-
-### Position
 
 | `At` value | Behavior |
 |------------|----------|
@@ -28,32 +18,68 @@ _ = svc.CaptureFrameFile(ctx, "thumb.jpg", ffmpeg.FrameOptions{
 | `AtSec(t)` | Seek to `t` seconds; clamped near EOF when duration is known |
 | `AtPercent(p)` | `p`% of duration; values above 100 are clamped to 100 |
 
-`DurationSec` on `FrameOptions` avoids an ffprobe round-trip when you already know the length. ffprobe runs only when the position is percent-based and `DurationSec` is zero.
+ffprobe runs only when the position is percent-based and `DurationSec` is zero.
 
-### Accuracy
+**Formats:** JPEG (default, `mjpeg` + `image2pipe`), WebP, and PNG when the detected ffmpeg build exposes the encoders.
 
-- `CaptureFast` (default): `-ss` before `-i` (fast input seek).
-- `CaptureExact`: `-ss` after `-i` (frame-accurate, slower).
+**Optional `MeanLuma`:** set `MeanLuma: &value` on `FrameOptions` to record average luma (0–255) from the encoded frame (buffers once).
 
-### Format
+## Shared capture argv (`BuildFrameCaptureArgs`)
 
-Default output is JPEG (`mjpeg` in `image2`). WebP and PNG are selected with `Format: ffmpeg.FrameWebP` or `ffmpeg.FramePNG` when the detected ffmpeg build exposes `libwebp`/`webp` or `png` encoders.
+`Screenshot`, `VideoPreview`, and `CaptureFrame` share optimized argv:
 
-### Light probe
+| Technique | Purpose |
+|-----------|---------|
+| Input `-ss` before `-i` | Fast demuxer seek |
+| `-noaccurate_seek` (default) | Nearest keyframe thumbnail (`CaptureFast`) |
+| `-accurate_seek` | Decode to exact timestamp (`CaptureExact`) |
+| `-skip_frame nokey` | Keyframe-only decode in fast mode |
+| Lightweight `-probesize` / `-analyzeduration` | Skip full demuxer probe when duration/seek is known |
+| `-sws_flags fast_bilinear` | Cheaper scale during decode |
+| `-an -sn -dn`, `-threads 1` | Minimal work for one frame |
+| `image2pipe` to stdout | Avoid ffmpeg temp files; Go streams to `io.Writer` or output path |
 
-Set `LightProbe: &ffmpeg.CaptureLightProbe{}` to populate `MeanLuma` (0–255) from the encoded frame. The library buffers the frame when a probe is requested.
+### Lightweight probing
+
+When the caller already knows duration or a seek target, capture sets smaller-than-default probe limits:
+
+- **`CaptureDefaultLightProbeSize`** (`3145728`, 3 MiB)
+- **`CaptureDefaultLightAnalyzeDuration`** (`1500000` µs, 1.5 s)
+
+Override per call with `CaptureLightProbe` on `FrameOptions`, `ScreenshotOptions`, `PreviewOptions`, or `SpriteSheetOptions` (`ProbeSize` / `AnalyzeDuration` strings passed straight to ffmpeg).
+
+`ScreenshotOptions` adds optional `SeekSec`, `SeekPercent`, `Width`/`Height`, and `Accuracy` (default `CaptureFast`). `Screenshot` writes directly to the output path; `CaptureFrameFile` uses atomic rename.
+
+### Benchmarks
+
+```bash
+go test ./ops -run TestCaptureTimingReport -count=1 -v
+go test ./ops -bench=BenchmarkSoftwareFrameCapture -benchtime=3x -count=1
+go test -tags=integration ./ops -run TestScreenshotMPEGTSLightProbe -count=1
+```
 
 ## Migration from legacy APIs
 
 | Legacy | Replacement |
 |--------|-------------|
 | `Screenshot` | `CaptureFrameFile` with zero `At`, JPEG default |
-| `VideoPreview` | `CaptureFrame` with `At: AtSec(...)` or `AtPercent(...)`; use `DurationSec` to skip probe |
+| `VideoPreview` | `CaptureFrame` with `At: AtSec(...)` or `AtPercent(...)` |
 
 `VideoPreview` still defaults to 10% into the file when neither `SeekSec` nor `SeekPercent` is set. The new API does not — use `AtPercent(10)` explicitly.
 
-`Screenshot` writes directly to the output path (non-atomic). `CaptureFrameFile` always publishes via rename.
+`CaptureFrame` is listed in capability detection. `Screenshot` and `VideoPreview` share the same requirements.
 
-## Capability
+## Sprite sheets (`SpriteSheet`)
 
-`CaptureFrame` is listed in capability detection. `Screenshot` and `VideoPreview` share the same requirements and stay enabled when capture is supported.
+`Service.SpriteSheet` renders **N** thumbnails in **one** ffmpeg process:
+
+- `select='gte(t,n_forced*INTERVAL)'` for even temporal spacing (or set `IntervalSec` directly)
+- `scale` (or GPU `scale_vaapi` / `scale_vt` / `scale_cuda` when decoding on hardware)
+- `tile=CxR` into a single JPEG or WebP
+- Optional WebVTT with `#xywh=` cues for scrub previews
+
+Hardware decode uses the same `VideoDecodeProfile` / detection as transcode. Failures surface as `ErrProfileUnsupported` with stderr hints; **no automatic software fallback**.
+
+`Service.SpriteSheetCapabilities()` exposes preferred and available decode paths so hosts can gate the feature on hardware acceleration.
+
+See `examples/sprite-sheet`.

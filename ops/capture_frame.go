@@ -20,21 +20,11 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
-// CaptureAccuracy selects how ffmpeg seeks before extracting one frame.
-type CaptureAccuracy int
-
-const (
-	// CaptureFast seeks before demux (-ss before -i). Default.
-	CaptureFast CaptureAccuracy = 0
-	// CaptureExact decodes from the start and seeks after -i for frame-accurate output.
-	CaptureExact CaptureAccuracy = 1
-)
-
 // FrameFormat is the still-image output codec/container.
 type FrameFormat int
 
 const (
-	// FrameJPEG is Motion JPEG in an image2 bitstream (default).
+	// FrameJPEG is Motion JPEG over image2pipe (default).
 	FrameJPEG FrameFormat = 0
 	// FrameWebP uses libwebp or the native webp encoder when available.
 	FrameWebP FrameFormat = 1
@@ -66,11 +56,6 @@ func AtPercent(percent float64) FramePosition {
 	return FramePosition{kind: framePosPercent, value: percent}
 }
 
-// CaptureLightProbe optionally records mean luma (0–255) of the captured frame.
-type CaptureLightProbe struct {
-	MeanLuma float64
-}
-
 // FrameOptions configures single-frame capture to a writer or file.
 type FrameOptions struct {
 	Input       InputSource
@@ -83,8 +68,11 @@ type FrameOptions struct {
 	ScaleMode   ScaleMode
 	Format      FrameFormat
 	Quality     int
-	LightProbe  *CaptureLightProbe
-	Timeout     time.Duration
+	// LightProbe sets lightweight ffmpeg input -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	// MeanLuma when non-nil is filled with average luma (0–255) of the encoded frame.
+	MeanLuma *float64
+	Timeout  time.Duration
 }
 
 // FrameCaptureValidationError reports invalid FrameOptions before ffmpeg runs.
@@ -100,9 +88,7 @@ func (e *FrameCaptureValidationError) Error() string {
 	return fmt.Sprintf("frame capture: %s: %s", e.Field, e.Msg)
 }
 
-var (
-	errFrameFormatUnsupported = errors.New("frame capture: image format encoder unavailable")
-)
+var errFrameFormatUnsupported = errors.New("frame capture: image format encoder unavailable")
 
 // FrameNeedsDurationProbe reports whether ffprobe duration is required for position resolution.
 func FrameNeedsDurationProbe(at FramePosition, durationSec float64) bool {
@@ -186,7 +172,6 @@ func clampSeekNearEnd(durationSec float64) float64 {
 	if durationSec <= 0 {
 		return 0
 	}
-	// Stay slightly before EOF so ffmpeg can still decode one video frame.
 	const epsilon = 0.05
 	if durationSec > epsilon {
 		return durationSec - epsilon
@@ -196,7 +181,7 @@ func clampSeekNearEnd(durationSec float64) float64 {
 
 type frameEncoder struct {
 	vcodec string
-	format string
+	muxer  string
 }
 
 func resolveFrameEncoder(caps *capabilities.Capabilities, format FrameFormat) (frameEncoder, error) {
@@ -204,24 +189,24 @@ func resolveFrameEncoder(caps *capabilities.Capabilities, format FrameFormat) (f
 	case FrameWebP:
 		if caps != nil {
 			if caps.EncoderAvailable("libwebp") {
-				return frameEncoder{vcodec: "libwebp", format: "webp"}, nil
+				return frameEncoder{vcodec: "libwebp", muxer: "webp"}, nil
 			}
 			if caps.EncoderAvailable("webp") {
-				return frameEncoder{vcodec: "webp", format: "webp"}, nil
+				return frameEncoder{vcodec: "webp", muxer: "webp"}, nil
 			}
 			return frameEncoder{}, errFrameFormatUnsupported
 		}
-		return frameEncoder{vcodec: "libwebp", format: "webp"}, nil
+		return frameEncoder{vcodec: "libwebp", muxer: "webp"}, nil
 	case FramePNG:
 		if caps != nil && !caps.EncoderAvailable("png") {
 			return frameEncoder{}, errFrameFormatUnsupported
 		}
-		return frameEncoder{vcodec: "png", format: "image2"}, nil
+		return frameEncoder{vcodec: "png", muxer: "image2pipe"}, nil
 	default:
 		if caps != nil && !caps.EncoderAvailable("mjpeg") {
 			return frameEncoder{}, errFrameFormatUnsupported
 		}
-		return frameEncoder{vcodec: "mjpeg", format: "image2"}, nil
+		return frameEncoder{vcodec: "mjpeg", muxer: "image2pipe"}, nil
 	}
 }
 
@@ -238,10 +223,28 @@ func frameQualityQScale(format FrameFormat, quality int) string {
 		if q > 100 {
 			q = 100
 		}
-		// Map 1–100 to ffmpeg 1–31-ish scale for -q:v on webp/png.
 		return encode.QualityToQScale(1 + (q-1)*9/99)
 	default:
 		return encode.QualityToQScale(q)
+	}
+}
+
+func frameCaptureArgs(opts FrameOptions, enc frameEncoder, seekSec float64) FrameCaptureArgs {
+	scale := ""
+	if opts.Width > 0 && opts.Height > 0 {
+		scale = PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode)
+	}
+	skipProbe := opts.DurationSec > 0 || seekSec > 0 || opts.At.kind != framePosFirst
+	return FrameCaptureArgs{
+		SeekSec:      seekSec,
+		Accuracy:     opts.Accuracy,
+		SkipProbe:    skipProbe,
+		LightProbe:   opts.LightProbe,
+		KeyframeOnly: opts.Accuracy == CaptureFast,
+		ScaleFilter:  scale,
+		QScale:       frameQualityQScale(opts.Format, opts.Quality),
+		VideoCodec:   enc.vcodec,
+		MuxerFormat:  enc.muxer,
 	}
 }
 
@@ -255,17 +258,14 @@ func CaptureFrame(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 		return err
 	}
 
-	var dest io.Writer = w
+	dest := w
 	var buf *bytes.Buffer
-	if opts.LightProbe != nil {
+	if opts.MeanLuma != nil {
 		buf = &bytes.Buffer{}
 		dest = buf
 	}
 
-	args, err := buildCaptureFrameArgs(runner, opts, enc, seekSec)
-	if err != nil {
-		return err
-	}
+	args := BuildFrameCaptureArgs(runner, opts.Input, opts.RTSP, frameCaptureArgs(opts, enc, seekSec))
 
 	timeout := opts.Timeout
 	if timeout == 0 {
@@ -274,21 +274,14 @@ func CaptureFrame(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 	pctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := ffexec.CommandContext(pctx, runner.FFmpegPath, args...)
-	cmd.Stdout = dest
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if pctx.Err() != nil {
-			return pctx.Err()
-		}
-		return fmt.Errorf("%w: %s", err, stderr.String())
+	if err := runFrameCaptureToWriter(pctx, runner, args, dest); err != nil {
+		return err
 	}
 
 	if buf != nil {
-		if opts.LightProbe != nil {
+		if opts.MeanLuma != nil {
 			if luma, err := meanLumaFromImage(buf.Bytes()); err == nil {
-				opts.LightProbe.MeanLuma = luma
+				*opts.MeanLuma = luma
 			}
 		}
 		if _, err := io.Copy(w, buf); err != nil {
@@ -296,32 +289,6 @@ func CaptureFrame(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 		}
 	}
 	return nil
-}
-
-func buildCaptureFrameArgs(runner *ffexec.Runner, opts FrameOptions, enc frameEncoder, seekSec float64) ([]string, error) {
-	args := []string{"-hide_banner", "-nostats"}
-	accurate := opts.Accuracy == CaptureExact
-	if !accurate && seekSec > 0 {
-		args = append(args, "-ss", fmt.Sprintf("%.3f", seekSec))
-	}
-	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
-	args = append(args, "-i", opts.Input.URL)
-	if accurate && seekSec > 0 {
-		args = append(args, "-ss", fmt.Sprintf("%.3f", seekSec))
-	}
-	if opts.Width > 0 && opts.Height > 0 {
-		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))
-	}
-	q := frameQualityQScale(opts.Format, opts.Quality)
-	args = append(args,
-		"-frames:v", "1",
-		"-q:v", q,
-		"-vcodec", enc.vcodec,
-		"-f", enc.format,
-		"-loglevel", "error",
-		"-",
-	)
-	return args, nil
 }
 
 // CaptureFrameFile writes one frame to path using a temp file in the same directory and atomic rename.
@@ -338,29 +305,29 @@ func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabi
 		return err
 	}
 
-	target := path
-	var cleanup func()
 	if atomic {
 		tmp, err := os.CreateTemp(dir, ".goffmpeg-capture-*")
 		if err != nil {
 			return err
 		}
-		target = tmp.Name()
-		cleanup = func() {
+		tmpPath := tmp.Name()
+		cleanup := true
+		defer func() {
 			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
-		}
-		defer cleanup()
+			if cleanup {
+				_ = os.Remove(tmpPath)
+			}
+		}()
 		if err := CaptureFrame(ctx, runner, caps, tmp, opts, seekSec); err != nil {
 			return err
 		}
 		if err := tmp.Close(); err != nil {
 			return err
 		}
-		if err := os.Rename(target, path); err != nil {
+		if err := os.Rename(tmpPath, path); err != nil {
 			return err
 		}
-		cleanup = func() {} // success: do not remove published file
+		cleanup = false
 		return nil
 	}
 
@@ -373,7 +340,7 @@ func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabi
 		_ = os.Remove(path)
 		return err
 	}
-	return nil
+	return f.Sync()
 }
 
 func meanLumaFromImage(data []byte) (float64, error) {
@@ -387,7 +354,6 @@ func meanLumaFromImage(data []byte) (float64, error) {
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			r, g, b, _ := img.At(x, y).RGBA()
-			// ITU-R BT.601 luma in 0–255.
 			luma := 0.299*float64(r>>8) + 0.587*float64(g>>8) + 0.114*float64(b>>8)
 			sum += luma
 			n++
@@ -399,15 +365,31 @@ func meanLumaFromImage(data []byte) (float64, error) {
 	return sum / float64(n), nil
 }
 
-// ScreenshotOptionsToFrame maps legacy screenshot options (first frame, JPEG).
+// ScreenshotOptionsToFrame maps legacy screenshot options to FrameOptions.
 func ScreenshotOptionsToFrame(opts ScreenshotOptions) FrameOptions {
-	return FrameOptions{
-		Input:   opts.Input,
-		RTSP:    opts.RTSP,
-		Quality: opts.Quality,
-		Timeout: opts.Timeout,
-		Format:  FrameJPEG,
+	q := opts.Quality
+	if q == 0 {
+		q = 85
 	}
+	fo := FrameOptions{
+		Input:       opts.Input,
+		RTSP:        opts.RTSP,
+		Quality:     q,
+		Timeout:     opts.Timeout,
+		Format:      FrameJPEG,
+		Width:       opts.Width,
+		Height:      opts.Height,
+		ScaleMode:   opts.ScaleMode,
+		Accuracy:    opts.Accuracy,
+		LightProbe:  opts.LightProbe,
+		DurationSec: opts.DurationSec,
+	}
+	if opts.SeekSec > 0 {
+		fo.At = AtSec(opts.SeekSec)
+	} else if opts.SeekPercent > 0 {
+		fo.At = AtPercent(opts.SeekPercent)
+	}
+	return fo
 }
 
 // PreviewOptionsToFrame maps legacy preview options to FrameOptions (MJPEG stream).
@@ -417,39 +399,16 @@ func PreviewOptionsToFrame(opts PreviewOptions, seekSec float64) FrameOptions {
 		q = 10
 	}
 	return FrameOptions{
-		Input:     InputSource{URL: opts.Input, StreamType: probe.StreamFile},
-		At:        AtSec(seekSec),
-		Width:     opts.Width,
-		Height:    opts.Height,
-		ScaleMode: opts.ScaleMode,
-		Quality:   q,
-		Timeout:   opts.Timeout,
-		Format:    FrameJPEG,
+		Input:       InputSource{URL: opts.Input, StreamType: probe.StreamFile},
+		At:          AtSec(seekSec),
+		DurationSec: opts.DurationSec,
+		Width:       opts.Width,
+		Height:      opts.Height,
+		ScaleMode:   opts.ScaleMode,
+		Quality:     q,
+		Timeout:     opts.Timeout,
+		Accuracy:    opts.Accuracy,
+		LightProbe:  opts.LightProbe,
+		Format:      FrameJPEG,
 	}
-}
-
-// ClampPreviewPercent documents legacy preview percent handling (default 10% when unset).
-func ClampPreviewPercent(pct float64) float64 {
-	if pct <= 0 || pct > 100 {
-		if pct > 100 {
-			return 100
-		}
-		return 10
-	}
-	return pct
-}
-
-func previewSeekFromLegacy(dur float64, opts PreviewOptions) float64 {
-	if opts.SeekSec > 0 {
-		seekSec := opts.SeekSec
-		if dur > 0 && seekSec > dur {
-			seekSec = dur
-		}
-		return seekSec
-	}
-	pct := ClampPreviewPercent(opts.SeekPercent)
-	if dur <= 0 {
-		return 0
-	}
-	return dur * pct / 100
 }

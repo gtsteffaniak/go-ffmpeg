@@ -35,17 +35,40 @@ type ScreenshotOptions struct {
 	Quality    int
 	RTSP       *RTSPInputOptions
 	Timeout    time.Duration
+	// SeekSec seeks to this timestamp (seconds). When zero, SeekPercent or the first frame is used.
+	SeekSec float64
+	// SeekPercent seeks to this percentage of duration when SeekSec is zero.
+	SeekPercent float64
+	// DurationSec when > 0 skips ffprobe for seek-percent and enables lightweight input probing.
+	DurationSec float64
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	Width      int
+	Height     int
+	ScaleMode  ScaleMode
+	// Accuracy defaults to CaptureFast (nearest keyframe).
+	Accuracy CaptureAccuracy
 }
 
-// Screenshot extracts a single frame to OutputPath.
+// Screenshot extracts a single frame to OutputPath via image2pipe (no ffmpeg temp files).
 //
 // Deprecated: use CaptureFrame/CaptureFrameFile.
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
+	dur := opts.DurationSec
+	if dur <= 0 && opts.SeekPercent > 0 && opts.SeekSec <= 0 {
+		var err error
+		dur, err = probe.GetMediaDuration(ctx, runner, opts.Input.URL)
+		if err != nil {
+			return err
+		}
+		opts.DurationSec = dur
+	}
 	fo := ScreenshotOptionsToFrame(opts)
 	if fo.Timeout == 0 {
 		fo.Timeout = 30 * time.Second
 	}
-	return captureFrameToPath(ctx, runner, nil, opts.OutputPath, fo, 0, false)
+	seekSec := ResolveCaptureSeekSec(opts.DurationSec, opts.SeekSec, opts.SeekPercent)
+	return captureFrameToPath(ctx, runner, nil, opts.OutputPath, fo, seekSec, false)
 }
 
 // ScaleMode controls how preview frames are scaled to target dimensions.
@@ -81,6 +104,10 @@ type PreviewOptions struct {
 	ScaleMode   ScaleMode
 	Quality     int
 	Timeout     time.Duration
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	// Accuracy defaults to CaptureFast (nearest keyframe).
+	Accuracy CaptureAccuracy
 }
 
 // ResolvePreviewSeekSec computes the seek position from duration and options.
