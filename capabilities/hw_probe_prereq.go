@@ -36,8 +36,11 @@ func defaultPrereqDeps() prereqDeps {
 	}
 }
 
-// CheckHostPrerequisites validates host GPU stack before a functional encode probe.
-// Windows and macOS skip Linux-specific checks (LoadLibrary / VideoToolbox work with dynamic ffmpeg).
+// CheckHostPrerequisites validates the host GPU stack before a functional encode probe.
+// It runs once per encoder during detection and does not retry. On Windows and macOS
+// Linux-specific checks are skipped (LoadLibrary / VideoToolbox). Returns [HWProbeOK]
+// when prerequisites pass, otherwise a code and hint (see [HintForProbeCode]).
+// Subprocess helpers (ldconfig) use bounded timeouts.
 func CheckHostPrerequisites(encoderKind string, plat platform.Info) (HWProbeCode, string) {
 	return checkHostPrerequisites(encoderKind, plat, defaultPrereqDeps())
 }
@@ -168,6 +171,7 @@ func checkNVENCPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string)
 	return HWProbeOK, ""
 }
 
+// renderNodeStatus reports whether any /dev/dri/renderD* node exists and is openable.
 func renderNodeStatus(deps prereqDeps) (exists, openable bool) {
 	nodes, _ := deps.Glob("/dev/dri/renderD*")
 	for _, node := range nodes {
@@ -182,6 +186,7 @@ func renderNodeStatus(deps prereqDeps) (exists, openable bool) {
 	return exists, false
 }
 
+// renderNodePermissionResult builds [HWProbeDevicePermission] with optional render GID.
 func renderNodePermissionResult(deps prereqDeps) (HWProbeCode, string) {
 	hint := HintForProbeCode(HWProbeDevicePermission)
 	if gid, ok := renderGroupGID(deps); ok {
@@ -190,6 +195,7 @@ func renderNodePermissionResult(deps prereqDeps) (HWProbeCode, string) {
 	return HWProbeDevicePermission, hint
 }
 
+// runLdconfigP runs ldconfig -p with a 5s timeout (tries sbin paths).
 func runLdconfigP() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -230,6 +236,7 @@ func renderGroupGID(deps prereqDeps) (int, bool) {
 	return 0, false
 }
 
+// libResolvable checks ldconfig, multiarch paths, and LD_LIBRARY_PATH for soname.
 func libResolvable(deps prereqDeps, soname string) bool {
 	if soname == "" {
 		return false
@@ -259,9 +266,20 @@ func libResolvable(deps prereqDeps, soname string) bool {
 			return true
 		}
 	}
+	if v := deps.Env("LD_LIBRARY_PATH"); v != "" {
+		for _, dir := range strings.Split(v, ":") {
+			if dir == "" {
+				continue
+			}
+			if _, err := deps.Stat(filepath.Join(dir, soname)); err == nil {
+				return true
+			}
+		}
+	}
 	return false
 }
 
+// vaDriverResolvable checks LIBVA_DRIVERS_PATH and standard dri directories.
 func vaDriverResolvable(deps prereqDeps, driverName string) bool {
 	want := driverName
 	if want != "" && !strings.HasSuffix(want, "_drv_video.so") {

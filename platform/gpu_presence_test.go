@@ -34,6 +34,42 @@ func TestDetectGPUPresenceFromSysfs(t *testing.T) {
 	}
 }
 
+func TestDetectGPUPresenceDxgNotNVIDIA(t *testing.T) {
+	deps := gpuPresenceDeps{
+		Glob:     func(string) ([]string, error) { return nil, nil },
+		ReadFile: func(string) ([]byte, error) { return nil, os.ErrNotExist },
+		Stat: func(path string) (os.FileInfo, error) {
+			if path == "/dev/dxg" {
+				return nil, nil
+			}
+			return nil, os.ErrNotExist
+		},
+	}
+	p := detectGPUPresence(deps)
+	if !p.WSLDXG || p.NVIDIA {
+		t.Fatalf("presence=%+v", p)
+	}
+}
+
+func TestDetectGPUPresenceDxgWithLibcuda(t *testing.T) {
+	deps := gpuPresenceDeps{
+		Glob:     func(string) ([]string, error) { return nil, nil },
+		ReadFile: func(string) ([]byte, error) { return nil, os.ErrNotExist },
+		Stat: func(path string) (os.FileInfo, error) {
+			switch path {
+			case "/dev/dxg", "/usr/lib/wsl/lib/libcuda.so.1":
+				return nil, nil
+			default:
+				return nil, os.ErrNotExist
+			}
+		},
+	}
+	p := detectGPUPresence(deps)
+	if !p.WSLDXG || !p.NVIDIA {
+		t.Fatalf("presence=%+v", p)
+	}
+}
+
 func TestRunningInContainerDockerenv(t *testing.T) {
 	deps := containerDeps{
 		Stat: func(path string) (os.FileInfo, error) {

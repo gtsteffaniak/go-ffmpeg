@@ -5,7 +5,9 @@ import (
 	"strings"
 )
 
-// ClassifyHWProbeFailure maps ffmpeg stderr/exit context to a probe code and hint.
+// ClassifyHWProbeFailure maps ffmpeg stderr and context errors to an [HWProbeCode].
+// It is used after the functional probe fails; prerequisite failures set codes earlier.
+// Pass context.DeadlineExceeded in ctxErr for [HWProbeTimeout].
 func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HWProbeCode, string) {
 	if ctxErr != nil && ctxErr == context.DeadlineExceeded {
 		return HWProbeTimeout, HintForProbeCode(HWProbeTimeout)

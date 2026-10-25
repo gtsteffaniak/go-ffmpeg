@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// EncoderProbeResults returns structured probe rows for hardware encoders (stable order).
-// Populated once during startup detection; the library does not update these at runtime.
+// EncoderProbeResults returns structured probe rows for hardware encoders in name order.
+// Populated once during detection; not updated on transcode failure or automatic retry.
+// Each row's Code, Hint, and Detail match [EncoderCapability] probe fields.
 func (c *Capabilities) EncoderProbeResults() []EncoderProbeResult {
 	if c == nil {
 		return nil
@@ -38,7 +39,8 @@ func (c *Capabilities) EncoderProbeResults() []EncoderProbeResult {
 	return out
 }
 
-// HardwareProbeSummaryLine is a compact status string for admin UIs (e.g. FileBrowser).
+// HardwareProbeSummaryLine is a compact status string for admin UIs (for example FileBrowser).
+// The root ffmpeg Service logs it at info on Reload when non-empty.
 func (c *Capabilities) HardwareProbeSummaryLine() string {
 	if c == nil {
 		return "hardware probes: unavailable"
@@ -54,6 +56,7 @@ func (c *Capabilities) HardwareProbeSummaryLine() string {
 	return "hw probes: ffmpeg=" + string(link) + " | available: " + strings.Join(available, ", ")
 }
 
+// refreshEncoderProbeIndex updates the EncoderProbes slice during detection.
 func (c *Capabilities) refreshEncoderProbeIndex(probe EncoderProbeResult) {
 	for i, p := range c.EncoderProbes {
 		if p.Encoder == probe.Encoder {

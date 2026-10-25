@@ -2,42 +2,108 @@ package capabilities
 
 import "strings"
 
-// HWProbeCode classifies why a hardware encoder probe failed.
+// HWProbeCode classifies why a hardware encoder probe failed or was skipped.
+// Values are stable JSON strings for admin UIs and logs. Use [HintForProbeCode]
+// for a one-line fix; [EncoderProbeResult.Hint] may add distro-specific text from
+// [ApplyHostRemediation].
 type HWProbeCode string
 
 const (
-	HWProbeOK                      HWProbeCode = ""
-	HWProbeStaticBinary            HWProbeCode = "static_binary"
-	HWProbeNoDevice                HWProbeCode = "no_device"
-	HWProbeDevicePermission        HWProbeCode = "device_permission_denied"
-	HWProbeLibvaMissing            HWProbeCode = "libva_missing"
-	HWProbeVADriverMissing         HWProbeCode = "va_driver_missing"
-	HWProbeVADriverInitFailed      HWProbeCode = "va_driver_init_failed"
-	HWProbeNvidiaLibsMissing       HWProbeCode = "nvidia_libs_missing"
-	HWProbeNVENCUnsupported        HWProbeCode = "nvenc_unsupported_gpu"
-	HWProbeNVENCSessionLimit       HWProbeCode = "nvenc_session_limit"
-	HWProbeTimeout                 HWProbeCode = "timeout"
-	HWProbeSkipped                 HWProbeCode = "skipped"
-	HWProbeNotCompiled             HWProbeCode = "not_compiled"
+	// HWProbeOK means the encoder passed layered detection (or was not probed).
+	HWProbeOK HWProbeCode = ""
+
+	// HWProbeStaticBinary means ffmpeg on Linux is statically linked and cannot
+	// dlopen GPU userspace drivers. Fix: use a dynamic/glibc ffmpeg build.
+	HWProbeStaticBinary HWProbeCode = "static_binary"
+
+	// HWProbeNoDevice means no usable GPU device node was found (missing /dev/dri
+	// render node, NVIDIA device, or WSL /dev/dxg). Fix: pass the correct device
+	// and load the driver.
+	HWProbeNoDevice HWProbeCode = "no_device"
+
+	// HWProbeDevicePermission means a render node exists but cannot be opened
+	// (EACCES). Fix: add the service user to the render group and pass --device /dev/dri.
+	HWProbeDevicePermission HWProbeCode = "device_permission_denied"
+
+	// HWProbeLibvaMissing means libva.so is not installed or not on the library path.
+	// Fix: install libva and VA drivers for the GPU vendor.
+	HWProbeLibvaMissing HWProbeCode = "libva_missing"
+
+	// HWProbeVADriverMissing means no VA-API driver module was found for the GPU.
+	// Fix: install mesa-va-drivers, intel-media-va-driver, or set LIBVA_DRIVERS_PATH.
+	HWProbeVADriverMissing HWProbeCode = "va_driver_missing"
+
+	// HWProbeVADriverInitFailed means libva loaded but the driver failed to initialize
+	// (often VA error -12). Fix: match driver to GPU, check permissions, use dynamic ffmpeg.
+	HWProbeVADriverInitFailed HWProbeCode = "va_driver_init_failed"
+
+	// HWProbeNvidiaLibsMissing means libcuda.so.1 or libnvidia-encode.so.1 is missing.
+	// Fix: install the NVIDIA driver stack; in containers use --gpus all and the NVIDIA toolkit.
+	HWProbeNvidiaLibsMissing HWProbeCode = "nvidia_libs_missing"
+
+	// HWProbeNVENCUnsupported means the GPU or driver does not expose NVENC for this codec.
+	// Fix: update the driver or choose another encoder.
+	HWProbeNVENCUnsupported HWProbeCode = "nvenc_unsupported_gpu"
+
+	// HWProbeNVENCSessionLimit means NVENC concurrent session limit was hit during probe.
+	// Fix: reduce concurrent NVENC jobs or close other encoders.
+	HWProbeNVENCSessionLimit HWProbeCode = "nvenc_session_limit"
+
+	// HWProbeTimeout means the functional encode probe exceeded its deadline.
+	// Fix: check driver health and GPU load; increase detect timeout only if appropriate.
+	HWProbeTimeout HWProbeCode = "timeout"
+
+	// HWProbeSkipped means the functional probe was not run (SkipHWTests or equivalent).
+	HWProbeSkipped HWProbeCode = "skipped"
+
+	// HWProbeNotCompiled means ffmpeg does not include the encoder.
+	// Fix: use a build with the required encoder enabled.
+	HWProbeNotCompiled HWProbeCode = "not_compiled"
+
+	// HWProbeGPUPresentDriverMissing means sysfs/PCI shows a GPU but the userspace stack
+	// for the encoder backend is missing or unusable. Hint includes [HostRemediationMessage].
 	HWProbeGPUPresentDriverMissing HWProbeCode = "gpu_present_driver_missing"
-	HWProbeVulkanLoaderMissing     HWProbeCode = "vulkan_loader_missing"
-	HWProbeVulkanNoDevice          HWProbeCode = "vulkan_no_device"
-	HWProbeVulkanNoVideoEncode     HWProbeCode = "vulkan_no_video_encode_driver"
-	HWProbeVulkanDriverTooOld      HWProbeCode = "vulkan_driver_too_old"
-	HWProbeUnknown                 HWProbeCode = "unknown"
+
+	// HWProbeVulkanLoaderMissing means libvulkan (or vulkan-1.dll on Windows) was not found.
+	// Fix: install the Vulkan loader and mount GPU devices in containers.
+	HWProbeVulkanLoaderMissing HWProbeCode = "vulkan_loader_missing"
+
+	// HWProbeVulkanNoDevice means no Vulkan-capable device was available to ffmpeg.
+	// Fix: pass render nodes or --gpus all with video capabilities on NVIDIA.
+	HWProbeVulkanNoDevice HWProbeCode = "vulkan_no_device"
+
+	// HWProbeVulkanNoVideoEncode means the driver lacks Vulkan video encode queues.
+	// Fix: upgrade Mesa RADV/ANV or the NVIDIA driver.
+	HWProbeVulkanNoVideoEncode HWProbeCode = "vulkan_no_video_encode_driver"
+
+	// HWProbeVulkanDriverTooOld means the Vulkan driver API is too old for video encode.
+	// Fix: upgrade the GPU driver.
+	HWProbeVulkanDriverTooOld HWProbeCode = "vulkan_driver_too_old"
+
+	// HWProbeUnknown means ffmpeg failed without a recognized pattern.
+	// Fix: inspect [EncoderProbeResult.Detail] and driver logs.
+	HWProbeUnknown HWProbeCode = "unknown"
 )
 
-// EncoderProbeResult is the structured outcome of layered hardware detection.
+// EncoderProbeResult is the structured outcome of layered hardware detection for one encoder.
+// Code, Hint, and Detail are fixed after startup detection; they are not updated on transcode failure.
 type EncoderProbeResult struct {
-	Encoder   string      `json:"encoder"`
-	Accel     AccelType   `json:"accel"`
-	Available bool        `json:"available"`
-	Code      HWProbeCode `json:"code,omitempty"`
-	Hint      string      `json:"hint,omitempty"`
-	Detail    string      `json:"detail,omitempty"`
+	// Encoder is the ffmpeg encoder name (for example h264_nvenc).
+	Encoder string `json:"encoder"`
+	// Accel is the backend family for reporting.
+	Accel AccelType `json:"accel"`
+	// Available is true only when the functional probe succeeded.
+	Available bool `json:"available"`
+	// Code classifies failure; empty when Available is true.
+	Code HWProbeCode `json:"code,omitempty"`
+	// Hint is a short remediation line; may include distro guidance.
+	Hint string `json:"hint,omitempty"`
+	// Detail is truncated ffmpeg stderr from the probe, for operators.
+	Detail string `json:"detail,omitempty"`
 }
 
-// HintForProbeCode returns a one-line remediation hint for a probe code.
+// HintForProbeCode returns a one-line remediation hint for code.
+// It does not include distro package names; see [HostRemediationMessage] for those.
 func HintForProbeCode(code HWProbeCode) string {
 	switch code {
 	case HWProbeStaticBinary:
@@ -79,6 +145,7 @@ func HintForProbeCode(code HWProbeCode) string {
 	}
 }
 
+// accelForEncoderKind maps internal encoder kind strings to [AccelType] for probe rows.
 func accelForEncoderKind(kind string) AccelType {
 	switch kind {
 	case "nvenc":
@@ -100,6 +167,7 @@ func accelForEncoderKind(kind string) AccelType {
 	}
 }
 
+// formatProbeError builds the legacy TestError string from structured probe fields.
 func formatProbeError(code HWProbeCode, hint, detail string) string {
 	if code == HWProbeOK {
 		return ""
@@ -114,6 +182,7 @@ func formatProbeError(code HWProbeCode, hint, detail string) string {
 	return msg
 }
 
+// truncateProbeDetail limits stderr embedded in hints and JSON.
 func truncateProbeDetail(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if len(s) <= max {

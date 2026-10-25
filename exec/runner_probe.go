@@ -13,7 +13,8 @@ import (
 	"syscall"
 )
 
-// RunFFmpegProcessGroup runs ffmpeg in its own process group so timeouts can SIGKILL the whole tree.
+// RunFFmpegProcessGroup runs ffmpeg in its own process group so probe timeouts can SIGKILL the tree.
+// On Windows the stub delegates to RunFFmpeg. Used by hardware smoke probes during detection only.
 func (r *Runner) RunFFmpegProcessGroup(ctx context.Context, args ...string) (Result, error) {
 	return r.runProcessGroup(ctx, r.FFmpegPath, args...)
 }
