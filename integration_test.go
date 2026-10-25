@@ -133,6 +133,33 @@ func TestIntegrationScreenshot(t *testing.T) {
 	}
 }
 
+func TestIntegrationCaptureFrame(t *testing.T) {
+	sample := integrationSampleMP4(t)
+	ffmpegBin, ffprobeBin := requireFFmpeg(t)
+	svc, err := ffmpeg.New(context.Background(), ffmpeg.Config{
+		FFmpegPath:  ffmpegBin,
+		FFprobePath: ffprobeBin,
+		SkipHWTests: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "capture.jpg")
+	err = svc.CaptureFrameFile(context.Background(), out, ffmpeg.FrameOptions{
+		Input:   ffmpeg.InputSource{URL: sample, StreamType: ffmpeg.StreamFile},
+		At:      ffmpeg.AtPercent(10),
+		Quality: 5,
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(out)
+	if err != nil || st.Size() == 0 {
+		t.Fatal("capture empty")
+	}
+}
+
 func TestIntegrationHLSSegmentMPEGTS(t *testing.T) {
 	sample := integrationSampleMP4(t)
 	ffmpegBin, ffprobeBin := requireFFmpeg(t)

@@ -6,6 +6,7 @@ func init() {
 	Register(probeStreamOp{})
 	Register(getMediaDurationOp{})
 	Register(getImageDimensionsOp{})
+	Register(captureFrameOp{})
 	Register(screenshotOp{})
 	Register(videoPreviewOp{})
 	Register(transcodeOp{})
@@ -42,23 +43,28 @@ func (getImageDimensionsOp) Requirements() RequirementSet {
 	return RequirementSet{Protocols: []string{"file"}}
 }
 
+func captureFrameRequirements() RequirementSet {
+	return RequirementSet{
+		Encoders:  []string{"mjpeg"},
+		Filters:   []string{"scale"},
+		Protocols: []string{"file", "tcp", "http", "https", "rtsp"},
+	}
+}
+
+type captureFrameOp struct{}
+
+func (captureFrameOp) Name() string { return "CaptureFrame" }
+func (captureFrameOp) Requirements() RequirementSet { return captureFrameRequirements() }
+
 type screenshotOp struct{}
 
 func (screenshotOp) Name() string { return "Screenshot" }
-func (screenshotOp) Requirements() RequirementSet {
-	return RequirementSet{Protocols: []string{"file", "tcp"}}
-}
+func (screenshotOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
 type videoPreviewOp struct{}
 
 func (videoPreviewOp) Name() string { return "VideoPreview" }
-func (videoPreviewOp) Requirements() RequirementSet {
-	return RequirementSet{
-		Encoders:  []string{"mjpeg"},
-		Filters:   []string{"scale"},
-		Protocols: []string{"file"},
-	}
-}
+func (videoPreviewOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
 type transcodeOp struct{}
 

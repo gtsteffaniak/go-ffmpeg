@@ -32,16 +32,15 @@ func ExampleService_ProbeFile() {
 	_ = info.VideoCodec
 }
 
-func ExampleService_Screenshot() {
+func ExampleService_CaptureFrameFile() {
 	ctx := context.Background()
 	svc, err := ffmpeg.New(ctx, ffmpeg.Config{SkipHWTests: true})
 	if err != nil {
 		panic(err)
 	}
-	err = svc.Screenshot(ctx, ffmpeg.ScreenshotOptions{
-		Input:      ffmpeg.InputSource{URL: "video.mp4", StreamType: ffmpeg.StreamFile},
-		OutputPath: "frame.jpg",
-		Quality:    85,
+	err = svc.CaptureFrameFile(ctx, "frame.jpg", ffmpeg.FrameOptions{
+		Input:   ffmpeg.InputSource{URL: "video.mp4", StreamType: ffmpeg.StreamFile},
+		Quality: 85,
 	})
 	if err != nil {
 		panic(err)

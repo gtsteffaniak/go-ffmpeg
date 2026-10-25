@@ -8,8 +8,9 @@ High-level tasks on `Service`:
 |------|----------------|-------|
 | Probe stream | `ProbeStream`, `ProbeFile` | RTSP, HLS, file, HTTP |
 | Duration / dimensions | `GetMediaDuration`, `GetImageDimensions` | ffprobe |
-| Screenshot | `Screenshot` | Single JPEG/PNG frame |
-| Preview | `VideoPreview` | MJPEG to `io.Writer`; optional `Width`/`Height`, `ScaleFit` or `ScaleFill`, seek % |
+| Frame capture | `CaptureFrame`, `CaptureFrameFile` | JPEG/WebP/PNG to `io.Writer` or file (atomic); `AtSec` / `AtPercent`, fast or exact seek |
+| Screenshot | `Screenshot` | **Deprecated** — use `CaptureFrameFile` |
+| Preview | `VideoPreview` | **Deprecated** — use `CaptureFrame` (MJPEG); optional scale and seek |
 | Convert | `ConvertHEIC` | HEIC/HEIF → JPEG; more formats planned |
 | Transcode | `Transcode` | `VideoProfile` + optional decode profile |
 | Segmented record | `SegmentRecord` | MP4 segments |

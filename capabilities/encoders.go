@@ -16,6 +16,9 @@ var KnownEncoders = []struct {
 	{"libvvenc", "software", false},
 	// Native
 	{"mjpeg", "native", false},
+	{"png", "native", false},
+	{"libwebp", "software", false},
+	{"webp", "native", false},
 	{"aac", "native", false},
 	{"libmp3lame", "software", false},
 	// NVENC

@@ -38,26 +38,14 @@ type ScreenshotOptions struct {
 }
 
 // Screenshot extracts a single frame to OutputPath.
+//
+// Deprecated: use CaptureFrame/CaptureFrameFile.
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
-	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
-	args = append(args,
-		"-i", opts.Input.URL,
-		"-frames:v", "1",
-		"-update", "1",
-		"-q:v", encode.QualityToQScale(opts.Quality),
-		"-f", "image2",
-		"-loglevel", "error",
-		opts.OutputPath,
-	)
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	fo := ScreenshotOptionsToFrame(opts)
+	if fo.Timeout == 0 {
+		fo.Timeout = 30 * time.Second
 	}
-	pctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	_, err := runner.RunFFmpeg(pctx, args...)
-	return err
+	return captureFrameToPath(ctx, runner, nil, opts.OutputPath, fo, 0, false)
 }
 
 // ScaleMode controls how preview frames are scaled to target dimensions.
@@ -113,9 +101,11 @@ func ResolvePreviewSeekSec(dur float64, opts PreviewOptions) float64 {
 
 // VideoPreview probes duration then extracts an MJPEG frame to w.
 // Prefer Service.VideoPreview, which uses separate probe and decode concurrency slots.
+//
+// Deprecated: use CaptureFrame/CaptureFrameFile.
 func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions) error {
 	dur := opts.DurationSec
-	if dur <= 0 {
+	if PreviewNeedsDurationProbe(opts) {
 		var err error
 		dur, err = probe.GetMediaDuration(ctx, runner, opts.Input)
 		if err != nil {
@@ -126,43 +116,11 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 }
 
 // VideoPreviewFrame extracts an MJPEG frame to w at seekSec without probing duration.
+//
+// Deprecated: use CaptureFrame.
 func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions, seekSec float64) error {
-	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec)}
-	args = runner.AppendProtocolWhitelistArgs(args)
-	args = append(args, "-i", opts.Input)
-	if opts.Width > 0 && opts.Height > 0 {
-		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))
-	}
-	q := opts.Quality
-	if q == 0 {
-		q = 10
-	}
-	args = append(args,
-		"-frames:v", "1",
-		"-q:v", encode.QualityToQScale(q),
-		"-vcodec", "mjpeg",
-		"-f", "image2",
-		"-",
-	)
-
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 60 * time.Second
-	}
-	pctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	cmd := ffexec.CommandContext(pctx, runner.FFmpegPath, args...)
-	cmd.Stdout = w
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if pctx.Err() != nil {
-			return pctx.Err()
-		}
-		return fmt.Errorf("%w: %s", err, stderr.String())
-	}
-	return nil
+	fo := PreviewOptionsToFrame(opts, seekSec)
+	return CaptureFrame(ctx, runner, nil, w, fo, seekSec)
 }
 
 // TranscodeOptions configures file/URL transcoding.
