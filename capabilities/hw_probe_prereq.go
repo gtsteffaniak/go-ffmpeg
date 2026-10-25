@@ -32,7 +32,7 @@ func defaultPrereqDeps() prereqDeps {
 		ReadFile: os.ReadFile,
 		LookPath: exec.LookPath,
 		Ldconfig: runLdconfigP,
-		Env: os.Getenv,
+		Env:      os.Getenv,
 	}
 }
 
