@@ -48,6 +48,11 @@ type Config struct {
 	// "powersave" is an alias for that default. "performance" (dgpu-first) prefers NVENC before VAAPI on Linux.
 	EncoderPreference string
 
+	// VulkanEncoder controls Vulkan video encode in the default hierarchy.
+	// Empty or "off": Vulkan is only used when listed in EncoderHierarchy.
+	// "fallback": append Vulkan after vendor backends (lowest HW priority).
+	VulkanEncoder string
+
 	// GPUSelector selects a single GPU when set to GPUIntegrated, GPUDiscrete, GPUDevice, etc.
 	// Zero value (GPUAuto) keeps automatic device hierarchy (iGPU/SoC → dGPU → software).
 	// ParseGPUSelector("") and ParseGPUSelector("auto") both map to GPUAuto.

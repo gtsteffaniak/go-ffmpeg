@@ -75,7 +75,21 @@ Deprecated: `Config.GPU` string is still accepted when `GPUSelector` is zero.
 
 ## Detection
 
-`platform.Detect()` → FFmpeg inventory → optional smoke tests → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
+Layered hardware encoder detection runs at startup (binary link type → host prerequisites → functional encode probes). Compile-time `-encoders` lists alone are not trusted on static Linux builds. Full step-by-step detail, error codes, and platform notes: **[hardware-detection.md](hardware-detection.md)**.
+
+`platform.Detect()` → FFmpeg inventory → layered HW probes → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
+
+```go
+// Compact probe summary (logged at info on Reload alongside SummaryLine)
+caps.HardwareProbeSummaryLine()
+
+// Structured per-encoder rows (fixed after startup detection)
+for _, row := range caps.EncoderProbeResults() {
+    // row.Encoder, row.Available, row.Code, row.Hint, row.Detail
+}
+```
+
+Detection is **one-shot** per service instance: no runtime re-probe, no capability mutation on transcode failure, no automatic retry. Use `Service.Reload` only when you intentionally re-run full detection (e.g. after fixing drivers).
 
 Skip HW tests: `SkipHWTests` or `GOFFMPEG_SKIP_HW=1`. A software selection still detects hardware so hosts can show what is available.
 
@@ -103,8 +117,11 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
 
 1. **`DeviceSelection`** (primary + fallbacks) or legacy non-auto **`GPUSelector`**
 2. **`EncoderHierarchy`**
-3. **`DevicePreference`** / deprecated `EncoderPreference` performance
-4. Platform defaults
+3. **`VulkanEncoder`** (`"fallback"` appends Vulkan after vendor backends; default off)
+4. **`DevicePreference`** / deprecated `EncoderPreference` performance
+5. Platform defaults
+
+Vulkan video encode/decode is optional and never outranks VAAPI/NVENC/QSV/VideoToolbox unless you list `vulkan` explicitly in `EncoderHierarchy`. See [hardware-detection.md](hardware-detection.md).
 
 ## Explicit device + ordered fallback (FileBrowser pattern)
 

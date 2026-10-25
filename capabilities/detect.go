@@ -19,6 +19,7 @@ type DetectOptions struct {
 	DeviceOrderSummary string
 	DevicePreference   string
 	AllowSoftware      *bool // nil = true (backward compatible)
+	VulkanEncoder      VulkanEncoderMode
 }
 
 // Detect runs the full capability detection pipeline.
@@ -27,6 +28,8 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.FFmpegPath = runner.FFmpegPath
 	caps.FFprobePath = runner.FFprobePath
 	caps.GeneratedAt = time.Now()
+	caps.FFmpegBinary = ProbeFFmpegBinary(runner.FFmpegPath)
+	caps.DetectionHost = NewDetectionHost()
 
 	verRes, err := runner.RunFFmpeg(ctx, "-version")
 	if err != nil {
@@ -89,6 +92,8 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		hierarchyGPU = platform.GPUChoice{AutoSelect: true}
 	}
 	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
+	hierarchy = MergeVulkanHierarchy(hierarchy, opts.EncoderHierarchy, opts.VulkanEncoder)
+	caps.VulkanEncoderRequested = hierarchyIncludesAccel(hierarchy, AccelVulkan)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
 	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)

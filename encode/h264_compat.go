@@ -27,7 +27,7 @@ func H264LevelForMaxHeight(maxHeight int) string {
 func AppendH264FMP4CompatArgs(args []string, accel capabilities.AccelType, maxHeight int) []string {
 	level := H264LevelForMaxHeight(maxHeight)
 	switch accel {
-	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVideoToolbox, capabilities.AccelNVENC, capabilities.AccelAMF, capabilities.AccelQSV:
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan, capabilities.AccelVideoToolbox, capabilities.AccelNVENC, capabilities.AccelAMF, capabilities.AccelQSV:
 		// HW encoders pick a compatible profile/level; forcing baseline+3.0 breaks
 		// h264_videotoolbox on datasaver (480p) with "Cannot prepare encoder: -12902".
 		return append(args, "-tag:v", "avc1")

@@ -55,6 +55,7 @@ func Detect() Info {
 		info.QSVRuntime = true
 	}
 	info.D3D12 = d3d12Available(info.WSL)
+	info.Vulkan = vulkanStackAvailable()
 	info.VideoToolbox = runtime.GOOS == "darwin"
 	info.Details["gpu"] = detectGPUDescription()
 	if pi := DetectPiModel(); pi != PiUnknown {

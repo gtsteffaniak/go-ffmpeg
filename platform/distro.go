@@ -133,6 +133,25 @@ func (d DistroContext) QSVRuntimePackages() []string {
 	}
 }
 
+// AMDVADriverPackages returns packages for AMD VAAPI encode on Linux.
+func (d DistroContext) AMDVADriverPackages() []string {
+	switch d.Family {
+	case DistroFamilyArch:
+		return []string{"libva-mesa-driver", "mesa"}
+	case DistroFamilyDebian:
+		return []string{"mesa-va-drivers"}
+	case DistroFamilyRPM:
+		// Stock Fedora Mesa often lacks H.264/HEVC encode; RPM Fusion freeworld driver required.
+		return []string{"mesa-va-drivers-freeworld"}
+	case DistroFamilySUSE:
+		return []string{"mesa-va-drivers"}
+	case DistroFamilyAlpine:
+		return []string{"mesa-va-gallium"}
+	default:
+		return nil
+	}
+}
+
 // IntelVADriverPackages returns packages for Intel VAAPI on Linux.
 func (d DistroContext) IntelVADriverPackages() []string {
 	switch d.Family {

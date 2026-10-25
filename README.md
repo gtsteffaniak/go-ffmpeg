@@ -8,7 +8,7 @@ Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-
 
 1. **Seamless capability support with fallback** — Startup (or lazy) detection learns what the host ffmpeg actually supports. Unsupported codecs, missing HW encoders, or stripped distro builds degrade gracefully instead of failing opaquely at runtime.
 2. **Task-optimized flags** — Each operation (`Transcode`, `HLSSegment`, `Screenshot`, …) maps typed options to the right ffmpeg flags for that job. No hand-rolling `-movflags`, `-readrate`, or fMP4 fragment options per call site.
-3. **Hardware-aware command selection** — Full encoder/backend detection (NVENC, QSV, VAAPI, VideoToolbox, AMF, …) plus optional smoke tests. The library matches the best encode/decode path for the task and falls back to software when HW is unavailable or unsuitable.
+3. **Hardware-aware command selection** — One-shot layered encoder detection at startup (binary link type, host prerequisites, functional encode probes) with actionable error codes; no runtime re-probe or automatic retry on transcode failure. See [docs/hardware-detection.md](docs/hardware-detection.md).
 4. **Support matrix, reports, and testing** — `go-ffmpeg` CLI emits human or JSON capability reports. CI runs unit, race, integration, and HLS fixture matrices across software and hardware paths so behavior stays pinned.
 5. **Plex-class transcoding and HLS** — Deep support for browser MSE playback: fMP4 segment timelines, `tfdt` alignment, continuous disk-cache HLS, remux/copy/transcode pipelines, and watch-while-transcode pacing — the features streaming servers need, without mastering ffmpeg internals.
 
@@ -160,7 +160,8 @@ make report            # capability report in terminal
 - [docs/operations.md](docs/operations.md) — task-focused API and operation map
 - [docs/capture.md](docs/capture.md) — frame capture and migration from Screenshot/VideoPreview
 - [docs/hls.md](docs/hls.md) — Plex-class on-demand and continuous HLS
-- [docs/hardware.md](docs/hardware.md) — detection, backends, and HW fallback
+- [docs/hardware-detection.md](docs/hardware-detection.md) — layered HW probe pipeline, error codes, platform matrix
+- [docs/hardware.md](docs/hardware.md) — GPU selection, backends, and HW fallback
 - [docs/ffmpeg-versions.md](docs/ffmpeg-versions.md) — version gates and build matrix
 - [docs/security.md](docs/security.md) — caller responsibilities
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to add operations and tests

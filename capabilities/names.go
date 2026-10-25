@@ -13,6 +13,9 @@ func DecoderLabel(name string) string {
 	if strings.HasPrefix(name, "hwaccel:videotoolbox:") {
 		return "VideoToolbox decode (" + strings.TrimPrefix(name, "hwaccel:videotoolbox:") + ")"
 	}
+	if strings.HasPrefix(name, "hwaccel:vulkan:") {
+		return "Vulkan decode (" + strings.TrimPrefix(name, "hwaccel:vulkan:") + ")"
+	}
 	return name
 }
 
@@ -91,6 +94,8 @@ func BackendDisplayLabel(name, kind string) string {
 		return "VAAPI"
 	case "videotoolbox":
 		return "VideoToolbox"
+	case "vulkan":
+		return "Vulkan"
 	default:
 		return kind
 	}
@@ -119,6 +124,7 @@ var accelLabels = map[AccelType]string{
 	AccelD3D12:        "WSL D3D12 (VAAPI)",
 	AccelVideoToolbox: "Apple VideoToolbox",
 	AccelV4L2M2M:      "V4L2 M2M (Raspberry Pi)",
+	AccelVulkan:       "Vulkan",
 	AccelNone:         "Software",
 }
 
@@ -138,6 +144,7 @@ var encoderKindLabels = map[string]string{
 	"vaapi":        "VAAPI (Intel/AMD GPU)",
 	"videotoolbox": "Apple VideoToolbox",
 	"v4l2m2m":      "V4L2 M2M (Raspberry Pi)",
+	"vulkan":       "Vulkan (cross-vendor)",
 }
 
 var platformGateLabels = map[string]string{
@@ -188,4 +195,7 @@ var encoderLabels = map[string]string{
 	// VideoToolbox
 	"h264_videotoolbox": "H.264 — VideoToolbox",
 	"hevc_videotoolbox": "HEVC — VideoToolbox",
+	"h264_vulkan":       "H.264 — Vulkan",
+	"hevc_vulkan":       "HEVC — Vulkan",
+	"av1_vulkan":        "AV1 — Vulkan",
 }

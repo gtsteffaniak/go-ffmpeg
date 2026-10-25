@@ -22,6 +22,7 @@ var hwReportBackends = []hwReportBackend{
 	{Title: "VAAPI", Kinds: []string{"vaapi"}, Accel: AccelVAAPI},
 	{Title: "AMD AMF", Kinds: []string{"amf"}, Accel: AccelAMF},
 	{Title: "Apple VideoToolbox", Kinds: []string{"videotoolbox"}, Accel: AccelVideoToolbox},
+	{Title: "Vulkan", Kinds: []string{"vulkan"}, Accel: AccelVulkan},
 }
 
 func encodersForKinds(kinds []string) []string {
@@ -46,6 +47,9 @@ func backendVisible(c *Capabilities, backend hwReportBackend) bool {
 func writeBuildSection(w io.Writer, st reportStyle, c *Capabilities) {
 	fmt.Fprintln(w, st.section("FFmpeg build (compiled with):"))
 	fmt.Fprintf(w, "  %s %s\n", st.bold("Profile:"), st.profileLabel(c.BuildProfile))
+	if c.FFmpegBinary.Kind != "" {
+		fmt.Fprintf(w, "  %s %s\n", st.bold("Binary link:"), st.cyan(string(c.FFmpegBinary.Kind)))
+	}
 	if len(c.BuildConfig.LibFlags) > 0 {
 		fmt.Fprintf(w, "  %s %s\n", st.bold("Libraries:"), st.cyan(strings.Join(trimLibFlags(c.BuildConfig.LibFlags), ", ")))
 	}
