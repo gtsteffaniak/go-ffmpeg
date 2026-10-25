@@ -15,7 +15,7 @@ Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-
 ## Tasks
 
 - Probe streams, duration, dimensions, subtitles
-- Screenshots and MJPEG previews
+- Screenshots, MJPEG previews, and thumbnail sprite sheets (WebVTT-ready)
 - Transcode, segmented record, live fMP4 to `io.Writer`
 - **HLS** for browser playback (on-demand fMP4 segments + continuous disk cache) — Plex/Jellyfin-class depth
 - Timelapse compile

@@ -133,6 +133,47 @@ func TestIntegrationScreenshot(t *testing.T) {
 	}
 }
 
+func TestIntegrationSpriteSheet(t *testing.T) {
+	sample := integrationSampleMP4(t)
+	ffmpegBin, ffprobeBin := requireFFmpeg(t)
+	svc, err := ffmpeg.New(context.Background(), ffmpeg.Config{
+		FFmpegPath:  ffmpegBin,
+		FFprobePath: ffprobeBin,
+		SkipHWTests: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	sprite := filepath.Join(dir, "sprite.jpg")
+	vtt := filepath.Join(dir, "thumbs.vtt")
+	res, err := svc.SpriteSheet(context.Background(), ffmpeg.SpriteSheetOptions{
+		Input:       ffmpeg.InputSource{URL: sample, StreamType: ffmpeg.StreamFile},
+		OutputPath:  sprite,
+		WebVTTPath:  vtt,
+		Columns:     5,
+		Rows:        2,
+		IntervalSec: 2,
+		TileWidth:   160,
+		TileHeight:  90,
+		DurationSec: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TileCount != 10 {
+		t.Fatalf("tile count = %d", res.TileCount)
+	}
+	st, err := os.Stat(sprite)
+	if err != nil || st.Size() == 0 {
+		t.Fatal("sprite empty")
+	}
+	vttData, err := os.ReadFile(vtt)
+	if err != nil || len(vttData) < 20 {
+		t.Fatal("vtt missing")
+	}
+}
+
 func TestIntegrationHLSSegmentMPEGTS(t *testing.T) {
 	sample := integrationSampleMP4(t)
 	ffmpegBin, ffprobeBin := requireFFmpeg(t)
