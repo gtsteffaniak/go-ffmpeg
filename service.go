@@ -257,6 +257,74 @@ func (s *Service) Screenshot(ctx context.Context, opts ScreenshotOptions) error 
 	})
 }
 
+// CaptureAccuracy controls frame capture seek accuracy (fast keyframe vs exact).
+type CaptureAccuracy = ops.CaptureAccuracy
+
+const (
+	CaptureFast  = ops.CaptureFast
+	CaptureExact = ops.CaptureExact
+)
+
+// CaptureDefaultLightProbeSize is the default ffmpeg -probesize for lightweight capture.
+const CaptureDefaultLightProbeSize = ops.CaptureDefaultLightProbeSize
+
+// CaptureDefaultLightAnalyzeDuration is the default ffmpeg -analyzeduration (µs) for lightweight capture.
+const CaptureDefaultLightAnalyzeDuration = ops.CaptureDefaultLightAnalyzeDuration
+
+// CaptureLightProbe optionally overrides lightweight input probing for frame capture.
+type CaptureLightProbe = ops.CaptureLightProbe
+
+// SpriteFormat identifies sprite sheet still encoding.
+type SpriteFormat = ops.SpriteFormat
+
+const (
+	SpriteFormatJPEG = ops.SpriteFormatJPEG
+	SpriteFormatWebP = ops.SpriteFormatWebP
+)
+
+// SpriteSheetOptions configures tiled thumbnail sprite generation.
+type SpriteSheetOptions = ops.SpriteSheetOptions
+
+// SpriteSheetResult describes a generated sprite sheet.
+type SpriteSheetResult = ops.SpriteSheetResult
+
+// SpriteSheetCapabilities reports hardware decode availability for sprite jobs.
+type SpriteSheetCapabilities = ops.SpriteSheetCapabilities
+
+// SpriteSheetCapabilities returns decode paths hosts can use to gate sprite features.
+func (s *Service) SpriteSheetCapabilities() SpriteSheetCapabilities {
+	if err := s.ensureDetected(context.Background()); err != nil {
+		return SpriteSheetCapabilities{}
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	return ops.SpriteSheetCapabilitiesFrom(caps)
+}
+
+// SpriteSheet builds a JPEG/WebP sprite sheet (and optional WebVTT) in one ffmpeg process.
+func (s *Service) SpriteSheet(ctx context.Context, opts SpriteSheetOptions) (SpriteSheetResult, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return SpriteSheetResult{}, err
+	}
+	if err := s.require("SpriteSheet"); err != nil {
+		return SpriteSheetResult{}, err
+	}
+	s.mu.RLock()
+	caps := s.caps
+	s.mu.RUnlock()
+	var result SpriteSheetResult
+	err := s.runWithClass(ctx, concurrency.SlotDecode, opts.Input.URL, func() error {
+		var opErr error
+		result, opErr = ops.SpriteSheet(ctx, s.runner, caps, opts)
+		if opErr != nil {
+			return wrapOp("SpriteSheet", ErrEncodeFailed, opErr)
+		}
+		return nil
+	})
+	return result, err
+}
+
 // PreviewOptions configures video preview generation.
 type PreviewOptions = ops.PreviewOptions
 
