@@ -13,19 +13,27 @@ import (
 )
 
 // FFmpegLinkKind describes how the ffmpeg binary is linked on the host.
+// Static Linux builds block most GPU backends because userspace drivers are loaded via dlopen.
 type FFmpegLinkKind string
 
 const (
+	// FFmpegLinkDynamic means the binary uses a dynamic linker and can load GPU libraries.
 	FFmpegLinkDynamic FFmpegLinkKind = "dynamic"
-	FFmpegLinkStatic  FFmpegLinkKind = "static"
+	// FFmpegLinkStatic means no PT_INTERP or ldd reports static linking; GPU dlopen fails on Linux.
+	FFmpegLinkStatic FFmpegLinkKind = "static"
+	// FFmpegLinkUnknown means the file is not ELF (for example a shell wrapper) or inspection failed.
 	FFmpegLinkUnknown FFmpegLinkKind = "unknown"
 )
 
-// FFmpegBinaryInfo records compile-time listing support vs runtime dlopen ability.
+// FFmpegBinaryInfo records how the configured ffmpeg binary is linked.
+// Populated once during [Detect]; used by layered probes and reports.
 type FFmpegBinaryInfo struct {
-	Kind       FFmpegLinkKind `json:"kind"`
-	Interp     string         `json:"interp,omitempty"`
-	LddSummary string         `json:"lddSummary,omitempty"`
+	// Kind is dynamic, static, or unknown.
+	Kind FFmpegLinkKind `json:"kind"`
+	// Interp is the ELF interpreter path when Kind is dynamic.
+	Interp string `json:"interp,omitempty"`
+	// LddSummary is a truncated ldd line used when ELF inspection was inconclusive.
+	LddSummary string `json:"lddSummary,omitempty"`
 }
 
 // linkProbeDeps allows tests to stub filesystem and ldd output.
@@ -45,6 +53,7 @@ func defaultLinkProbeDeps() linkProbeDeps {
 	}
 }
 
+// readFileHead reads at most 64KiB for ELF header parsing (avoids huge reads).
 func readFileHead(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -54,8 +63,10 @@ func readFileHead(path string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, 1<<16))
 }
 
-// ProbeFFmpegBinary inspects the ffmpeg binary for static vs dynamic linking.
-// On non-Linux hosts this returns dynamic unless inspection fails.
+// ProbeFFmpegBinary inspects ffmpegPath for static vs dynamic linking.
+// On non-Linux hosts it returns [FFmpegLinkDynamic] without reading the file.
+// Non-ELF paths (shell wrappers) return [FFmpegLinkUnknown] and never consult ldd.
+// ldd and ELF reads use bounded timeouts and size limits.
 func ProbeFFmpegBinary(ffmpegPath string) FFmpegBinaryInfo {
 	return probeFFmpegBinary(ffmpegPath, defaultLinkProbeDeps())
 }
@@ -89,8 +100,8 @@ func probeFFmpegBinary(ffmpegPath string, deps linkProbeDeps) FFmpegBinaryInfo {
 	return FFmpegBinaryInfo{Kind: FFmpegLinkDynamic, LddSummary: truncateProbeDetail(summary, 200)}
 }
 
-// gpuAccelBlockedByStaticBinary reports whether a hardware backend cannot dlopen
-// userspace drivers when ffmpeg is statically linked on Linux.
+// gpuAccelBlockedByStaticBinary reports whether encoderKind must be blocked on static Linux ffmpeg.
+// v4l2m2m and software encoders are still allowed.
 func gpuAccelBlockedByStaticBinary(info FFmpegBinaryInfo, encoderKind string) bool {
 	if info.Kind != FFmpegLinkStatic || runtime.GOOS != "linux" {
 		return false
@@ -115,6 +126,7 @@ const (
 	ptInterp   = 3
 )
 
+// elfLinkKind parses ELF program headers; the bool is false when the file is not ELF.
 func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLinkKind, string, bool) {
 	data, err := readFile(path)
 	if err != nil || len(data) < 64 {

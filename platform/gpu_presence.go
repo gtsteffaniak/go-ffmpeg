@@ -6,15 +6,18 @@ import (
 	"strings"
 )
 
-// GPUPresence records PCI GPUs seen on the host independent of working drivers.
+// GPUPresence records PCI GPUs seen on the host independent of working VA/NVENC drivers.
+// Used for hardware remediation hints; it does not imply encoders are available.
 type GPUPresence struct {
-	Intel  bool `json:"intel,omitempty"`
-	AMD    bool `json:"amd,omitempty"`
+	Intel bool `json:"intel,omitempty"`
+	AMD   bool `json:"amd,omitempty"`
+	// NVIDIA is set from PCI vendor, NVIDIA device nodes, or WSL libcuda when /dev/dxg exists.
 	NVIDIA bool `json:"nvidia,omitempty"`
-	WSLDXG bool `json:"wslDxg,omitempty"` // /dev/dxg (WSL GPU paravirt)
+	// WSLDXG is set when /dev/dxg exists (Intel, AMD, or NVIDIA WSL); it does not imply NVIDIA alone.
+	WSLDXG bool `json:"wslDxg,omitempty"`
 }
 
-// Any reports whether any GPU class was detected.
+// Any reports whether any GPU class or WSL paravirt device was detected.
 func (p GPUPresence) Any() bool {
 	return p.Intel || p.AMD || p.NVIDIA || p.WSLDXG
 }
@@ -33,7 +36,8 @@ func defaultGPUPresenceDeps() gpuPresenceDeps {
 	}
 }
 
-// DetectGPUPresence probes sysfs DRM vendors and common device nodes without requiring VA/NVENC drivers.
+// DetectGPUPresence probes sysfs DRM vendors and device nodes without loading GPU drivers.
+// Safe to call from detection; each call re-reads the filesystem (no cache).
 func DetectGPUPresence() GPUPresence {
 	return detectGPUPresence(defaultGPUPresenceDeps())
 }

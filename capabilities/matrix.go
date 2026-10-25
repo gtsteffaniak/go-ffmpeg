@@ -124,9 +124,9 @@ type EncoderCapability struct {
 	Available      bool        `json:"available"`
 	Kind           string      `json:"kind"`
 	TestError      string      `json:"testError,omitempty"`
-	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`
-	ProbeHint      string      `json:"probeHint,omitempty"`
-	ProbeDetail    string      `json:"probeDetail,omitempty"`
+	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`     // Layered detection code; fixed after Detect.
+	ProbeHint      string      `json:"probeHint,omitempty"`     // Short remediation; may include distro text.
+	ProbeDetail    string      `json:"probeDetail,omitempty"`   // Truncated probe stderr for operators.
 	SelectionNote  string      `json:"selectionNote,omitempty"` // e.g. available, not selected
 	OutOfSelection bool        `json:"outOfSelection,omitempty"`
 }
@@ -189,9 +189,9 @@ type Capabilities struct {
 	DevicePreference       string                       `json:"devicePreference,omitempty"`
 	Pinning                platform.BackendPinning      `json:"pinning,omitempty"`
 	AllowSoftware          bool                         `json:"allowSoftware"`
-	FFmpegBinary           FFmpegBinaryInfo             `json:"ffmpegBinary,omitempty"`
-	EncoderProbes          []EncoderProbeResult         `json:"encoderProbes,omitempty"`
-	DetectionHost          DetectionHost                `json:"detectionHost,omitempty"`
+	FFmpegBinary           FFmpegBinaryInfo             `json:"ffmpegBinary,omitempty"`  // Link kind from [ProbeFFmpegBinary].
+	EncoderProbes          []EncoderProbeResult         `json:"encoderProbes,omitempty"` // Per-HW-encoder layered probe rows.
+	DetectionHost          DetectionHost                `json:"detectionHost,omitempty"` // Host context for remediation hints.
 	VulkanEncoderRequested bool                         `json:"vulkanEncoderRequested,omitempty"`
 }
 

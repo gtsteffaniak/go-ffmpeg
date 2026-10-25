@@ -11,17 +11,20 @@ import (
 
 const hwSmokeDurationSec = "0.5"
 
-// LayeredProbeInput carries binary and host context for one hardware encoder probe.
+// LayeredProbeInput carries context for a single [ProbeHardwareEncoder] call.
 type LayeredProbeInput struct {
 	EncoderName string
 	EncoderKind string
 	Platform    platform.Info
 	Binary      FFmpegBinaryInfo
 	Host        DetectionHost
-	SkipSmoke   bool
+	// SkipSmoke skips the functional encode when HW tests are disabled.
+	SkipSmoke bool
 }
 
-// ProbeHardwareEncoder runs binary → prerequisite → functional layers for one encoder.
+// ProbeHardwareEncoder runs binary, prerequisite, and functional layers for one encoder.
+// It does not retry or mutate global state; the caller stores the returned
+// [EncoderProbeResult] on [Capabilities]. ctx bounds the functional probe only.
 func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in LayeredProbeInput, smokePlat platform.Info) EncoderProbeResult {
 	res := EncoderProbeResult{
 		Encoder: in.EncoderName,
@@ -66,6 +69,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 	return res
 }
 
+// functionalHWProbe runs a short testsrc encode in a process group with timeout kill.
 func functionalHWProbe(ctx context.Context, runner *ffexec.Runner, encoderName string, plat platform.Info) (bool, string) {
 	testCtx, cancel := context.WithTimeout(ctx, hwTestTimeout)
 	defer cancel()
@@ -110,7 +114,7 @@ func functionalHWProbe(ctx context.Context, runner *ffexec.Runner, encoderName s
 	return true, ""
 }
 
-// ApplyEncoderProbe copies a probe result into EncoderCapability and returns the test error string.
+// ApplyEncoderProbe copies probe into enc and sets TestError from Code, Hint, and Detail.
 func ApplyEncoderProbe(enc *EncoderCapability, probe EncoderProbeResult) {
 	if enc == nil {
 		return

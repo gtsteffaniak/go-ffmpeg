@@ -7,14 +7,18 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
 
-// DetectionHost captures distro/container/GPU presence for actionable probe hints.
+// DetectionHost captures distro, container, and GPU presence for probe remediation.
+// It is snapshotted during [Detect] and not refreshed until the next detection run.
 type DetectionHost struct {
-	Presence  platform.GPUPresence   `json:"gpuPresence,omitempty"`
-	Distro    platform.DistroContext `json:"distro,omitempty"`
-	Container bool                   `json:"container,omitempty"`
+	// Presence is PCI/vendor signals from [platform.DetectGPUPresence].
+	Presence platform.GPUPresence `json:"gpuPresence,omitempty"`
+	// Distro supplies package install commands for remediation hints.
+	Distro platform.DistroContext `json:"distro,omitempty"`
+	// Container is true when [platform.RunningInContainer] reports isolation.
+	Container bool `json:"container,omitempty"`
 }
 
-// NewDetectionHost probes the host once (independent of ffmpeg drivers).
+// NewDetectionHost probes the host once for remediation (no ffmpeg smoke tests).
 func NewDetectionHost() DetectionHost {
 	return DetectionHost{
 		Presence:  platform.DetectGPUPresence(),
@@ -23,6 +27,7 @@ func NewDetectionHost() DetectionHost {
 	}
 }
 
+// probeCodeDriverRelated reports whether code may be upgraded to gpu_present_driver_missing.
 func probeCodeDriverRelated(code HWProbeCode) bool {
 	switch code {
 	case HWProbeStaticBinary, HWProbeNoDevice, HWProbeDevicePermission,
@@ -35,6 +40,7 @@ func probeCodeDriverRelated(code HWProbeCode) bool {
 	}
 }
 
+// vendorForEncoderKind maps an encoder backend to intel, amd, or nvidia from presence.
 func vendorForEncoderKind(kind string, presence platform.GPUPresence) string {
 	switch kind {
 	case "nvenc":
@@ -77,6 +83,7 @@ func vendorForEncoderKind(kind string, presence platform.GPUPresence) string {
 	return ""
 }
 
+// gpuPresentForVendor checks vendor against PCI-derived presence (WSLDXG alone is not NVIDIA).
 func gpuPresentForVendor(vendor string, presence platform.GPUPresence) bool {
 	switch vendor {
 	case "intel":
@@ -90,7 +97,9 @@ func gpuPresentForVendor(vendor string, presence platform.GPUPresence) bool {
 	}
 }
 
-// ApplyHostRemediation augments failed probe codes/hints when hardware exists but drivers/stack are missing.
+// ApplyHostRemediation augments code and hint when a GPU is present but the driver stack failed.
+// It may set [HWProbeGPUPresentDriverMissing] and append [HostRemediationMessage].
+// It does not change availability or re-run probes.
 func ApplyHostRemediation(host DetectionHost, encoderKind string, binary FFmpegBinaryInfo, code HWProbeCode, hint string) (HWProbeCode, string) {
 	if code == HWProbeOK || code == HWProbeSkipped || code == HWProbeNotCompiled {
 		return code, hint
@@ -115,7 +124,7 @@ func ApplyHostRemediation(host DetectionHost, encoderKind string, binary FFmpegB
 	return newCode, hint
 }
 
-// HostRemediationMessage returns vendor+distro-specific install guidance (informational).
+// HostRemediationMessage returns vendor and distro-specific install guidance for operators.
 func HostRemediationMessage(host DetectionHost, vendor, encoderKind string, binary FFmpegBinaryInfo) string {
 	var parts []string
 	parts = append(parts, fmt.Sprintf("GPU detected (%s) but %s encode is unavailable on this host", vendorLabel(vendor), encoderBackendLabel(encoderKind)))
@@ -189,7 +198,8 @@ func encoderBackendLabel(kind string) string {
 	}
 }
 
-// GPUPresentRemediationLogLines returns deduplicated startup log lines for failed HW probes when a GPU is present.
+// GPUPresentRemediationLogLines returns warn-level startup lines for probes with
+// [HWProbeGPUPresentDriverMissing]. Safe to call after detection; read-only.
 func (c *Capabilities) GPUPresentRemediationLogLines() []string {
 	if c == nil {
 		return nil
@@ -220,6 +230,7 @@ func (c *Capabilities) GPUPresentRemediationLogLines() []string {
 	return lines
 }
 
+// vendorLevelRemediation builds fallback messages when no per-encoder row matched.
 func (c *Capabilities) vendorLevelRemediation() map[string]string {
 	out := map[string]string{}
 	host := c.DetectionHost
