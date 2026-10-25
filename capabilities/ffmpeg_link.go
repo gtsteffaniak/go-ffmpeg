@@ -2,11 +2,14 @@ package capabilities
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // FFmpegLinkKind describes how the ffmpeg binary is linked on the host.
@@ -33,11 +36,22 @@ type linkProbeDeps struct {
 
 func defaultLinkProbeDeps() linkProbeDeps {
 	return linkProbeDeps{
-		ReadFile: os.ReadFile,
+		ReadFile: readFileHead,
 		Ldd: func(path string) ([]byte, error) {
-			return exec.Command("ldd", path).CombinedOutput()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return exec.CommandContext(ctx, "ldd", path).CombinedOutput()
 		},
 	}
+}
+
+func readFileHead(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, 1<<16))
 }
 
 // ProbeFFmpegBinary inspects the ffmpeg binary for static vs dynamic linking.
@@ -53,7 +67,10 @@ func probeFFmpegBinary(ffmpegPath string, deps linkProbeDeps) FFmpegBinaryInfo {
 	if runtime.GOOS != "linux" {
 		return FFmpegBinaryInfo{Kind: FFmpegLinkDynamic}
 	}
-	kind, interp := elfLinkKind(ffmpegPath, deps.ReadFile)
+	kind, interp, isELF := elfLinkKind(ffmpegPath, deps.ReadFile)
+	if !isELF {
+		return FFmpegBinaryInfo{Kind: FFmpegLinkUnknown}
+	}
 	if kind == FFmpegLinkStatic {
 		return FFmpegBinaryInfo{Kind: FFmpegLinkStatic}
 	}
@@ -98,23 +115,23 @@ const (
 	ptInterp   = 3
 )
 
-func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLinkKind, string) {
+func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLinkKind, string, bool) {
 	data, err := readFile(path)
 	if err != nil || len(data) < 64 {
-		return FFmpegLinkUnknown, ""
+		return FFmpegLinkUnknown, "", false
 	}
 	if data[0] != elfMagic0 || data[1] != elfMagic1 || data[2] != elfMagic2 || data[3] != elfMagic3 {
-		return FFmpegLinkUnknown, ""
+		return FFmpegLinkUnknown, "", false
 	}
 	if data[4] != elfClass64 {
 		// 32-bit builds are rare; treat missing PT_INTERP the same way.
 		if data[4] != 1 {
-			return FFmpegLinkUnknown, ""
+			return FFmpegLinkUnknown, "", true
 		}
 	}
 	is64 := data[4] == elfClass64
 	if data[5] != elfDataLE {
-		return FFmpegLinkUnknown, ""
+		return FFmpegLinkUnknown, "", true
 	}
 
 	var ehdr struct {
@@ -124,14 +141,14 @@ func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLink
 	}
 	if is64 {
 		if len(data) < 64 {
-			return FFmpegLinkUnknown, ""
+			return FFmpegLinkUnknown, "", true
 		}
 		ehdr.e_phoff = binary.LittleEndian.Uint64(data[32:40])
 		ehdr.e_phentsize = binary.LittleEndian.Uint16(data[54:56])
 		ehdr.e_phnum = binary.LittleEndian.Uint16(data[56:58])
 	} else {
 		if len(data) < 52 {
-			return FFmpegLinkUnknown, ""
+			return FFmpegLinkUnknown, "", true
 		}
 		ehdr.e_phoff = uint64(binary.LittleEndian.Uint32(data[28:32]))
 		ehdr.e_phentsize = binary.LittleEndian.Uint16(data[42:44])
@@ -142,10 +159,10 @@ func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLink
 	ent := int(ehdr.e_phentsize)
 	n := int(ehdr.e_phnum)
 	if n == 0 {
-		return FFmpegLinkStatic, ""
+		return FFmpegLinkStatic, "", true
 	}
 	if ent == 0 || off < 0 || off+ent*n > len(data) {
-		return FFmpegLinkUnknown, ""
+		return FFmpegLinkUnknown, "", true
 	}
 
 	var interp string
@@ -180,7 +197,7 @@ func elfLinkKind(path string, readFile func(string) ([]byte, error)) (FFmpegLink
 		break
 	}
 	if interp == "" {
-		return FFmpegLinkStatic, ""
+		return FFmpegLinkStatic, "", true
 	}
-	return FFmpegLinkDynamic, interp
+	return FFmpegLinkDynamic, interp, true
 }

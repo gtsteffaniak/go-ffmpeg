@@ -28,7 +28,7 @@ func TestVulkanVideoFiltersInitAndUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "vulkan=vk:") || !strings.Contains(joined, "hwupload") {
+	if !strings.Contains(joined, "vulkan=vk") || !strings.Contains(joined, "hwupload") {
 		t.Fatalf("args=%v", args)
 	}
 }

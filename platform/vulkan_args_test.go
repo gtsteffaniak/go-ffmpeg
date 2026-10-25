@@ -9,7 +9,11 @@ import (
 func TestFFmpegVulkanDeviceInitLinuxRenderNode(t *testing.T) {
 	plat := platform.Info{OS: "linux", Details: map[string]string{"render_device": "/dev/dri/renderD128"}}
 	args := platform.FFmpegVulkanDeviceInit(platform.GPUChoice{}, plat)
-	want := []string{"-init_hw_device", "vulkan=vk:/dev/dri/renderD128", "-filter_hw_device", "vk"}
+	want := []string{
+		"-init_hw_device", "drm=dr:/dev/dri/renderD128",
+		"-init_hw_device", "vulkan=vk@dr",
+		"-filter_hw_device", "vk",
+	}
 	if len(args) != len(want) {
 		t.Fatalf("args=%v want %v", args, want)
 	}

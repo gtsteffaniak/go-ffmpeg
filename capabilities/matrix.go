@@ -191,7 +191,8 @@ type Capabilities struct {
 	AllowSoftware      bool                         `json:"allowSoftware"`
 	FFmpegBinary       FFmpegBinaryInfo             `json:"ffmpegBinary,omitempty"`
 	EncoderProbes      []EncoderProbeResult         `json:"encoderProbes,omitempty"`
-	DetectionHost      DetectionHost                `json:"detectionHost,omitempty"`
+	DetectionHost          DetectionHost `json:"detectionHost,omitempty"`
+	VulkanEncoderRequested bool          `json:"vulkanEncoderRequested,omitempty"`
 }
 
 // DeviceCodecAttempt records why a device/backend was skipped during selection.

@@ -48,11 +48,29 @@ func vulkanStackAvailableWithDeps(deps vulkanDeps) bool {
 }
 
 func libVulkanResolvable(deps vulkanDeps) bool {
+	if runtime.GOOS == "windows" {
+		for _, p := range []string{
+			"C:\\Windows\\System32\\vulkan-1.dll",
+			"C:\\Windows\\SysWOW64\\vulkan-1.dll",
+		} {
+			if _, err := deps.Stat(p); err == nil {
+				return true
+			}
+		}
+		if path, err := deps.LookPath("vulkan-1.dll"); err == nil && path != "" {
+			return true
+		}
+		return false
+	}
 	if path, err := deps.LookPath("libvulkan.so.1"); err == nil && path != "" {
+		return true
+	}
+	if matches, _ := deps.Glob("/usr/lib/*-linux-gnu/libvulkan.so.1"); len(matches) > 0 {
 		return true
 	}
 	for _, p := range []string{
 		"/usr/lib/x86_64-linux-gnu/libvulkan.so.1",
+		"/usr/lib/aarch64-linux-gnu/libvulkan.so.1",
 		"/usr/lib64/libvulkan.so.1",
 		"/usr/lib/libvulkan.so.1",
 		"/usr/lib/wsl/lib/libvulkan.so.1",

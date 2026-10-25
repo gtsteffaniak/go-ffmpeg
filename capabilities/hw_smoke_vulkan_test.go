@@ -15,7 +15,7 @@ func TestHwSmokeArgsVulkanLinux(t *testing.T) {
 	}
 	args := hwSmokeArgs("h264_vulkan", plat)
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "vulkan=vk:/dev/dri/renderD128") {
+	if !strings.Contains(joined, "drm=dr:/dev/dri/renderD128") || !strings.Contains(joined, "vulkan=vk@dr") {
 		t.Fatalf("missing vulkan device init: %v", args)
 	}
 	if !strings.Contains(joined, "h264_vulkan") || !strings.Contains(joined, "hwupload") {

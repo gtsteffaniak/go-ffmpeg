@@ -65,7 +65,12 @@ func (r *Resolver) vulkanVideoFilters(decode VideoDecodeProfile, maxHeight int) 
 		plat = r.Caps.Platform
 	}
 	useScaleVulkan := r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vulkan")
-	vkDecode := decodeUsesVulkan(r, decode)
+	var decodeSel capabilities.DecoderSelection
+	if r != nil {
+		decodeSel, _ = r.ResolveDecoder(decode)
+	}
+	vkDecode := decodeSel.Accel == capabilities.AccelVulkan
+	otherHWDecode := decodeSel.Accel != capabilities.AccelNone && !vkDecode && !decode.ForceSoftware
 
 	var parts []string
 	switch {
@@ -74,15 +79,21 @@ func (r *Resolver) vulkanVideoFilters(decode VideoDecodeProfile, maxHeight int) 
 	case vkDecode && maxHeight > 0:
 		parts = append(parts, "hwdownload", fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight), "format=nv12", "hwupload")
 	case useScaleVulkan && maxHeight > 0:
+		if otherHWDecode {
+			parts = append(parts, "hwdownload")
+		}
 		parts = append(parts, "format=nv12", "hwupload", fmt.Sprintf("scale_vulkan=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)", maxHeight, maxHeight))
 	default:
+		if otherHWDecode {
+			parts = append(parts, "hwdownload")
+		}
 		if maxHeight > 0 {
 			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
 		}
 		parts = append(parts, "format=nv12", "hwupload")
 	}
 	args := []string{"-filter_hw_device", "vk", "-vf", strings.Join(parts, ",")}
-	if decode.ForceSoftware || decode.Accel == capabilities.AccelNone || decode.Accel == "" {
+	if !vkDecode {
 		init := platform.FFmpegVulkanDeviceInit(choice, plat)
 		args = append(init, args...)
 	}

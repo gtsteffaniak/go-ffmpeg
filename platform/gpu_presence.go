@@ -62,7 +62,6 @@ func detectGPUPresence(deps gpuPresenceDeps) GPUPresence {
 	}
 	if _, err := deps.Stat("/dev/dxg"); err == nil {
 		p.WSLDXG = true
-		p.NVIDIA = true
 	}
 	return p
 }

@@ -26,7 +26,10 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 			return HWProbeVADriverInitFailed, HintForProbeCode(HWProbeVADriverInitFailed)
 		}
 		return HWProbeVADriverInitFailed, HintForProbeCode(HWProbeVADriverInitFailed)
-	case strings.Contains(lower, "driver") && strings.Contains(lower, "not found") && strings.Contains(lower, "va"):
+	case (encoderKind == "vaapi" || encoderKind == "qsv") &&
+		strings.Contains(lower, "driver") && strings.Contains(lower, "not found") &&
+		(strings.Contains(lower, "vaapi") || strings.Contains(lower, "libva") ||
+			strings.Contains(lower, "va driver") || strings.Contains(lower, "_drv_video")):
 		return HWProbeVADriverMissing, HintForProbeCode(HWProbeVADriverMissing)
 	case strings.Contains(lower, "cannot load libcuda") || strings.Contains(lower, "libnvidia-encode.so") && strings.Contains(lower, "cannot open shared object"):
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)

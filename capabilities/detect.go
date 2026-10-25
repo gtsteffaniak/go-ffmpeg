@@ -93,6 +93,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	}
 	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
 	hierarchy = MergeVulkanHierarchy(hierarchy, opts.EncoderHierarchy, opts.VulkanEncoder)
+	caps.VulkanEncoderRequested = hierarchyIncludesAccel(hierarchy, AccelVulkan)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
 	PopulateEncoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)

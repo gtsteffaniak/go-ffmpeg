@@ -4,7 +4,7 @@ import "strings"
 
 // VulkanProbeWarnLines returns startup warn lines for failed Vulkan encoder probes.
 func (c *Capabilities) VulkanProbeWarnLines() []string {
-	if c == nil {
+	if c == nil || !c.VulkanEncoderRequested {
 		return nil
 	}
 	seen := map[string]struct{}{}
@@ -32,7 +32,7 @@ func (c *Capabilities) VulkanProbeWarnLines() []string {
 func vulkanProbeWarnCode(code HWProbeCode) bool {
 	switch code {
 	case HWProbeVulkanLoaderMissing, HWProbeVulkanNoDevice, HWProbeVulkanNoVideoEncode,
-		HWProbeVulkanDriverTooOld, HWProbeStaticBinary, HWProbeGPUPresentDriverMissing, HWProbeUnknown:
+		HWProbeVulkanDriverTooOld, HWProbeStaticBinary, HWProbeUnknown:
 		return true
 	default:
 		return code != HWProbeOK && code != HWProbeSkipped && code != HWProbeNotCompiled

@@ -256,6 +256,7 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 		args = append(args,
 			"-hwaccel", "vulkan",
 			"-hwaccel_device", "vk",
+			"-hwaccel_output_format", "vulkan",
 			"-c:v", sw,
 		)
 		return args, nil

@@ -142,13 +142,13 @@ func (d DistroContext) AMDVADriverPackages() []string {
 		return []string{"mesa-va-drivers"}
 	case DistroFamilyRPM:
 		// Stock Fedora Mesa often lacks H.264/HEVC encode; RPM Fusion freeworld driver required.
-		return []string{"mesa-va-drivers-freeworld (RPM Fusion)"}
+		return []string{"mesa-va-drivers-freeworld"}
 	case DistroFamilySUSE:
 		return []string{"mesa-va-drivers"}
 	case DistroFamilyAlpine:
 		return []string{"mesa-va-gallium"}
 	default:
-		return []string{"mesa-va-drivers or mesa (distro-specific)"}
+		return nil
 	}
 }
 

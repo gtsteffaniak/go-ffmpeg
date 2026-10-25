@@ -71,6 +71,9 @@ func (s *Service) Reload(ctx context.Context) error {
 	ops.EvaluateOps(caps)
 	log := WithGroup(s.cfg.Logger, "ffmpeg")
 	log.Info(caps.SummaryLine())
+	if probeLine := caps.HardwareProbeSummaryLine(); probeLine != "" {
+		log.Info(probeLine)
+	}
 	for _, line := range caps.GPUPresentRemediationLogLines() {
 		log.Warn(line)
 	}

@@ -80,7 +80,7 @@ Layered hardware encoder detection runs at startup (binary link type → host pr
 `platform.Detect()` → FFmpeg inventory → layered HW probes → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
 
 ```go
-// Compact line for admin UIs (logged at info on New/Reload)
+// Compact probe summary (logged at info on Reload alongside SummaryLine)
 caps.HardwareProbeSummaryLine()
 
 // Structured per-encoder rows (fixed after startup detection)

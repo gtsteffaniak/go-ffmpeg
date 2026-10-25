@@ -26,7 +26,7 @@ func TestPrereqRenderNodePermission(t *testing.T) {
 	}
 	plat := platform.Info{OS: "linux", VAAPI: true, DRI: true}
 	code, hint := checkVAStackPrereq("vaapi", plat, deps)
-	if code != HWProbeNoDevice && code != HWProbeDevicePermission {
+	if code != HWProbeDevicePermission {
 		t.Fatalf("code=%s hint=%q", code, hint)
 	}
 }

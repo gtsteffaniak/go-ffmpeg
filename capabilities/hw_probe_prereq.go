@@ -1,12 +1,14 @@
 package capabilities
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
@@ -29,9 +31,7 @@ func defaultPrereqDeps() prereqDeps {
 		Glob:     filepath.Glob,
 		ReadFile: os.ReadFile,
 		LookPath: exec.LookPath,
-		Ldconfig: func() ([]byte, error) {
-			return exec.Command("ldconfig", "-p").CombinedOutput()
-		},
+		Ldconfig: runLdconfigP,
 		Env: os.Getenv,
 	}
 }
@@ -95,10 +95,14 @@ func checkVAStackPrereq(encoderKind string, plat platform.Info, deps prereqDeps)
 			}
 		}
 	}
-	if !renderNodeOpenable(deps) {
+	exists, openable := renderNodeStatus(deps)
+	if !openable {
 		if plat.WSL && !plat.DRI {
 			// NVENC-only WSL without DRI is valid; QSV/VAAPI need the d3d12 stack above.
 			return HWProbeOK, ""
+		}
+		if exists {
+			return renderNodePermissionResult(deps)
 		}
 		code := HWProbeNoDevice
 		hint := HintForProbeCode(code)
@@ -122,13 +126,17 @@ func checkVulkanPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string
 	if plat.Details != nil && plat.Details["pi_model"] == string(platform.PiLegacy) {
 		return HWProbeNoDevice, "Vulkan video encode is not supported on this Raspberry Pi model"
 	}
-	if !libResolvable(deps, "libvulkan.so.1") {
+	if !vulkanLoaderResolvable(deps) {
 		return HWProbeVulkanLoaderMissing, HintForProbeCode(HWProbeVulkanLoaderMissing)
 	}
 	if plat.OS == "windows" {
 		return HWProbeOK, ""
 	}
-	if !renderNodeOpenable(deps) {
+	exists, openable := renderNodeStatus(deps)
+	if !openable {
+		if exists {
+			return renderNodePermissionResult(deps)
+		}
 		code := HWProbeVulkanNoDevice
 		hint := HintForProbeCode(code)
 		if plat.WSL {
@@ -160,17 +168,45 @@ func checkNVENCPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string)
 	return HWProbeOK, ""
 }
 
-func renderNodeOpenable(deps prereqDeps) bool {
+func renderNodeStatus(deps prereqDeps) (exists, openable bool) {
 	nodes, _ := deps.Glob("/dev/dri/renderD*")
 	for _, node := range nodes {
+		exists = true
 		f, err := deps.Open(node)
 		if err != nil {
 			continue
 		}
 		f.Close()
-		return true
+		return true, true
 	}
-	return false
+	return exists, false
+}
+
+func renderNodePermissionResult(deps prereqDeps) (HWProbeCode, string) {
+	hint := HintForProbeCode(HWProbeDevicePermission)
+	if gid, ok := renderGroupGID(deps); ok {
+		hint += fmt.Sprintf(" (render group gid %d)", gid)
+	}
+	return HWProbeDevicePermission, hint
+}
+
+func runLdconfigP() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, bin := range []string{"ldconfig", "/sbin/ldconfig", "/usr/sbin/ldconfig"} {
+		out, err := exec.CommandContext(ctx, bin, "-p").CombinedOutput()
+		if err == nil {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("ldconfig unavailable")
+}
+
+func vulkanLoaderResolvable(deps prereqDeps) bool {
+	if runtime.GOOS == "windows" {
+		return libResolvable(deps, "vulkan-1.dll")
+	}
+	return libResolvable(deps, "libvulkan.so.1")
 }
 
 func renderGroupGID(deps prereqDeps) (int, bool) {
@@ -198,18 +234,25 @@ func libResolvable(deps prereqDeps, soname string) bool {
 	if soname == "" {
 		return false
 	}
-	if path, err := deps.LookPath(soname); err == nil && path != "" {
-		return true
-	}
 	out, err := deps.Ldconfig()
 	if err == nil && strings.Contains(string(out), soname) {
 		return true
 	}
+	if matches, _ := deps.Glob("/usr/lib/*-linux-gnu/" + soname); len(matches) > 0 {
+		return true
+	}
 	search := []string{
 		"/usr/lib/x86_64-linux-gnu/" + soname,
+		"/usr/lib/aarch64-linux-gnu/" + soname,
 		"/usr/lib/wsl/lib/" + soname,
 		"/usr/lib64/" + soname,
 		"/usr/lib/" + soname,
+	}
+	if runtime.GOOS == "windows" {
+		search = append(search,
+			"C:\\Windows\\System32\\"+soname,
+			"C:\\Windows\\SysWOW64\\"+soname,
+		)
 	}
 	for _, p := range search {
 		if _, err := deps.Stat(p); err == nil {
