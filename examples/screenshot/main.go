@@ -19,6 +19,8 @@ func main() {
 	input := flag.String("input", envOr("GOFFMPEG_SAMPLE_MP4", "video.mp4"), "input video path")
 	output := flag.String("output", envOr("SCREENSHOT_OUT", "frame.jpg"), "output JPEG path")
 	quality := flag.Int("quality", 85, "JPEG quality 1-100")
+	seek := flag.Float64("seek", 0, "seek seconds (0 = first frame)")
+	exact := flag.Bool("exact", false, "frame-accurate seek (default: nearest keyframe)")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -31,10 +33,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	accuracy := ffmpeg.CaptureFast
+	if *exact {
+		accuracy = ffmpeg.CaptureExact
+	}
 	if err := svc.Screenshot(ctx, ffmpeg.ScreenshotOptions{
 		Input:      ffmpeg.InputSource{URL: *input, StreamType: ffmpeg.StreamFile},
 		OutputPath: *output,
 		Quality:    *quality,
+		SeekSec:    *seek,
+		Accuracy:   accuracy,
 	}); err != nil {
 		log.Fatal(err)
 	}

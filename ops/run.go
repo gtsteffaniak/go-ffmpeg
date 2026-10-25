@@ -35,29 +35,41 @@ type ScreenshotOptions struct {
 	Quality    int
 	RTSP       *RTSPInputOptions
 	Timeout    time.Duration
+	// SeekSec seeks to this timestamp (seconds). When zero, SeekPercent or the first frame is used.
+	SeekSec float64
+	// SeekPercent seeks to this percentage of duration when SeekSec is zero.
+	SeekPercent float64
+	// DurationSec when > 0 skips ffprobe for seek-percent and enables lightweight input probing.
+	DurationSec float64
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	Width      int
+	Height     int
+	ScaleMode  ScaleMode
+	// Accuracy defaults to CaptureFast (nearest keyframe).
+	Accuracy CaptureAccuracy
 }
 
-// Screenshot extracts a single frame to OutputPath.
+// Screenshot extracts a single frame to OutputPath via image2pipe (no ffmpeg temp files).
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
-	args := []string{"-hide_banner", "-nostats"}
-	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
-	args = append(args,
-		"-i", opts.Input.URL,
-		"-frames:v", "1",
-		"-update", "1",
-		"-q:v", encode.QualityToQScale(opts.Quality),
-		"-f", "image2",
-		"-loglevel", "error",
-		opts.OutputPath,
-	)
+	dur := opts.DurationSec
+	if dur <= 0 && opts.SeekPercent > 0 && opts.SeekSec <= 0 {
+		dur, err := probe.GetMediaDuration(ctx, runner, opts.Input.URL)
+		if err != nil {
+			return err
+		}
+		opts.DurationSec = dur
+	}
+	seekSec := ResolveCaptureSeekSec(opts.DurationSec, opts.SeekSec, opts.SeekPercent)
+	args := buildScreenshotArgs(runner, opts, seekSec)
+
 	timeout := opts.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 	pctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	_, err := runner.RunFFmpeg(pctx, args...)
-	return err
+	return runFrameCaptureToFile(pctx, runner, args, opts.OutputPath)
 }
 
 // ScaleMode controls how preview frames are scaled to target dimensions.
@@ -93,6 +105,10 @@ type PreviewOptions struct {
 	ScaleMode   ScaleMode
 	Quality     int
 	Timeout     time.Duration
+	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration/seek is known.
+	LightProbe *CaptureLightProbe
+	// Accuracy defaults to CaptureFast (nearest keyframe).
+	Accuracy CaptureAccuracy
 }
 
 // ResolvePreviewSeekSec computes the seek position from duration and options.
@@ -127,23 +143,25 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 
 // VideoPreviewFrame extracts an MJPEG frame to w at seekSec without probing duration.
 func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions, seekSec float64) error {
-	args := []string{"-hide_banner", "-nostats", "-ss", fmt.Sprintf("%.3f", seekSec)}
-	args = runner.AppendProtocolWhitelistArgs(args)
-	args = append(args, "-i", opts.Input)
-	if opts.Width > 0 && opts.Height > 0 {
-		args = append(args, "-vf", PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode))
-	}
 	q := opts.Quality
 	if q == 0 {
 		q = 10
 	}
-	args = append(args,
-		"-frames:v", "1",
-		"-q:v", encode.QualityToQScale(q),
-		"-vcodec", "mjpeg",
-		"-f", "image2",
-		"-",
-	)
+	scale := ""
+	if opts.Width > 0 && opts.Height > 0 {
+		scale = PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode)
+	}
+	input := InputSource{URL: opts.Input}
+	args := BuildFrameCaptureArgs(runner, input, nil, FrameCaptureArgs{
+		SeekSec:      seekSec,
+		Accuracy:     opts.Accuracy,
+		SkipProbe:    opts.DurationSec > 0 || seekSec > 0,
+		LightProbe:   opts.LightProbe,
+		KeyframeOnly: opts.Accuracy == CaptureFast,
+		ScaleFilter:  scale,
+		QScale:       encode.QualityToQScale(q),
+		MJPEG:        true,
+	})
 
 	timeout := opts.Timeout
 	if timeout == 0 {
@@ -151,18 +169,7 @@ func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, 
 	}
 	pctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	cmd := ffexec.CommandContext(pctx, runner.FFmpegPath, args...)
-	cmd.Stdout = w
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if pctx.Err() != nil {
-			return pctx.Err()
-		}
-		return fmt.Errorf("%w: %s", err, stderr.String())
-	}
-	return nil
+	return runFrameCaptureToWriter(pctx, runner, args, w)
 }
 
 // TranscodeOptions configures file/URL transcoding.
