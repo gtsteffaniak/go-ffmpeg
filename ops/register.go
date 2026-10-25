@@ -48,23 +48,23 @@ func captureFrameRequirements() RequirementSet {
 	return RequirementSet{
 		Encoders:  []string{"mjpeg"},
 		Filters:   []string{"scale"},
-		Protocols: []string{"file", "tcp", "http", "https", "rtsp"},
+		Protocols: []string{"file", "tcp"},
 	}
 }
 
 type captureFrameOp struct{}
 
-func (captureFrameOp) Name() string { return "CaptureFrame" }
+func (captureFrameOp) Name() string                 { return "CaptureFrame" }
 func (captureFrameOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
 type screenshotOp struct{}
 
-func (screenshotOp) Name() string { return "Screenshot" }
+func (screenshotOp) Name() string                 { return "Screenshot" }
 func (screenshotOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
 type videoPreviewOp struct{}
 
-func (videoPreviewOp) Name() string { return "VideoPreview" }
+func (videoPreviewOp) Name() string                 { return "VideoPreview" }
 func (videoPreviewOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
 type transcodeOp struct{}

@@ -129,9 +129,9 @@ type FrameCaptureArgs struct {
 	ScaleFilter  string
 	QScale       string
 	// MJPEG selects mjpeg + image2pipe when VideoCodec/MuxerFormat are unset.
-	MJPEG        bool
-	VideoCodec   string
-	MuxerFormat  string
+	MJPEG       bool
+	VideoCodec  string
+	MuxerFormat string
 }
 
 // BuildFrameCaptureArgs assembles ffmpeg argv for one image frame to stdout (image2pipe).
