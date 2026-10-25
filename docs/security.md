@@ -20,7 +20,7 @@ All ffmpeg/ffprobe invocations use `exec.CommandContext` with discrete arguments
 | Tier | Config field | Default | Operations |
 |------|--------------|---------|------------|
 | Probe | `MaxProbe` | 16 | `ProbeStream`, `GetMediaDuration`, `DetectSubtitles`, … |
-| Decode | `MaxDecode` | 4 | `VideoPreview`, `Screenshot`, `ConvertHEIC`, remux/stream-copy |
+| Decode | `MaxDecode` | 4 | `CaptureFrame`, `VideoPreview`, `Screenshot`, `ConvertHEIC`, remux/stream-copy |
 | Encode | `MaxEncode` | 2 | `Transcode`, HLS transcode segments, `TimelapseCompile` |
 | Global | `GlobalMax` | 0 (off) | Optional cap across all tiers |
 | Large file | `MaxLargeFile` | 2 (`*int`, nil = default) | Extra slot when input exceeds `LargeFileThresholdBytes`; `IntPtr(0)` disables |

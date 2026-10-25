@@ -15,7 +15,7 @@ Most FFmpeg wrappers still expect you to know demuxers, bitstream filters, rate-
 ## Tasks
 
 - Probe streams, duration, dimensions, subtitles
-- Screenshots, MJPEG previews, and thumbnail sprite sheets (WebVTT-ready)
+- Single-frame capture (JPEG/WebP/PNG) to files or `io.Writer`, plus thumbnail sprite sheets (WebVTT-ready)
 - Transcode, segmented record, live fMP4 to `io.Writer`
 - **HLS** for browser playback (on-demand fMP4 segments + continuous disk cache) — Plex/Jellyfin-class depth
 - Timelapse compile
@@ -52,10 +52,9 @@ func main() {
         log.Fatal(err)
     }
 
-    if err := svc.Screenshot(ctx, ffmpeg.ScreenshotOptions{
-        Input:      ffmpeg.InputSource{URL: "video.mp4", StreamType: ffmpeg.StreamFile},
-        OutputPath: "frame.jpg",
-        Quality:    85,
+    if err := svc.CaptureFrameFile(ctx, "frame.jpg", ffmpeg.FrameOptions{
+        Input:   ffmpeg.InputSource{URL: "video.mp4", StreamType: ffmpeg.StreamFile},
+        Quality: 85,
     }); err != nil {
         log.Fatal(err)
     }
@@ -94,6 +93,27 @@ svc, err := ffmpeg.New(ctx, ffmpeg.Config{
 
 `GPUIntegrated`, `GPUDiscrete`, `GPUByRenderNode`, and `GPUSoftware` still scope to one device when set on `GPUSelector`. YAML strings: `ParseGPUSelector("auto")`. Details: [docs/hardware.md](docs/hardware.md).
 
+## Frame capture
+
+`CaptureFrame` streams one encoded frame to any `io.Writer` (HTTP responses, buffers). `CaptureFrameFile` writes atomically via a temp file in the target directory. Position is explicit: zero `At` is the first frame (no hidden 10% default). Use `AtSec` or `AtPercent`, optional `DurationSec` to skip ffprobe, and `CaptureExact` for frame-accurate seeks.
+
+```go
+// Thumbnail at 25% when duration is already known
+_ = svc.CaptureFrameFile(ctx, "thumb.jpg", ffmpeg.FrameOptions{
+    Input:       ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
+    At:          ffmpeg.AtPercent(25),
+    DurationSec: dur,
+})
+
+// MJPEG preview bytes for HTTP
+_ = svc.CaptureFrame(ctx, w, ffmpeg.FrameOptions{
+    Input: ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
+    At:    ffmpeg.AtPercent(10),
+})
+```
+
+`Screenshot` and `VideoPreview` remain as deprecated wrappers. See [docs/capture.md](docs/capture.md).
+
 ## Examples
 
 Runnable programs under `examples/` (each is `go run ./examples/<name>`):
@@ -101,7 +121,8 @@ Runnable programs under `examples/` (each is `go run ./examples/<name>`):
 | Example | Task |
 |---------|------|
 | [`examples/basic`](examples/basic) | Probe + capability report |
-| [`examples/screenshot`](examples/screenshot) | Single-frame JPEG |
+| [`examples/capture-frame`](examples/capture-frame) | Single-frame capture |
+| [`examples/sprite-sheet`](examples/sprite-sheet) | Tiled thumbnails + WebVTT |
 | [`examples/transcode`](examples/transcode) | File transcode to H.264 MP4 |
 | [`examples/hls`](examples/hls) | On-demand fMP4 HLS segment |
 | [`examples/timelapse`](examples/timelapse) | Image sequence → MP4 |
@@ -137,6 +158,7 @@ make report            # capability report in terminal
 
 - API: [pkg.go.dev](https://pkg.go.dev/github.com/gtsteffaniak/go-ffmpeg)
 - [docs/operations.md](docs/operations.md) — task-focused API and operation map
+- [docs/capture.md](docs/capture.md) — frame capture and migration from Screenshot/VideoPreview
 - [docs/hls.md](docs/hls.md) — Plex-class on-demand and continuous HLS
 - [docs/hardware.md](docs/hardware.md) — detection, backends, and HW fallback
 - [docs/ffmpeg-versions.md](docs/ffmpeg-versions.md) — version gates and build matrix

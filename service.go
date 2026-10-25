@@ -245,6 +245,8 @@ type ScreenshotOptions = ops.ScreenshotOptions
 type InputSource = ops.InputSource
 
 // Screenshot captures a single frame to a file.
+//
+// Deprecated: use CaptureFrameFile.
 func (s *Service) Screenshot(ctx context.Context, opts ScreenshotOptions) error {
 	if err := s.ensureDetected(ctx); err != nil {
 		return err
@@ -337,6 +339,8 @@ const (
 )
 
 // VideoPreview writes an MJPEG preview frame to w.
+//
+// Deprecated: use CaptureFrame.
 func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOptions) error {
 	if err := s.ensureDetected(ctx); err != nil {
 		return err
@@ -348,7 +352,7 @@ func (s *Service) VideoPreview(ctx context.Context, w io.Writer, opts PreviewOpt
 	var dur float64
 	if opts.DurationSec > 0 {
 		dur = opts.DurationSec
-	} else {
+	} else if ops.PreviewNeedsDurationProbe(opts) {
 		err := s.runWithClass(ctx, concurrency.SlotProbe, opts.Input, func() error {
 			var probeErr error
 			dur, probeErr = probe.GetMediaDuration(ctx, s.runner, opts.Input)

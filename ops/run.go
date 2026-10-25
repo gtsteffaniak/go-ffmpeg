@@ -51,25 +51,24 @@ type ScreenshotOptions struct {
 }
 
 // Screenshot extracts a single frame to OutputPath via image2pipe (no ffmpeg temp files).
+//
+// Deprecated: use CaptureFrame/CaptureFrameFile.
 func Screenshot(ctx context.Context, runner *ffexec.Runner, opts ScreenshotOptions) error {
 	dur := opts.DurationSec
 	if dur <= 0 && opts.SeekPercent > 0 && opts.SeekSec <= 0 {
-		dur, err := probe.GetMediaDuration(ctx, runner, opts.Input.URL)
+		var err error
+		dur, err = probe.GetMediaDuration(ctx, runner, opts.Input.URL)
 		if err != nil {
 			return err
 		}
 		opts.DurationSec = dur
 	}
-	seekSec := ResolveCaptureSeekSec(opts.DurationSec, opts.SeekSec, opts.SeekPercent)
-	args := buildScreenshotArgs(runner, opts, seekSec)
-
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	fo := ScreenshotOptionsToFrame(opts)
+	if fo.Timeout == 0 {
+		fo.Timeout = 30 * time.Second
 	}
-	pctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return runFrameCaptureToFile(pctx, runner, args, opts.OutputPath)
+	seekSec := ResolveCaptureSeekSec(opts.DurationSec, opts.SeekSec, opts.SeekPercent)
+	return captureFrameToPath(ctx, runner, nil, opts.OutputPath, fo, seekSec, false)
 }
 
 // ScaleMode controls how preview frames are scaled to target dimensions.
@@ -129,9 +128,11 @@ func ResolvePreviewSeekSec(dur float64, opts PreviewOptions) float64 {
 
 // VideoPreview probes duration then extracts an MJPEG frame to w.
 // Prefer Service.VideoPreview, which uses separate probe and decode concurrency slots.
+//
+// Deprecated: use CaptureFrame/CaptureFrameFile.
 func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions) error {
 	dur := opts.DurationSec
-	if dur <= 0 {
+	if PreviewNeedsDurationProbe(opts) {
 		var err error
 		dur, err = probe.GetMediaDuration(ctx, runner, opts.Input)
 		if err != nil {
@@ -142,34 +143,11 @@ func VideoPreview(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts 
 }
 
 // VideoPreviewFrame extracts an MJPEG frame to w at seekSec without probing duration.
+//
+// Deprecated: use CaptureFrame.
 func VideoPreviewFrame(ctx context.Context, runner *ffexec.Runner, w io.Writer, opts PreviewOptions, seekSec float64) error {
-	q := opts.Quality
-	if q == 0 {
-		q = 10
-	}
-	scale := ""
-	if opts.Width > 0 && opts.Height > 0 {
-		scale = PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode)
-	}
-	input := InputSource{URL: opts.Input}
-	args := BuildFrameCaptureArgs(runner, input, nil, FrameCaptureArgs{
-		SeekSec:      seekSec,
-		Accuracy:     opts.Accuracy,
-		SkipProbe:    opts.DurationSec > 0 || seekSec > 0,
-		LightProbe:   opts.LightProbe,
-		KeyframeOnly: opts.Accuracy == CaptureFast,
-		ScaleFilter:  scale,
-		QScale:       encode.QualityToQScale(q),
-		MJPEG:        true,
-	})
-
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 60 * time.Second
-	}
-	pctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return runFrameCaptureToWriter(pctx, runner, args, w)
+	fo := PreviewOptionsToFrame(opts, seekSec)
+	return CaptureFrame(ctx, runner, nil, w, fo, seekSec)
 }
 
 // TranscodeOptions configures file/URL transcoding.
