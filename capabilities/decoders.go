@@ -35,6 +35,10 @@ var KnownDecoders = []struct {
 	{"hwaccel:videotoolbox:hevc", "videotoolbox", CodecHEVC, true, "videotoolbox"},
 	{"hwaccel:videotoolbox:vp9", "videotoolbox", CodecVP9, true, "videotoolbox"},
 	{"hwaccel:videotoolbox:av1", "videotoolbox", CodecAV1, true, "videotoolbox"},
+	// Vulkan hwaccel decode
+	{"hwaccel:vulkan:h264", "vulkan", CodecH264, true, "vulkan"},
+	{"hwaccel:vulkan:hevc", "vulkan", CodecHEVC, true, "vulkan"},
+	{"hwaccel:vulkan:av1", "vulkan", CodecAV1, true, "vulkan"},
 }
 
 // ParseHWAccelKey extracts backend and software codec from hwaccel capability keys
@@ -99,6 +103,12 @@ func DecodeBindingForEncoder(encoderName string) (DecodeBinding, bool) {
 		return DecodeBinding{Key: "hwaccel:videotoolbox:h264", Label: "videotoolbox+h264", HWAccel: "videotoolbox", SWCodec: "h264"}, true
 	case "hevc_videotoolbox":
 		return DecodeBinding{Key: "hwaccel:videotoolbox:hevc", Label: "videotoolbox+hevc", HWAccel: "videotoolbox", SWCodec: "hevc"}, true
+	case "h264_vulkan":
+		return DecodeBinding{Key: "hwaccel:vulkan:h264", Label: "vulkan+h264", HWAccel: "vulkan", SWCodec: "h264"}, true
+	case "hevc_vulkan":
+		return DecodeBinding{Key: "hwaccel:vulkan:hevc", Label: "vulkan+hevc", HWAccel: "vulkan", SWCodec: "hevc"}, true
+	case "av1_vulkan":
+		return DecodeBinding{Key: "hwaccel:vulkan:av1", Label: "vulkan+av1", HWAccel: "vulkan", SWCodec: "av1"}, true
 	default:
 		return DecodeBinding{}, false
 	}
@@ -160,6 +170,8 @@ func CodecHWAccelDecodeKey(codec VideoCodec, accel AccelType) string {
 		return "hwaccel:vaapi:" + sw
 	case AccelVideoToolbox:
 		return "hwaccel:videotoolbox:" + sw
+	case AccelVulkan:
+		return "hwaccel:vulkan:" + sw
 	default:
 		return ""
 	}
@@ -214,6 +226,9 @@ func DecoderKindForName(name string) string {
 	}
 	if strings.HasPrefix(name, "hwaccel:videotoolbox:") {
 		return "videotoolbox"
+	}
+	if strings.HasPrefix(name, "hwaccel:vulkan:") {
+		return "vulkan"
 	}
 	if strings.Contains(name, "cuvid") {
 		return "nvenc"

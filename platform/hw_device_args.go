@@ -34,8 +34,36 @@ func FFmpegHWDeviceInit(backend string, choice GPUChoice, plat Info) []string {
 				"-filter_hw_device", "va",
 			}
 		}
+	case "vulkan":
+		return FFmpegVulkanDeviceInit(choice, plat)
 	}
 	return nil
+}
+
+// FFmpegVulkanDeviceInit returns ffmpeg arguments to create a Vulkan hwdevice.
+// On Linux a DRM render node is opened first and Vulkan is derived from it (vk@dr).
+func FFmpegVulkanDeviceInit(choice GPUChoice, plat Info) []string {
+	dev := choice.RenderDevice
+	if dev == "" && plat.Details != nil {
+		dev = plat.Details["render_device"]
+	}
+	if plat.OS == "linux" && dev != "" {
+		return []string{
+			"-init_hw_device", "drm=dr:" + dev,
+			"-init_hw_device", "vulkan=vk@dr",
+			"-filter_hw_device", "vk",
+		}
+	}
+	if plat.OS == "windows" && (choice.DeviceID != "" || choice.Name != "") {
+		return []string{
+			"-init_hw_device", fmt.Sprintf("vulkan=vk:%d", choice.DXGIIndex),
+			"-filter_hw_device", "vk",
+		}
+	}
+	return []string{
+		"-init_hw_device", "vulkan=vk",
+		"-filter_hw_device", "vk",
+	}
 }
 
 // FFmpegEncoderDeviceArgs returns encoder-scoped device arguments (after -i, before -c:v).

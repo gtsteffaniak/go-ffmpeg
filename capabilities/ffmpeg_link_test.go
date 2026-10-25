@@ -59,7 +59,10 @@ func TestProbeFFmpegBinaryShellWrapperNotStatic(t *testing.T) {
 		},
 	})
 	if info.Kind != FFmpegLinkUnknown {
-		t.Fatalf("kind=%s want unknown (shell wrapper)", info.Kind)
+		t.Fatalf("kind=%s want unknown for shell wrapper", info.Kind)
+	}
+	if gpuAccelBlockedByStaticBinary(info, "h264_vaapi") {
+		t.Fatal("unknown link kind must not block GPU backends")
 	}
 }
 

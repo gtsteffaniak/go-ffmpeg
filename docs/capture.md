@@ -1,8 +1,32 @@
 # Frame capture and sprite sheets
 
-## Frame capture (`Screenshot`, `VideoPreview`)
+## Unified API (`CaptureFrame`, `CaptureFrameFile`) — v1.6.0
 
-Both paths share optimized argv built by `ops.BuildFrameCaptureArgs`:
+`CaptureFrame` streams one encoded frame to any `io.Writer`. `CaptureFrameFile` publishes via a temp file in the target directory and atomic rename. Legacy `Screenshot` and `VideoPreview` delegate to the same argv builder but keep their historical defaults (see migration below).
+
+```go
+_ = svc.CaptureFrameFile(ctx, "thumb.jpg", ffmpeg.FrameOptions{
+    Input:       ffmpeg.InputSource{URL: path, StreamType: ffmpeg.StreamFile},
+    At:          ffmpeg.AtPercent(25),
+    DurationSec: dur,
+})
+```
+
+| `At` value | Behavior |
+|------------|----------|
+| Zero value | First frame (no implicit 10% seek) |
+| `AtSec(t)` | Seek to `t` seconds; clamped near EOF when duration is known |
+| `AtPercent(p)` | `p`% of duration; values above 100 are clamped to 100 |
+
+ffprobe runs only when the position is percent-based and `DurationSec` is zero.
+
+**Formats:** JPEG (default, `mjpeg` + `image2pipe`), WebP, and PNG when the detected ffmpeg build exposes the encoders.
+
+**Optional `MeanLuma`:** set `MeanLuma: &value` on `FrameOptions` to record average luma (0–255) from the encoded frame (buffers once).
+
+## Shared capture argv (`BuildFrameCaptureArgs`)
+
+`Screenshot`, `VideoPreview`, and `CaptureFrame` share optimized argv:
 
 | Technique | Purpose |
 |-----------|---------|
@@ -19,16 +43,14 @@ Both paths share optimized argv built by `ops.BuildFrameCaptureArgs`:
 
 When the caller already knows duration or a seek target, capture sets smaller-than-default probe limits:
 
-- **`CaptureDefaultLightProbeSize`** (`3145728`, 3 MiB) — enough for MPEG-TS programs, MKV with late streams, and fragile AVI indexes. Values around 32 KiB often fail stream detection or yield gray/garbage frames on those containers.
-- **`CaptureDefaultLightAnalyzeDuration`** (`1500000` µs, 1.5 s) — bounded analyze time without disabling probe entirely (`0` is unsafe on TS).
+- **`CaptureDefaultLightProbeSize`** (`3145728`, 3 MiB)
+- **`CaptureDefaultLightAnalyzeDuration`** (`1500000` µs, 1.5 s)
 
-Override per call with `CaptureLightProbe` on `ScreenshotOptions`, `PreviewOptions`, or `SpriteSheetOptions` (`ProbeSize` / `AnalyzeDuration` strings passed straight to ffmpeg).
+Override per call with `CaptureLightProbe` on `FrameOptions`, `ScreenshotOptions`, `PreviewOptions`, or `SpriteSheetOptions` (`ProbeSize` / `AnalyzeDuration` strings passed straight to ffmpeg).
 
-`ScreenshotOptions` adds optional `SeekSec`, `SeekPercent`, `Width`/`Height`, and `Accuracy` (default `CaptureFast`).
+`ScreenshotOptions` adds optional `SeekSec`, `SeekPercent`, `Width`/`Height`, and `Accuracy` (default `CaptureFast`). `Screenshot` writes directly to the output path; `CaptureFrameFile` uses atomic rename.
 
 ### Benchmarks
-
-Run on the bundled sample (requires `ffmpeg` on `PATH`):
 
 ```bash
 go test ./ops -run TestCaptureTimingReport -count=1 -v
@@ -36,17 +58,16 @@ go test ./ops -bench=BenchmarkSoftwareFrameCapture -benchtime=3x -count=1
 go test -tags=integration ./ops -run TestScreenshotMPEGTSLightProbe -count=1
 ```
 
-`TestCaptureTimingReport` logs probe vs ffmpeg time for software capture at several seek points. Measured on CI (ffmpeg 6.1, `Big_Buck_Bunny_1080_10s_2MB.mp4`, duration known, 3 MiB / 1.5 s light probe):
+## Migration from legacy APIs
 
-| Scenario | ffprobe | ffmpeg (seek+decode) | total |
-|----------|---------|----------------------|-------|
-| seek 7s, `CaptureFast` | 57ms | 127ms | 184ms |
-| seek 7s, `CaptureExact` | 57ms | 347ms | 405ms |
-| seek 0.5s, `CaptureFast` | 71ms | 182ms | 253ms |
+| Legacy | Replacement |
+|--------|-------------|
+| `Screenshot` | `CaptureFrameFile` with zero `At`, JPEG default |
+| `VideoPreview` | `CaptureFrame` with `At: AtSec(...)` or `AtPercent(...)` |
 
-`BenchmarkSoftwareFrameCapture` (5 iterations, includes probe each op): **~247ms/op** fast vs **~577ms/op** exact at seek 7s (~2.3×).
+`VideoPreview` still defaults to 10% into the file when neither `SeekSec` nor `SeekPercent` is set. The new API does not — use `AtPercent(10)` explicitly.
 
-Exact mode costs more when the GOP between the keyframe and target is long; fast mode stops at the prior keyframe.
+`CaptureFrame` is listed in capability detection. `Screenshot` and `VideoPreview` share the same requirements.
 
 ## Sprite sheets (`SpriteSheet`)
 

@@ -80,7 +80,7 @@ Layered hardware encoder detection runs at startup (binary link type → host pr
 `platform.Detect()` → FFmpeg inventory → layered HW probes → codec matrix. The capability report **GPU configuration** section shows the resolved selector, mode, fallbacks, and device.
 
 ```go
-// Compact line for admin UIs (logged at info on New/Reload)
+// Compact probe summary (logged at info on Reload alongside SummaryLine)
 caps.HardwareProbeSummaryLine()
 
 // Structured per-encoder rows (fixed after startup detection)
@@ -117,8 +117,11 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
 
 1. **`DeviceSelection`** (primary + fallbacks) or legacy non-auto **`GPUSelector`**
 2. **`EncoderHierarchy`**
-3. **`DevicePreference`** / deprecated `EncoderPreference` performance
-4. Platform defaults
+3. **`VulkanEncoder`** (`"fallback"` appends Vulkan after vendor backends; default off)
+4. **`DevicePreference`** / deprecated `EncoderPreference` performance
+5. Platform defaults
+
+Vulkan video encode/decode is optional and never outranks VAAPI/NVENC/QSV/VideoToolbox unless you list `vulkan` explicitly in `EncoderHierarchy`. See [hardware-detection.md](hardware-detection.md).
 
 ## Explicit device + ordered fallback (FileBrowser pattern)
 

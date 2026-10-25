@@ -7,7 +7,7 @@ import "strings"
 func ParseAccelType(raw string) (AccelType, bool) {
 	a := AccelType(strings.ToLower(strings.TrimSpace(raw)))
 	switch a {
-	case AccelNVENC, AccelAMF, AccelQSV, AccelVAAPI, AccelD3D12, AccelVideoToolbox, AccelNone:
+	case AccelNVENC, AccelAMF, AccelQSV, AccelVAAPI, AccelD3D12, AccelVideoToolbox, AccelVulkan, AccelNone:
 		return a, true
 	default:
 		return "", false

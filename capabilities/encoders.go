@@ -16,6 +16,9 @@ var KnownEncoders = []struct {
 	{"libvvenc", "software", false},
 	// Native
 	{"mjpeg", "native", false},
+	{"png", "native", false},
+	{"libwebp", "software", false},
+	{"webp", "native", false},
 	{"aac", "native", false},
 	{"libmp3lame", "software", false},
 	// NVENC
@@ -38,6 +41,10 @@ var KnownEncoders = []struct {
 	{"av1_vaapi", "vaapi", true},
 	{"vp9_vaapi", "vaapi", true},
 	{"hevc_vaapi", "vaapi", true},
+	// Vulkan (cross-vendor when driver supports VK video encode)
+	{"h264_vulkan", "vulkan", true},
+	{"hevc_vulkan", "vulkan", true},
+	{"av1_vulkan", "vulkan", true},
 	// VideoToolbox (macOS)
 	{"h264_videotoolbox", "videotoolbox", true},
 	{"hevc_videotoolbox", "videotoolbox", true},
@@ -48,7 +55,7 @@ var KnownEncoders = []struct {
 
 // KnownFilters lists filters required by library operations.
 var KnownFilters = []string{
-	"scale", "scale_vt", "format", "hwupload", "segment", "concat", "tile", "select",
+	"scale", "scale_vt", "scale_vulkan", "format", "hwupload", "hwdownload", "segment", "concat", "tile", "select",
 	"transpose", "hflip", "vflip", "fps", "setpts",
 }
 
@@ -74,6 +81,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "h264_videotoolbox"
 		case AccelV4L2M2M:
 			return "h264_v4l2m2m"
+		case AccelVulkan:
+			return "h264_vulkan"
 		}
 	case CodecAV1:
 		switch accel {
@@ -85,6 +94,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "av1_qsv"
 		case AccelVAAPI, AccelD3D12:
 			return "av1_vaapi"
+		case AccelVulkan:
+			return "av1_vulkan"
 		}
 	case CodecVP9:
 		switch accel {
@@ -111,6 +122,8 @@ func CodecEncoderMap(codec VideoCodec, accel AccelType) string {
 			return "hevc_videotoolbox"
 		case AccelV4L2M2M:
 			return "hevc_v4l2m2m"
+		case AccelVulkan:
+			return "hevc_vulkan"
 		}
 	}
 	return ""

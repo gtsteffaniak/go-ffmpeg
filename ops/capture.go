@@ -128,7 +128,10 @@ type FrameCaptureArgs struct {
 	KeyframeOnly bool
 	ScaleFilter  string
 	QScale       string
-	MJPEG        bool
+	// MJPEG selects mjpeg + image2pipe when VideoCodec/MuxerFormat are unset.
+	MJPEG       bool
+	VideoCodec  string
+	MuxerFormat string
 }
 
 // BuildFrameCaptureArgs assembles ffmpeg argv for one image frame to stdout (image2pipe).
@@ -146,10 +149,23 @@ func BuildFrameCaptureArgs(runner *ffexec.Runner, input InputSource, rtsp *RTSPI
 	if cfg.QScale != "" {
 		args = append(args, "-q:v", cfg.QScale)
 	}
+	vcodec := cfg.VideoCodec
+	muxer := cfg.MuxerFormat
 	if cfg.MJPEG {
-		args = append(args, "-vcodec", "mjpeg")
+		if vcodec == "" {
+			vcodec = "mjpeg"
+		}
+		if muxer == "" {
+			muxer = "image2pipe"
+		}
 	}
-	args = append(args, "-f", "image2pipe", "-")
+	if muxer == "" {
+		muxer = "image2pipe"
+	}
+	if vcodec != "" {
+		args = append(args, "-vcodec", vcodec)
+	}
+	args = append(args, "-f", muxer, "-")
 	return args
 }
 

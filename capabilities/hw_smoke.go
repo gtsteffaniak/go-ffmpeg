@@ -94,6 +94,16 @@ func hwSmokeArgs(encoderName string, plat platform.Info) []string {
 			"-c:v", encoderName,
 			"-t", "0.5", "-f", "null", "-",
 		}
+	case "vulkan":
+		args := []string{"-hide_banner"}
+		args = append(args, platform.FFmpegHWDeviceInit("vulkan", choice, plat)...)
+		args = append(args,
+			"-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
+			"-vf", "format=nv12,hwupload",
+			"-c:v", encoderName,
+			"-t", "0.5", "-f", "null", "-",
+		)
+		return args
 	default:
 		return []string{
 			"-hide_banner", "-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=30",
@@ -122,6 +132,9 @@ func encoderKindForName(name string) string {
 	}
 	if strings.Contains(name, "videotoolbox") {
 		return "videotoolbox"
+	}
+	if strings.Contains(name, "vulkan") {
+		return "vulkan"
 	}
 	return "unknown"
 }
@@ -275,6 +288,14 @@ func platformGateForEncoder(kind string, plat platform.Info) bool {
 		return plat.QSV && plat.Intel && plat.VAAPI && plat.QSVRuntime
 	case "vaapi":
 		return plat.VAAPI
+	case "vulkan":
+		if plat.OS == "darwin" {
+			return false
+		}
+		if plat.Details != nil && plat.Details["pi_model"] == string(platform.PiLegacy) {
+			return false
+		}
+		return plat.Vulkan
 	default:
 		return true
 	}
@@ -313,6 +334,13 @@ func platformSkipReason(kind string, plat platform.Info) string {
 		}
 		if !plat.QSVRuntime {
 			return qsvRuntimeSkipReason(plat)
+		}
+	case "vulkan":
+		if plat.OS == "darwin" {
+			return "[platform] Vulkan video encode is not supported on macOS"
+		}
+		if !plat.Vulkan {
+			return "[platform] Vulkan loader or GPU device not available for video encode"
 		}
 	case "vaapi":
 		if !plat.VAAPI {

@@ -171,6 +171,28 @@ func hwDecodeSmokeArgs(decoderName, bitstream, hwAccel, swCodec string, plat pla
 			"-i", bitstream,
 			"-f", "null", "-",
 		}
+	case "vulkan":
+		if hwAccel == "" {
+			hwAccel = "vulkan"
+		}
+		if swCodec == "" {
+			if _, sc, ok := ParseHWAccelKey(decoderName); ok {
+				swCodec = sc
+			}
+		}
+		if swCodec == "" {
+			return nil
+		}
+		args := []string{"-hide_banner"}
+		args = append(args, platform.FFmpegVulkanDeviceInit(platform.GPUChoice{}, plat)...)
+		args = append(args,
+			"-hwaccel", hwAccel,
+			"-hwaccel_device", "vk",
+			"-c:v", swCodec,
+			"-i", bitstream,
+			"-f", "null", "-",
+		)
+		return args
 	case "videotoolbox":
 		if hwAccel == "" {
 			hwAccel = "videotoolbox"

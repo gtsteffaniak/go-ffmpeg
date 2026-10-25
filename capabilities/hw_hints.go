@@ -52,6 +52,20 @@ func hwTroubleshoot(encoderName, kind, output string, plat platform.Info) (prima
 			hints = []string{"Fix: sudo usermod -aG render,video $USER then log out/in"}
 			return primary, hints
 		}
+	case "vulkan":
+		if strings.Contains(output, "libvulkan") {
+			primary = "[driver] Vulkan loader missing or not loadable"
+			hints = []string{"Fix: install libvulkan1 / vulkan-loader; in Docker pass GPU devices and driver capabilities"}
+			return primary, hints
+		}
+		if strings.Contains(output, "video encode") || strings.Contains(output, "vk_khr_video_encode") {
+			primary = "[hardware] Vulkan video encode not supported by this GPU driver"
+			hints = []string{
+				"Update Mesa RADV/ANV (24.2+) or NVIDIA driver (550+) for VK_KHR_video_encode_queue",
+				"Vendor paths (VAAPI/NVENC/QSV) may still work — Vulkan is optional fallback",
+			}
+			return primary, hints
+		}
 	case "nvenc":
 		if strings.Contains(output, "unknown encoder") {
 			primary = "[compile] Encoder not built into this FFmpeg binary"

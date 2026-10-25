@@ -24,6 +24,7 @@ Per backend before any encode probe:
 | **VAAPI / QSV** | `/dev/dri/renderD*` exists and is openable; `libva.so.2`; VA driver blobs (`LIBVA_*` paths) |
 | **NVENC** | `libcuda.so.1` and `libnvidia-encode.so.1` resolvable (`ldconfig -p` / standard paths) |
 | **V4L2 M2M** | `/dev/video*` openable |
+| **Vulkan** | `libvulkan.so.1` loadable; openable `/dev/dri/renderD*` (Linux) or default adapter (Windows); **not** macOS |
 | **WSL** | `/dev/dxg`, `/usr/lib/wsl/lib`, Mesa `d3d12_drv_video.so` when using the D3D12 VA path |
 
 Permission failures on render nodes include a hint to add the service user to the **render** group and pass `--device /dev/dri/...` in containers.
@@ -90,6 +91,10 @@ Alpine and other families get generic `apk`/`install` hints derived from the sam
 | `nvenc_session_limit` | Too many NVENC sessions | Reduce concurrent NVENC jobs |
 | `timeout` | Probe hung | Driver/GPU health, load |
 | `gpu_present_driver_missing` | GPU in sysfs but VA/NVENC stack missing | See remediation matrix above; check container devices and static vs dynamic ffmpeg |
+| `vulkan_loader_missing` | `libvulkan` not found | Install `libvulkan1` / `vulkan-loader`; mount GPU in containers |
+| `vulkan_no_device` | No render node / adapter | `--device /dev/dri/renderD128`; NVIDIA Docker: `--gpus all` + `NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute` |
+| `vulkan_no_video_encode_driver` | Driver lacks VK video encode | Upgrade Mesa RADV/ANV (24.2+) or NVIDIA 550+; use VAAPI/NVENC if available |
+| `vulkan_driver_too_old` | Vulkan API below FFmpeg requirement | Update GPU driver / Mesa stack |
 | `unknown` | Unclassified stderr | Inspect `detail` |
 
 These codes describe **startup detection**. A later transcode may still fail at runtime; the library returns that error to the caller and does not change the cached capability matrix or retry the job.
@@ -104,7 +109,14 @@ These codes describe **startup detection**. A later transcode may still fail at 
 | **Docker on WSL** | Combine WSL GPU rules with container device mounts |
 | **Windows** | QSV/NVENC/AMF via normal DLL load; prerequisite layer skipped |
 | **macOS** | VideoToolbox; prerequisite layer skipped |
-| **Raspberry Pi** | V4L2 M2M allowed on static builds; Pi profile docs still apply |
+| **Raspberry Pi** | V4L2 M2M allowed on static builds; Vulkan video encode not supported on Pi 3 and earlier |
+| **Vulkan (optional)** | Lowest-priority backend; enable with `VulkanEncoder: "fallback"` or explicit `EncoderHierarchy` including `vulkan`. Decode: `-hwaccel vulkan` + `-init_hw_device vulkan`; encode: `h264_vulkan` / `hevc_vulkan` / `av1_vulkan` when compiled. macOS: not supported. |
+
+### Vulkan selection
+
+By default Vulkan is **not** in the encoder hierarchy (vendor paths win). Set `Config.VulkanEncoder` to `"fallback"` to append Vulkan after VAAPI/NVENC/QSV/AMF/VideoToolbox, or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
+
+Failed Vulkan probes log `vulkan probe: …` warn lines at startup with vendor-specific remediation (Mesa RADV/ANV versions, NVIDIA driver/capabilities, Docker device mounts).
 
 ## Transcode failures
 

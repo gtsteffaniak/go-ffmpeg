@@ -236,6 +236,30 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 			"-hwaccel_device", "va",
 			"-c:v", sw,
 		}, nil
+	case capabilities.AccelVulkan:
+		sw := sel.SWCodec
+		if sw == "" {
+			sw = softwareCodecForDecode(sel.Decoder)
+		}
+		if sw == "" {
+			return nil, unavailableDecodeProfile(profile.Codec, sel.Decoder, sel.Accel, "no software codec for vulkan decode path")
+		}
+		choice := platform.GPUChoice{}
+		if r.Caps != nil && r.Caps.SelectedGPU != nil {
+			choice = *r.Caps.SelectedGPU
+		}
+		plat := platform.Info{}
+		if r.Caps != nil {
+			plat = r.Caps.Platform
+		}
+		args := platform.FFmpegVulkanDeviceInit(choice, plat)
+		args = append(args,
+			"-hwaccel", "vulkan",
+			"-hwaccel_device", "vk",
+			"-hwaccel_output_format", "vulkan",
+			"-c:v", sw,
+		)
+		return args, nil
 	case capabilities.AccelVideoToolbox:
 		sw := sel.SWCodec
 		if sw == "" {

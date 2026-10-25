@@ -55,6 +55,8 @@ func checkHostPrerequisites(encoderKind string, plat platform.Info, deps prereqD
 		return checkVAStackPrereq(encoderKind, plat, deps)
 	case "nvenc":
 		return checkNVENCPrereq(plat, deps)
+	case "vulkan":
+		return checkVulkanPrereq(plat, deps)
 	case "amf":
 		if plat.OS == "windows" {
 			return HWProbeOK, ""
@@ -117,6 +119,37 @@ func checkVAStackPrereq(encoderKind string, plat platform.Info, deps prereqDeps)
 	return HWProbeOK, ""
 }
 
+func checkVulkanPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string) {
+	if plat.OS == "darwin" {
+		return HWProbeSkipped, "Vulkan video encode is not supported on macOS"
+	}
+	if plat.Details != nil && plat.Details["pi_model"] == string(platform.PiLegacy) {
+		return HWProbeNoDevice, "Vulkan video encode is not supported on this Raspberry Pi model"
+	}
+	if !vulkanLoaderResolvable(deps) {
+		return HWProbeVulkanLoaderMissing, HintForProbeCode(HWProbeVulkanLoaderMissing)
+	}
+	if plat.OS == "windows" {
+		return HWProbeOK, ""
+	}
+	exists, openable := renderNodeStatus(deps)
+	if !openable {
+		if exists {
+			return renderNodePermissionResult(deps)
+		}
+		code := HWProbeVulkanNoDevice
+		hint := HintForProbeCode(code)
+		if plat.WSL {
+			hint += "; WSL: ensure wsl --update and pass /dev/dxg; mount /dev/dri when using DRI render nodes"
+		}
+		if gid, ok := renderGroupGID(deps); ok {
+			hint += fmt.Sprintf(" (render group gid %d)", gid)
+		}
+		return code, hint
+	}
+	return HWProbeOK, ""
+}
+
 func checkNVENCPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string) {
 	if !plat.NVIDIA {
 		return HWProbeNoDevice, HintForProbeCode(HWProbeNoDevice)
@@ -169,6 +202,13 @@ func runLdconfigP() ([]byte, error) {
 	return nil, fmt.Errorf("ldconfig unavailable")
 }
 
+func vulkanLoaderResolvable(deps prereqDeps) bool {
+	if runtime.GOOS == "windows" {
+		return libResolvable(deps, "vulkan-1.dll")
+	}
+	return libResolvable(deps, "libvulkan.so.1")
+}
+
 func renderGroupGID(deps prereqDeps) (int, bool) {
 	data, err := deps.ReadFile("/etc/group")
 	if err != nil {
@@ -207,6 +247,12 @@ func libResolvable(deps prereqDeps, soname string) bool {
 		"/usr/lib/wsl/lib/" + soname,
 		"/usr/lib64/" + soname,
 		"/usr/lib/" + soname,
+	}
+	if runtime.GOOS == "windows" {
+		search = append(search,
+			"C:\\Windows\\System32\\"+soname,
+			"C:\\Windows\\SysWOW64\\"+soname,
+		)
 	}
 	for _, p := range search {
 		if _, err := deps.Stat(p); err == nil {
