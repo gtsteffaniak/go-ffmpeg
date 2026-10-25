@@ -37,7 +37,7 @@ func probeCodeDriverRelated(code HWProbeCode) bool {
 func vendorForEncoderKind(kind string, presence platform.GPUPresence) string {
 	switch kind {
 	case "nvenc":
-		if presence.NVIDIA || presence.WSLDXG {
+		if presence.NVIDIA {
 			return "nvidia"
 		}
 	case "amf", "vaapi":
@@ -73,7 +73,7 @@ func gpuPresentForVendor(vendor string, presence platform.GPUPresence) bool {
 	case "amd":
 		return presence.AMD
 	case "nvidia":
-		return presence.NVIDIA || presence.WSLDXG
+		return presence.NVIDIA
 	default:
 		return false
 	}

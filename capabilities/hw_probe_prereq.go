@@ -1,12 +1,14 @@
 package capabilities
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/platform"
 )
@@ -29,10 +31,8 @@ func defaultPrereqDeps() prereqDeps {
 		Glob:     filepath.Glob,
 		ReadFile: os.ReadFile,
 		LookPath: exec.LookPath,
-		Ldconfig: func() ([]byte, error) {
-			return exec.Command("ldconfig", "-p").CombinedOutput()
-		},
-		Env: os.Getenv,
+		Ldconfig: runLdconfigP,
+		Env:      os.Getenv,
 	}
 }
 
@@ -93,10 +93,14 @@ func checkVAStackPrereq(encoderKind string, plat platform.Info, deps prereqDeps)
 			}
 		}
 	}
-	if !renderNodeOpenable(deps) {
+	exists, openable := renderNodeStatus(deps)
+	if !openable {
 		if plat.WSL && !plat.DRI {
 			// NVENC-only WSL without DRI is valid; QSV/VAAPI need the d3d12 stack above.
 			return HWProbeOK, ""
+		}
+		if exists {
+			return renderNodePermissionResult(deps)
 		}
 		code := HWProbeNoDevice
 		hint := HintForProbeCode(code)
@@ -131,17 +135,38 @@ func checkNVENCPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string)
 	return HWProbeOK, ""
 }
 
-func renderNodeOpenable(deps prereqDeps) bool {
+func renderNodeStatus(deps prereqDeps) (exists, openable bool) {
 	nodes, _ := deps.Glob("/dev/dri/renderD*")
 	for _, node := range nodes {
+		exists = true
 		f, err := deps.Open(node)
 		if err != nil {
 			continue
 		}
 		f.Close()
-		return true
+		return true, true
 	}
-	return false
+	return exists, false
+}
+
+func renderNodePermissionResult(deps prereqDeps) (HWProbeCode, string) {
+	hint := HintForProbeCode(HWProbeDevicePermission)
+	if gid, ok := renderGroupGID(deps); ok {
+		hint += fmt.Sprintf(" (render group gid %d)", gid)
+	}
+	return HWProbeDevicePermission, hint
+}
+
+func runLdconfigP() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, bin := range []string{"ldconfig", "/sbin/ldconfig", "/usr/sbin/ldconfig"} {
+		out, err := exec.CommandContext(ctx, bin, "-p").CombinedOutput()
+		if err == nil {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("ldconfig unavailable")
 }
 
 func renderGroupGID(deps prereqDeps) (int, bool) {
@@ -169,15 +194,16 @@ func libResolvable(deps prereqDeps, soname string) bool {
 	if soname == "" {
 		return false
 	}
-	if path, err := deps.LookPath(soname); err == nil && path != "" {
-		return true
-	}
 	out, err := deps.Ldconfig()
 	if err == nil && strings.Contains(string(out), soname) {
 		return true
 	}
+	if matches, _ := deps.Glob("/usr/lib/*-linux-gnu/" + soname); len(matches) > 0 {
+		return true
+	}
 	search := []string{
 		"/usr/lib/x86_64-linux-gnu/" + soname,
+		"/usr/lib/aarch64-linux-gnu/" + soname,
 		"/usr/lib/wsl/lib/" + soname,
 		"/usr/lib64/" + soname,
 		"/usr/lib/" + soname,
@@ -185,6 +211,16 @@ func libResolvable(deps prereqDeps, soname string) bool {
 	for _, p := range search {
 		if _, err := deps.Stat(p); err == nil {
 			return true
+		}
+	}
+	if v := deps.Env("LD_LIBRARY_PATH"); v != "" {
+		for _, dir := range strings.Split(v, ":") {
+			if dir == "" {
+				continue
+			}
+			if _, err := deps.Stat(filepath.Join(dir, soname)); err == nil {
+				return true
+			}
 		}
 	}
 	return false

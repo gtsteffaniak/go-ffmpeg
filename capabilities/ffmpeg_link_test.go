@@ -12,7 +12,7 @@ func TestProbeFFmpegBinaryStaticELF(t *testing.T) {
 	path := filepath.Join(dir, "ffmpeg-static")
 	writeELF64NoInterp(path)
 	info := probeFFmpegBinary(path, linkProbeDeps{
-		ReadFile: os.ReadFile,
+		ReadFile: readFileHead,
 		Ldd: func(string) ([]byte, error) {
 			return []byte("not a dynamic executable"), nil
 		},
@@ -33,7 +33,7 @@ func TestProbeFFmpegBinaryDynamicELF(t *testing.T) {
 	path := filepath.Join(dir, "ffmpeg-dyn")
 	writeELF64WithInterp(path, "/lib64/ld-linux-x86-64.so.2")
 	info := probeFFmpegBinary(path, linkProbeDeps{
-		ReadFile: os.ReadFile,
+		ReadFile: readFileHead,
 		Ldd: func(string) ([]byte, error) {
 			return []byte("linux-vdso.so.1"), nil
 		},
@@ -43,6 +43,23 @@ func TestProbeFFmpegBinaryDynamicELF(t *testing.T) {
 	}
 	if info.Interp == "" {
 		t.Fatal("expected interpreter path")
+	}
+}
+
+func TestProbeFFmpegBinaryShellWrapperNotStatic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ffmpeg-wrap")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexec /usr/bin/ffmpeg\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	info := probeFFmpegBinary(path, linkProbeDeps{
+		ReadFile: readFileHead,
+		Ldd: func(string) ([]byte, error) {
+			return []byte("not a dynamic executable"), nil
+		},
+	})
+	if info.Kind != FFmpegLinkUnknown {
+		t.Fatalf("kind=%s want unknown (shell wrapper)", info.Kind)
 	}
 }
 

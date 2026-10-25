@@ -62,7 +62,9 @@ func detectGPUPresence(deps gpuPresenceDeps) GPUPresence {
 	}
 	if _, err := deps.Stat("/dev/dxg"); err == nil {
 		p.WSLDXG = true
-		p.NVIDIA = true
+		if _, err := deps.Stat("/usr/lib/wsl/lib/libcuda.so.1"); err == nil {
+			p.NVIDIA = true
+		}
 	}
 	return p
 }
