@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
@@ -33,6 +34,8 @@ const (
 	captureSWSFlags         = "fast_bilinear"
 	captureDefaultThreads   = "1"
 	captureImagePipeBufSize = 256 * 1024
+	// Backstop if stdout is not fully drained after the process exits (e.g. stuck writer).
+	captureCmdWaitDelay = 10 * time.Second
 )
 
 // CaptureLightProbe optionally overrides lightweight input probing for frame capture.
@@ -171,6 +174,7 @@ func BuildFrameCaptureArgs(runner *ffexec.Runner, input InputSource, rtsp *RTSPI
 
 func runFrameCaptureToWriter(ctx context.Context, runner *ffexec.Runner, args []string, w io.Writer) error {
 	cmd := ffexec.CommandContext(ctx, runner.FFmpegPath, args...)
+	cmd.WaitDelay = captureCmdWaitDelay
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
@@ -188,6 +192,9 @@ func runFrameCaptureToWriter(ctx context.Context, runner *ffexec.Runner, args []
 		bufPtr := capturePipeBufPool.Get().(*[]byte)
 		defer capturePipeBufPool.Put(bufPtr)
 		_, err := io.CopyBuffer(w, pr, *bufPtr)
+		if err != nil {
+			_ = pr.CloseWithError(err)
+		}
 		copyErr <- err
 	}()
 
@@ -196,6 +203,9 @@ func runFrameCaptureToWriter(ctx context.Context, runner *ffexec.Runner, args []
 	copyDone := <-copyErr
 	_ = pr.Close()
 
+	if copyDone != nil {
+		return copyDone
+	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -206,7 +216,7 @@ func runFrameCaptureToWriter(ctx context.Context, runner *ffexec.Runner, args []
 		}
 		return waitErr
 	}
-	return copyDone
+	return nil
 }
 
 func runFrameCaptureToFile(ctx context.Context, runner *ffexec.Runner, args []string, path string) error {
