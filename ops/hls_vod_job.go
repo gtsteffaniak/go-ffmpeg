@@ -73,6 +73,7 @@ type HLSVODSegmentJob struct {
 	stderrMon  *vtDecodeStderrMonitor
 	startSec   float64
 	startIndex int
+	stopIndex  int
 	mu         sync.Mutex
 	err        error
 }
@@ -91,6 +92,14 @@ func (j *HLSVODSegmentJob) StartIndex() int {
 		return 0
 	}
 	return j.startIndex
+}
+
+// StopIndex returns the exclusive segment bound for bounded jobs (0 when unbounded).
+func (j *HLSVODSegmentJob) StopIndex() int {
+	if j == nil {
+		return 0
+	}
+	return j.stopIndex
 }
 
 // Running reports whether ffmpeg is still active (non-blocking).
@@ -394,12 +403,8 @@ func BuildHLSVODFFmpegArgs(runner *ffexec.Runner, caps *capabilities.Capabilitie
 	return args, nil
 }
 
-// vodJobStopGuardSec keeps a bounded job from touching the first already-ready
-// segment; -t ends the encode just before the hand-off boundary.
-const vodJobStopGuardSec = 0.2
-
 // vodJobStopDurationSec returns the -t output-duration bound that stops a
-// repositioned job before StopIndex, or 0 when unbounded.
+// repositioned job on the StopIndex segment boundary, or 0 when unbounded.
 func vodJobStopDurationSec(opts HLSVODJobOptions) float64 {
 	if opts.StopIndex <= opts.StartIndex {
 		return 0
@@ -419,11 +424,7 @@ func vodJobStopDurationSec(opts HLSVODJobOptions) float64 {
 	if d <= 0 {
 		return 0
 	}
-	guard := vodJobStopGuardSec
-	if guard > d/2 {
-		guard = d / 2
-	}
-	return d - guard
+	return d
 }
 
 func vodInputSeekMediaSec(opts HLSVODJobOptions) float64 {
@@ -511,6 +512,7 @@ func StartHLSVODSegmentJob(parent context.Context, runner *ffexec.Runner, caps *
 		stderrMon:  stderrMon,
 		startSec:   opts.StartSec,
 		startIndex: opts.StartIndex,
+		stopIndex:  opts.StopIndex,
 	}
 	go func() {
 		err := cmd.Run()

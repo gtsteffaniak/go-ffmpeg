@@ -95,7 +95,7 @@ svc, err := ffmpeg.New(ctx, ffmpeg.Config{
 
 ## Frame capture
 
-`CaptureFrame` streams one encoded frame to any `io.Writer` (HTTP responses, buffers). `CaptureFrameFile` writes atomically via a temp file in the target directory. Position is explicit: zero `At` is the first frame (no hidden 10% default). Use `AtSec` or `AtPercent`, optional `DurationSec` to skip ffprobe, and `CaptureExact` for frame-accurate seeks.
+`CaptureFrame` streams one encoded frame to any `io.Writer` (HTTP responses, buffers). `CaptureFrameFile` writes atomically via a temp file in the target directory (published as `0644`). Position is explicit: zero `At` is the first frame (no hidden 10% default). Use `AtSec` or `AtPercent`, optional `DurationSec` to skip ffprobe, and `CaptureExact` for frame-accurate seeks. `Quality` is **1–100** (higher is better; default **85**).
 
 ```go
 // Thumbnail at 25% when duration is already known

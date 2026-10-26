@@ -44,7 +44,7 @@ func TestWriteSpriteWebVTT(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/thumbs.vtt"
 	layout := spriteLayout{Columns: 2, Rows: 2, TileWidth: 100, TileHeight: 50, TileCount: 4, StartSec: 0}
-	if err := writeSpriteWebVTT(path, "sprite.jpg", layout, 10); err != nil {
+	if err := writeSpriteWebVTT(path, "sprite.jpg", layout, 10, false); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)

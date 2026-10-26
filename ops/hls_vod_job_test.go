@@ -115,8 +115,8 @@ func TestVODJobStopDurationSec(t *testing.T) {
 	t.Parallel()
 	// Transcode grid: bound at (StopIndex-StartIndex)*SegmentSec minus guard.
 	d := vodJobStopDurationSec(HLSVODJobOptions{StartIndex: 5, StopIndex: 8, StartSec: 20, SegmentSec: 4})
-	if math.Abs(d-11.8) > 0.001 {
-		t.Fatalf("transcode stop=%.3f want 11.800", d)
+	if math.Abs(d-12.0) > 0.001 {
+		t.Fatalf("transcode stop=%.3f want 12.000", d)
 	}
 	// Explicit copy: bound is the segment list start, based at the keyframe seek.
 	kf := []float64{0, 6, 9, 12, 18, 21, 24}
@@ -125,8 +125,8 @@ func TestVODJobStopDurationSec(t *testing.T) {
 		StartIndex: 1, StopIndex: 4, StartSec: 6, SegmentSec: 4,
 		VideoCopy: true, KeyframeSeekTimes: kf, SegmentList: &list,
 	})
-	if math.Abs(d-11.8) > 0.001 {
-		t.Fatalf("copy stop=%.3f want 11.800", d)
+	if math.Abs(d-12.0) > 0.001 {
+		t.Fatalf("copy stop=%.3f want 12.000", d)
 	}
 	if vodJobStopDurationSec(HLSVODJobOptions{StartIndex: 5, SegmentSec: 4}) != 0 {
 		t.Fatal("no StopIndex should mean unbounded")

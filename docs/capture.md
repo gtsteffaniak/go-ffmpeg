@@ -22,6 +22,8 @@ ffprobe runs only when the position is percent-based and `DurationSec` is zero.
 
 **Formats:** JPEG (default, `mjpeg` + `image2pipe`), WebP, and PNG when the detected ffmpeg build exposes the encoders.
 
+**Quality:** `Quality` is **1–100** (higher is better). `0` uses the library default (**85**). MJPEG maps to ffmpeg `-q:v` via `round(31 - q×29/100)` clamped to 2–31; WebP uses `-quality q`; PNG ignores quality.
+
 **Optional `MeanLuma`:** set `MeanLuma: &value` on `FrameOptions` to record average luma (0–255) from the encoded frame (buffers once).
 
 ## Shared capture argv (`BuildFrameCaptureArgs`)
@@ -74,9 +76,10 @@ go test -tags=integration ./ops -run TestScreenshotMPEGTSLightProbe -count=1
 `Service.SpriteSheet` renders **N** thumbnails in **one** ffmpeg process:
 
 - `select='gte(t,n_forced*INTERVAL)'` for even temporal spacing (or set `IntervalSec` directly)
-- `scale` (or GPU `scale_vaapi` / `scale_vt` / `scale_cuda` when decoding on hardware)
-- `tile=CxR` into a single JPEG or WebP
-- Optional WebVTT with `#xywh=` cues for scrub previews
+- `scale` + `pad` to the configured tile size (letterboxed 4:3/16:9 thumbnails keep fixed `#xywh` geometry)
+- GPU decode chains match input hwaccel surfaces (`scale_vaapi` / `scale_vulkan` / `scale_vt` / `scale_cuda`, then `hwdownload` where needed)
+- `tile=CxR` into a single JPEG or WebP (quality uses the same 1–100 scale as frame capture)
+- Optional WebVTT with `#xywh=` cues; when WebVTT is requested, keyframe-only sampling is disabled so cue times match decoded samples
 
 Hardware decode uses the same `VideoDecodeProfile` / detection as transcode. Failures surface as `ErrProfileUnsupported` with stderr hints; **no automatic software fallback**.
 

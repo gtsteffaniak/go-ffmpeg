@@ -96,7 +96,7 @@ func (s *HLSVODSession) attachJob(job *HLSVODSegmentJob, explicitCopy bool) {
 	s.jobStart = job.StartIndex()
 	s.head = job.StartIndex()
 	s.explicitCopy = explicitCopy
-	s.partialPath = HLSVODSegmentPath(s.outDir, s.head)
+	s.partialPath = s.partialSegmentPathLocked(s.head, job)
 	s.mu.Unlock()
 	go s.watchJob(job)
 }
@@ -112,7 +112,7 @@ func (s *HLSVODSession) watchJob(job *HLSVODSegmentJob) {
 		s.refreshEncodeHead()
 		s.mu.Lock()
 		if s.job == job {
-			s.partialPath = HLSVODSegmentPath(s.outDir, s.head)
+			s.partialPath = s.partialSegmentPathLocked(s.head, job)
 		}
 		s.mu.Unlock()
 		select {
@@ -145,6 +145,10 @@ func (s *HLSVODSession) refreshEncodeHead() {
 	if explicit {
 		head, err := hlsVODSegmentListHead(s.outDir, jobStart)
 		if err == nil {
+			stop := job.StopIndex()
+			if stop > jobStart && head > stop {
+				head = stop
+			}
 			s.mu.Lock()
 			if s.job == job {
 				s.head = head
@@ -317,6 +321,10 @@ func (s *HLSVODSession) deferUnlinkPath(path string) {
 	if path == "" {
 		return
 	}
+	ready, err := hlsVODSegmentReadyAt(path)
+	if err == nil && ready {
+		return
+	}
 	s.mu.Lock()
 	if s.pathReaders[path] > 0 {
 		s.pendingUnlink[path] = true
@@ -325,6 +333,17 @@ func (s *HLSVODSession) deferUnlinkPath(path string) {
 	}
 	s.mu.Unlock()
 	s.unlinkSegmentPath(path)
+}
+
+func (s *HLSVODSession) partialSegmentPathLocked(head int, job *HLSVODSegmentJob) string {
+	if job == nil {
+		return ""
+	}
+	stop := job.StopIndex()
+	if stop > job.StartIndex() && head >= stop {
+		return ""
+	}
+	return HLSVODSegmentPath(s.outDir, head)
 }
 
 // TrackPartialSegment marks the path ffmpeg is currently writing (for cleanup on kill).

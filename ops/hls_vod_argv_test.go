@@ -336,8 +336,8 @@ func TestBuildHLSVODFFmpegArgsStopIndexEmitsDurationBound(t *testing.T) {
 		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "-t 11.800") {
-		t.Fatalf("expected -t bound before the ready tail: %s", joined)
+	if !strings.Contains(joined, "-t 12.000") {
+		t.Fatalf("expected -t bound on segment boundary before the ready tail: %s", joined)
 	}
 }
 
@@ -363,8 +363,8 @@ func TestBuildHLSVODFFmpegArgsCopyStopIndexEmitsDurationBound(t *testing.T) {
 		t.Fatalf("BuildHLSVODFFmpegArgs: %v", err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "-t 11.800") {
-		t.Fatalf("expected -t bound before the ready tail: %s", joined)
+	if !strings.Contains(joined, "-t 12.000") {
+		t.Fatalf("expected -t bound on segment boundary before the ready tail: %s", joined)
 	}
 }
 
