@@ -72,8 +72,11 @@ func TestSpriteHWScaleChainVulkan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(filter, "scale_vulkan=") || strings.Contains(filter, "scale=160:90") {
-		t.Fatalf("expected scale_vulkan chain: %s", filter)
+	if !strings.Contains(filter, "hwdownload,format=nv12,scale=160:90") {
+		t.Fatalf("expected vulkan hwdownload + software letterbox: %s", filter)
+	}
+	if strings.Contains(filter, "scale_vulkan=") {
+		t.Fatalf("scale_vulkan must not use unsupported options: %s", filter)
 	}
 }
 

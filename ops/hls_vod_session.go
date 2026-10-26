@@ -23,6 +23,7 @@ type HLSVODSession struct {
 	pathReaders   map[string]int
 	pendingUnlink map[string]bool
 	partialPath   string
+	restarting    bool
 
 	pollInterval time.Duration
 }
@@ -205,6 +206,14 @@ func (s *HLSVODSession) jobRunning() bool {
 	return job != nil && job.Running()
 }
 
+// explicitCopyJobActive reports whether an explicit-cut job is in flight (including restart hand-off).
+func (s *HLSVODSession) explicitCopyJobActive() bool {
+	s.mu.Lock()
+	active := s.restarting || (s.job != nil && s.job.Running())
+	s.mu.Unlock()
+	return active
+}
+
 // WaitForSegment blocks until segment k is ready, the context is canceled, or an error occurs.
 // Call ReleaseServePath on the segment path when the returned file is closed.
 func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func() (*HLSVODSegmentJob, error)) (*os.File, error) {
@@ -222,7 +231,7 @@ func (s *HLSVODSession) WaitForSegment(ctx context.Context, k int, startJob func
 		var ready bool
 		var err error
 		if explicitCopy {
-			f, ready, err = HLSVODOpenReadyExplicitCopySegment(s.outDir, k, s.jobRunning())
+			f, ready, err = HLSVODOpenReadyExplicitCopySegment(s.outDir, k, s.explicitCopyJobActive())
 		} else {
 			f, ready, err = HLSVODOpenReadySegment(segPath)
 		}
@@ -283,7 +292,14 @@ func (s *HLSVODSession) performRestart(ctx context.Context, k int, startJob func
 		old.Cancel()
 		_ = old.Wait()
 	}
-	s.deferUnlinkPath(partial)
+
+	s.mu.Lock()
+	s.restarting = true
+	s.mu.Unlock()
+	s.deferUnlinkPath(partial, old)
+	s.mu.Lock()
+	s.restarting = false
+	s.mu.Unlock()
 
 	job, err := startJob()
 	if err != nil {
@@ -317,13 +333,34 @@ func (s *HLSVODSession) unlinkSegmentPath(path string) {
 	_ = os.Remove(path + hlsVODSegmentTmpSuffix)
 }
 
-func (s *HLSVODSession) deferUnlinkPath(path string) {
+// deferUnlinkPath removes a partial segment unless it is a publishable cached hand-off.
+func (s *HLSVODSession) deferUnlinkPath(path string, cancelled *HLSVODSegmentJob) {
 	if path == "" {
 		return
 	}
-	ready, err := hlsVODSegmentReadyAt(path)
-	if err == nil && ready {
-		return
+	idx := hlsVODSegmentIndexFromPath(path)
+	s.mu.Lock()
+	explicit := s.explicitCopy
+	s.mu.Unlock()
+	if explicit && idx >= 0 {
+		listed, err := hlsVODSegmentListHas(s.outDir, idx)
+		if err == nil && listed {
+			return
+		}
+		stop, start := 0, 0
+		if cancelled != nil {
+			stop = cancelled.StopIndex()
+			start = cancelled.StartIndex()
+		}
+		ready, err := hlsVODSegmentReadyAt(path)
+		if err == nil && ready && stop > start && idx >= stop {
+			return
+		}
+	} else {
+		ready, err := hlsVODSegmentReadyAt(path)
+		if err == nil && ready {
+			return
+		}
 	}
 	s.mu.Lock()
 	if s.pathReaders[path] > 0 {
@@ -335,6 +372,7 @@ func (s *HLSVODSession) deferUnlinkPath(path string) {
 	s.unlinkSegmentPath(path)
 }
 
+// partialSegmentPathLocked returns the in-progress segment path for head, or empty past StopIndex.
 func (s *HLSVODSession) partialSegmentPathLocked(head int, job *HLSVODSegmentJob) string {
 	if job == nil {
 		return ""

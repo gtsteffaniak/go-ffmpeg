@@ -160,6 +160,20 @@ func TestPerformRestartSingleflight(t *testing.T) {
 	}
 }
 
+func TestDeferUnlinkPathDropsUnlistedExplicitCopyPartial(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	partial := writeReadyVODSegment(t, dir, 5)
+
+	s := NewHLSVODSession(HLSVODSessionOptions{OutDir: dir, ExplicitCopyCuts: true})
+	job := newTestVODJob(2)
+	job.stopIndex = 10
+	s.deferUnlinkPath(partial, job)
+	if _, err := os.Stat(partial); !os.IsNotExist(err) {
+		t.Fatalf("unlisted explicit-copy partial should be removed, stat err=%v", err)
+	}
+}
+
 func TestPerformRestartDoesNotUnlinkReadyCachedSegment(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 )
 
@@ -132,6 +133,17 @@ func TestCaptureFrameFileAtomicCleanup(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".goffmpeg-capture-") {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestPreviewOptionsToFrameLegacyQualityDefault(t *testing.T) {
+	t.Parallel()
+	fo := PreviewOptionsToFrame(PreviewOptions{}, 0)
+	if fo.Quality != LegacyPreviewDefaultQuality {
+		t.Fatalf("quality=%d want legacy default %d", fo.Quality, LegacyPreviewDefaultQuality)
+	}
+	if encode.MJPEGQualityQScale(fo.Quality) != "10" {
+		t.Fatalf("legacy preview should map to -q:v 10, got %s", encode.MJPEGQualityQScale(fo.Quality))
 	}
 }
 

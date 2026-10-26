@@ -220,6 +220,7 @@ func resolveFrameEncoder(caps *capabilities.Capabilities, format FrameFormat) (f
 	}
 }
 
+// frameCaptureArgs maps FrameOptions to shared ffmpeg argv fragments for one frame.
 func frameCaptureArgs(opts FrameOptions, enc frameEncoder, seekSec float64) FrameCaptureArgs {
 	scale := ""
 	if opts.Width > 0 && opts.Height > 0 {
@@ -293,6 +294,7 @@ func CaptureFrameFile(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	return captureFrameToPath(ctx, runner, caps, path, opts, seekSec, true)
 }
 
+// captureFrameToPath writes a frame to path, optionally via a same-directory temp file and rename.
 func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, path string, opts FrameOptions, seekSec float64, atomic bool) error {
 	if strings.TrimSpace(path) == "" {
 		return &FrameCaptureValidationError{Field: "path", Msg: "required"}
@@ -318,10 +320,10 @@ func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabi
 		if err := CaptureFrame(ctx, runner, caps, tmp, opts, seekSec); err != nil {
 			return err
 		}
-		if err := tmp.Close(); err != nil {
+		if err := tmp.Chmod(0o644); err != nil {
 			return err
 		}
-		if err := os.Chmod(tmpPath, 0o644); err != nil {
+		if err := tmp.Close(); err != nil {
 			return err
 		}
 		if err := os.Rename(tmpPath, path); err != nil {
@@ -392,11 +394,14 @@ func ScreenshotOptionsToFrame(opts ScreenshotOptions) FrameOptions {
 	return fo
 }
 
+// LegacyPreviewDefaultQuality is the 1–100 frame quality equivalent to historic VideoPreview -q:v 10.
+const LegacyPreviewDefaultQuality = 72
+
 // PreviewOptionsToFrame maps legacy preview options to FrameOptions (MJPEG stream).
 func PreviewOptionsToFrame(opts PreviewOptions, seekSec float64) FrameOptions {
 	q := opts.Quality
 	if q == 0 {
-		q = 10
+		q = LegacyPreviewDefaultQuality
 	}
 	return FrameOptions{
 		Input:       InputSource{URL: opts.Input, StreamType: probe.StreamFile},

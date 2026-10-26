@@ -17,6 +17,15 @@ func fmtHLSVODSegmentPath(index int) string {
 	return fmt.Sprintf(HLSVODSegmentNamePattern, index)
 }
 
+// hlsVODSegmentIndexFromPath parses a segment index from an absolute segment path, or -1.
+func hlsVODSegmentIndexFromPath(path string) int {
+	var idx int
+	if _, err := fmt.Sscanf(filepath.Base(path), "%05d.m4s", &idx); err != nil {
+		return -1
+	}
+	return idx
+}
+
 // HLSVODInitPath returns the absolute path to init.m4s under a VOD job directory.
 func HLSVODInitPath(outDir string) string {
 	return filepath.Join(outDir, HLSVODInitFilename)
