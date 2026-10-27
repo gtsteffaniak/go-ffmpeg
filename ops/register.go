@@ -62,10 +62,16 @@ type screenshotOp struct{}
 func (screenshotOp) Name() string                 { return "Screenshot" }
 func (screenshotOp) Requirements() RequirementSet { return captureFrameRequirements() }
 
+// Deprecated: Screenshot is a thin wrapper over CaptureFrameFile.
+func (screenshotOp) Deprecated() bool { return true }
+
 type videoPreviewOp struct{}
 
 func (videoPreviewOp) Name() string                 { return "VideoPreview" }
 func (videoPreviewOp) Requirements() RequirementSet { return captureFrameRequirements() }
+
+// Deprecated: VideoPreview is a thin wrapper over CaptureFrame.
+func (videoPreviewOp) Deprecated() bool { return true }
 
 type transcodeOp struct{}
 

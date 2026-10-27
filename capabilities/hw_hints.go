@@ -58,8 +58,17 @@ func hwTroubleshoot(encoderName, kind, output string, plat platform.Info) (prima
 			hints = []string{"Fix: install libvulkan1 / vulkan-loader; in Docker pass GPU devices and driver capabilities"}
 			return primary, hints
 		}
-		if strings.Contains(output, "video encode") || strings.Contains(output, "vk_khr_video_encode") {
-			primary = "[hardware] Vulkan video encode not supported by this GPU driver"
+		if strings.Contains(output, "vk_khr_video_encode") || strings.Contains(output, "video encode queue") ||
+			strings.Contains(output, "function not implemented") || strings.Contains(output, "error code: -38") ||
+			strings.Contains(output, "video encode") {
+			primary = "[hardware] Vulkan video encode not supported by this GPU driver/ICD"
+			if wsl := wslPlatformRemediation(plat, "vulkan", HWProbeVulkanNoVideoEncode); wsl != "" {
+				hints = []string{
+					wsl,
+					"Vendor paths (NVENC/VAAPI/QSV) still work — Vulkan is optional fallback",
+				}
+				return primary, hints
+			}
 			hints = []string{
 				"Update Mesa RADV/ANV (24.2+) or NVIDIA driver (550+) for VK_KHR_video_encode_queue",
 				"Vendor paths (VAAPI/NVENC/QSV) may still work — Vulkan is optional fallback",

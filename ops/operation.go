@@ -19,6 +19,24 @@ type Operation interface {
 	Requirements() RequirementSet
 }
 
+// DeprecatedOperation is implemented by operations that are kept for backward
+// compatibility but must not be advertised. Detection still evaluates their
+// requirements, so callers that invoke them keep working; only reported and
+// documented operation lists hide them.
+type DeprecatedOperation interface {
+	// Deprecated reports that the operation should be omitted from advertised
+	// operation lists (capability reports, summaries, generated docs).
+	Deprecated() bool
+}
+
+// IsDeprecated reports whether op opts out of advertised operation lists.
+func IsDeprecated(op Operation) bool {
+	if d, ok := op.(DeprecatedOperation); ok {
+		return d.Deprecated()
+	}
+	return false
+}
+
 // Supported checks whether cap satisfies the operation requirements.
 func Supported(op Operation, cap *capabilities.Capabilities) (bool, []string) {
 	if cap == nil {
@@ -66,11 +84,21 @@ func All() []Operation {
 }
 
 // EvaluateOps updates EnabledOps and DisabledOps on cap.
+// Deprecated operations are still evaluated so backward-compatible callers keep
+// working, but they are kept out of EnabledOps/DisabledOps (the advertised
+// lists) and recorded in DeprecatedOps instead.
 func EvaluateOps(cap *capabilities.Capabilities) {
 	cap.EnabledOps = nil
 	cap.DisabledOps = make(map[string][]string)
+	cap.DeprecatedOps = nil
 	for _, op := range registry {
 		ok, reasons := Supported(op, cap)
+		if IsDeprecated(op) {
+			if ok {
+				cap.DeprecatedOps = append(cap.DeprecatedOps, op.Name())
+			}
+			continue
+		}
 		if ok {
 			cap.EnabledOps = append(cap.EnabledOps, op.Name())
 		} else {

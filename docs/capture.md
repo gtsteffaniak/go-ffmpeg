@@ -69,7 +69,7 @@ go test -tags=integration ./ops -run TestScreenshotMPEGTSLightProbe -count=1
 
 `VideoPreview` still defaults to 10% into the file when neither `SeekSec` nor `SeekPercent` is set. The new API does not — use `AtPercent(10)` explicitly.
 
-`CaptureFrame` is listed in capability detection. `Screenshot` and `VideoPreview` share the same requirements.
+`CaptureFrame` is listed in capability detection. `Screenshot` and `VideoPreview` share the same requirements and remain callable, but they are marked deprecated in `ops` and are **not** advertised in `Capabilities.EnabledOps` / the capability report (they appear under **Operations deprecated** instead).
 
 ## Sprite sheets (`SpriteSheet`)
 

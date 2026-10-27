@@ -37,13 +37,57 @@ func ProbeVideoKeyframeTimes(ctx context.Context, runner *ffexec.Runner, path st
 	return frameTimes, nil
 }
 
+// ProbeVideoKeyframeTimesBounded demuxes only the first windowSec of the video
+// stream and returns the keyframe times found there. It lets a caller decide
+// whether stream copy is impossible (a single gap longer than the copy cap)
+// without paying for a full-file packet demux; when windowSec <= 0 it falls
+// back to the unbounded probe.
+//
+// A bounded result is only ever a lower bound on the file's keyframes: it can
+// prove copy is impossible but never that copy is safe. Callers that need a
+// complete keyframe timeline (the VOD segment plan) must still run the full
+// probe when the bounded window does not already rule copy out.
+func ProbeVideoKeyframeTimesBounded(ctx context.Context, runner *ffexec.Runner, path string, windowSec float64) ([]float64, error) {
+	if windowSec <= 0 {
+		return ProbeVideoKeyframeTimes(ctx, runner, path)
+	}
+	interval := fmt.Sprintf("%%+%g", windowSec)
+	times, err := probeVideoKeyframeTimesByPacketInterval(ctx, runner, path, interval)
+	if err == nil && len(times) > 0 {
+		return times, nil
+	}
+	frameTimes, frameErr := probeVideoKeyframeTimesByFrameInterval(ctx, runner, path, interval)
+	if frameErr != nil {
+		if err != nil {
+			return nil, err
+		}
+		return nil, frameErr
+	}
+	if len(frameTimes) == 0 {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("no video keyframes found")
+	}
+	return frameTimes, nil
+}
+
 func probeVideoKeyframeTimesByPacket(ctx context.Context, runner *ffexec.Runner, path string) ([]float64, error) {
+	return probeVideoKeyframeTimesByPacketInterval(ctx, runner, path, "")
+}
+
+// probeVideoKeyframeTimesByPacketInterval is probeVideoKeyframeTimesByPacket
+// with an optional -read_intervals bound (empty string means the whole file).
+func probeVideoKeyframeTimesByPacketInterval(ctx context.Context, runner *ffexec.Runner, path, interval string) ([]float64, error) {
 	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "packet=pts_time,dts_time,flags",
 		"-of", "csv=p=0",
 	})
+	if interval != "" {
+		args = append(args, "-read_intervals", interval)
+	}
 	args = append(args, path)
 	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {
@@ -82,6 +126,12 @@ func probeVideoKeyframeTimesByPacket(ctx context.Context, runner *ffexec.Runner,
 }
 
 func probeVideoKeyframeTimesByFrame(ctx context.Context, runner *ffexec.Runner, path string) ([]float64, error) {
+	return probeVideoKeyframeTimesByFrameInterval(ctx, runner, path, "")
+}
+
+// probeVideoKeyframeTimesByFrameInterval is probeVideoKeyframeTimesByFrame with
+// an optional -read_intervals bound (empty string means the whole file).
+func probeVideoKeyframeTimesByFrameInterval(ctx context.Context, runner *ffexec.Runner, path, interval string) ([]float64, error) {
 	args := runner.AppendProtocolWhitelistArgs([]string{
 		"-v", "error",
 		"-select_streams", "v:0",
@@ -89,6 +139,9 @@ func probeVideoKeyframeTimesByFrame(ctx context.Context, runner *ffexec.Runner, 
 		"-show_entries", "frame=best_effort_timestamp_time",
 		"-of", "csv=p=0",
 	})
+	if interval != "" {
+		args = append(args, "-read_intervals", interval)
+	}
 	args = append(args, path)
 	res, err := runner.RunFFprobe(ctx, args...)
 	if err != nil {

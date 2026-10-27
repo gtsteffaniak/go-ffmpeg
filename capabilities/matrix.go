@@ -176,6 +176,7 @@ type Capabilities struct {
 	DecodeOptions          []DecodeOption               `json:"decodeOptions"`
 	EnabledOps             []string                     `json:"enabledOps"`
 	DisabledOps            map[string][]string          `json:"disabledOps"`
+	DeprecatedOps          []string                     `json:"deprecatedOps,omitempty"`
 	FeatureFlags           FeatureFlags                 `json:"featureFlags"`
 	GeneratedAt            time.Time                    `json:"generatedAt"`
 	EncoderHierarchy       []AccelType                  `json:"encoderHierarchy,omitempty"`

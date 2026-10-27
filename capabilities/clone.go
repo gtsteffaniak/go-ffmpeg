@@ -16,6 +16,7 @@ func (c *Capabilities) Clone() *Capabilities {
 	out.EncodeOptions = append([]EncodeOption(nil), c.EncodeOptions...)
 	out.DecodeOptions = append([]DecodeOption(nil), c.DecodeOptions...)
 	out.EnabledOps = append([]string(nil), c.EnabledOps...)
+	out.DeprecatedOps = append([]string(nil), c.DeprecatedOps...)
 	out.DisabledOps = cloneDisabledOps(c.DisabledOps)
 	out.EncoderHierarchy = append([]AccelType(nil), c.EncoderHierarchy...)
 	out.EncoderProbes = append([]EncoderProbeResult(nil), c.EncoderProbes...)

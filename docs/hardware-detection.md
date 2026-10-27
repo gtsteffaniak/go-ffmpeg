@@ -54,7 +54,9 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 
 **UI log line:** `Capabilities.HardwareProbeSummaryLine()` — e.g. `hw probes: ffmpeg=dynamic | available: h264_nvenc, hevc_nvenc`.
 
-When a GPU is present in sysfs but probes fail, startup logs a **warn** line per encoder (`Service.Reload` / `New`) and probe `hint` fields include distro-specific remediation. Code may be upgraded to `gpu_present_driver_missing`.
+When a GPU is present in sysfs but probes fail, startup logs **de-duplicated warn** lines via `Capabilities.StartupHardwareWarnLines()` (`Service.Reload` / `New`). The merged emitter reports one `hardware probe:` line per distinct `gpu_present_driver_missing` remediation and one `vulkan probe:` line naming every affected Vulkan encoder, so the same text is never repeated per codec. Legacy `GPUPresentRemediationLogLines()` / `VulkanProbeWarnLines()` now return filtered views of the same source, so calling all three cannot duplicate a line.
+
+Only genuine driver-stack failures are promoted to `gpu_present_driver_missing`. Capability limits — a GPU generation that lacks an encoder (for example AV1 on Ampere) or a driver without Vulkan video encode — keep their own code (`nvenc_unsupported_gpu`, `vulkan_no_video_encode_driver`) and are reported without telling the operator to update a working driver.
 
 ### GPU presence (driver-independent)
 
@@ -86,16 +88,18 @@ Alpine and other families get generic `apk`/`install` hints derived from the sam
 | `libva_missing` | libva not installed | Install `libva2` + drivers |
 | `va_driver_missing` | No `*_drv_video.so` | Install Intel/AMD/Mesa VA driver; set `LIBVA_DRIVER_NAME` |
 | `va_driver_init_failed` | VA init failed (often **-12**) | Driver/GPU mismatch, permissions, or static ffmpeg |
-| `nvidia_libs_missing` | CUDA/NVENC libs not found | Install driver; containers: `--gpus all` + NVIDIA Container Toolkit |
-| `nvenc_unsupported_gpu` | GPU/driver cannot encode | Update driver or pick another encoder |
+| `nvidia_libs_missing` | CUDA/NVENC libs not found | Install driver; WSL: check `/usr/lib/wsl/lib`; containers: `--gpus all` + NVIDIA Container Toolkit |
+| `nvenc_unsupported_gpu` | This GPU generation has no NVENC unit for the codec (e.g. AV1 on Ampere) | Not a driver update; use another hardware codec or the software encoder |
 | `nvenc_session_limit` | Too many NVENC sessions | Reduce concurrent NVENC jobs |
 | `timeout` | Probe hung | Driver/GPU health, load |
-| `gpu_present_driver_missing` | GPU in sysfs but VA/NVENC stack missing | See remediation matrix above; check container devices and static vs dynamic ffmpeg |
+| `gpu_present_driver_missing` | GPU in sysfs but VA/NVENC stack missing | See remediation matrix above; WSL: `/dev/dxg` + `/usr/lib/wsl/lib`; check container devices and static vs dynamic ffmpeg |
 | `vulkan_loader_missing` | `libvulkan` not found | Install `libvulkan1` / `vulkan-loader`; mount GPU in containers |
 | `vulkan_no_device` | No render node / adapter | `--device /dev/dri/renderD128`; NVIDIA Docker: `--gpus all` + `NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute` |
-| `vulkan_no_video_encode_driver` | Driver lacks VK video encode | Upgrade Mesa RADV/ANV (24.2+) or NVIDIA 550+; use VAAPI/NVENC if available |
+| `vulkan_no_video_encode_driver` | Driver/ICD lacks VK video encode (`VK_KHR_video_encode_queue`); also the ENOSYS/-38 case | Upgrade Mesa RADV/ANV (24.2+) or NVIDIA 550+; on WSL there is no NVIDIA Vulkan ICD, so use NVENC instead |
 | `vulkan_driver_too_old` | Vulkan API below FFmpeg requirement | Update GPU driver / Mesa stack |
 | `unknown` | Unclassified stderr | Inspect `detail` |
+
+Codes are **not** promoted to `gpu_present_driver_missing` when the failure is a hardware capability limit (`nvenc_unsupported_gpu`, `nvenc_session_limit`) or a Vulkan feature gap (`vulkan_no_video_encode_driver`, `vulkan_driver_too_old`), so the remediation never asks for a driver change that cannot help.
 
 These codes describe **startup detection**. A later transcode may still fail at runtime; the library returns that error to the caller and does not change the cached capability matrix or retry the job.
 
@@ -105,7 +109,7 @@ These codes describe **startup detection**. A later transcode may still fail at 
 |-------------|--------|
 | **Linux native** | Full layered detection; prefers `/dev/dri/renderD*` |
 | **Docker on Linux** | Pass GPU devices + driver libs; static ffmpeg images often show `static_binary` |
-| **WSL2** | `/dev/dxg` + `/usr/lib/wsl/lib`; VAAPI via Mesa **d3d12** when no `/dev/dri` |
+| **WSL2** | `/dev/dxg` + `/usr/lib/wsl/lib`; NVENC works via `libnvidia-encode`. There is no `/dev/dri` render node and no NVIDIA Vulkan ICD, so Vulkan video encode is unavailable (`vulkan_no_video_encode_driver`) — use NVENC. VAAPI only via Mesa **d3d12** when a render node exists |
 | **Docker on WSL** | Combine WSL GPU rules with container device mounts |
 | **Windows** | QSV/NVENC/AMF via normal DLL load; prerequisite layer skipped |
 | **macOS** | VideoToolbox; prerequisite layer skipped |
@@ -116,7 +120,7 @@ These codes describe **startup detection**. A later transcode may still fail at 
 
 By default Vulkan is **not** in the encoder hierarchy (vendor paths win). Set `Config.VulkanEncoder` to `"fallback"` to append Vulkan after VAAPI/NVENC/QSV/AMF/VideoToolbox, or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
 
-Failed Vulkan probes log `vulkan probe: …` warn lines at startup with vendor-specific remediation (Mesa RADV/ANV versions, NVIDIA driver/capabilities, Docker device mounts).
+Failed Vulkan probes log a single `vulkan probe: h264_vulkan, hevc_vulkan, av1_vulkan: …` warn line (one line covering every affected encoder) with vendor-specific remediation (Mesa RADV/ANV versions, NVIDIA driver/capabilities, Docker device mounts). On WSL the hint explains the missing NVIDIA Vulkan ICD and points at NVENC rather than a render node.
 
 ## Transcode failures
 
