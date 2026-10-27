@@ -126,10 +126,12 @@ func ApplyHostRemediation(host DetectionHost, encoderKind string, binary FFmpegB
 		// changing the code) so the remediation reflects reality.
 		if encoderKind == "vulkan" && host.WSL && !strings.Contains(strings.ToLower(hint), "wsl") {
 			if msg := wslRemediation(host.WSL, host.DRI, host.Presence.NVIDIA, encoderKind, code); msg != "" {
-				if hint != "" {
-					hint += " | " + msg
-				} else {
+				switch {
+				case code == HWProbeVulkanNoVideoEncode, hint == "":
+					// The generic hint says "update the driver", which is wrong on WSL.
 					hint = msg
+				default:
+					hint += " | " + msg
 				}
 			}
 		}
