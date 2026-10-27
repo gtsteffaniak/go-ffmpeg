@@ -197,10 +197,10 @@ func indexOf(slice []string, val string) int {
 }
 
 func TestQualityToQScale(t *testing.T) {
-	if encode.QualityToQScale(0) != "1" {
-		t.Fatal("expected clamp to 1")
+	if encode.QualityToQScale(0) != encode.MJPEGQualityQScale(0) {
+		t.Fatal("zero uses default frame quality")
 	}
-	if encode.QualityToQScale(5) != "5" {
-		t.Fatal("expected 5")
+	if encode.QualityToQScale(5) != "30" {
+		t.Fatal("expected low user quality to map to high qscale")
 	}
 }

@@ -131,6 +131,8 @@ type FrameCaptureArgs struct {
 	KeyframeOnly bool
 	ScaleFilter  string
 	QScale       string
+	// WebPQuality, when > 0, sets libwebp -quality instead of -q:v.
+	WebPQuality int
 	// MJPEG selects mjpeg + image2pipe when VideoCodec/MuxerFormat are unset.
 	MJPEG       bool
 	VideoCodec  string
@@ -149,7 +151,9 @@ func BuildFrameCaptureArgs(runner *ffexec.Runner, input InputSource, rtsp *RTSPI
 		args = append(args, "-vf", cfg.ScaleFilter)
 	}
 	args = append(args, "-frames:v", "1")
-	if cfg.QScale != "" {
+	if cfg.WebPQuality > 0 {
+		args = append(args, "-quality", fmt.Sprintf("%d", cfg.WebPQuality))
+	} else if cfg.QScale != "" {
 		args = append(args, "-q:v", cfg.QScale)
 	}
 	vcodec := cfg.VideoCodec
@@ -239,10 +243,6 @@ func screenshotScaleFilter(opts ScreenshotOptions) string {
 }
 
 func buildScreenshotArgs(runner *ffexec.Runner, opts ScreenshotOptions, seekSec float64) []string {
-	q := opts.Quality
-	if q == 0 {
-		q = 85
-	}
 	accuracy := opts.Accuracy
 	skipProbe := opts.DurationSec > 0 || opts.SeekSec > 0 || opts.SeekPercent > 0
 	return BuildFrameCaptureArgs(runner, opts.Input, opts.RTSP, FrameCaptureArgs{
@@ -252,7 +252,7 @@ func buildScreenshotArgs(runner *ffexec.Runner, opts ScreenshotOptions, seekSec 
 		LightProbe:   opts.LightProbe,
 		KeyframeOnly: accuracy == CaptureFast,
 		ScaleFilter:  screenshotScaleFilter(opts),
-		QScale:       encode.QualityToQScale(q),
+		QScale:       encode.MJPEGQualityQScale(opts.Quality),
 		MJPEG:        true,
 	})
 }

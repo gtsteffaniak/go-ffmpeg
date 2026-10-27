@@ -411,13 +411,8 @@ func qsvPreset(preset QualityPreset) string {
 	}
 }
 
-// QualityToQScale maps a 1-10 quality level to ffmpeg -q:v (lower is better).
+// QualityToQScale maps a 1–100 frame quality level to ffmpeg mjpeg -q:v (lower is better).
+// Prefer MJPEGQualityQScale for still capture; this alias keeps older call sites working.
 func QualityToQScale(quality int) string {
-	if quality < 1 {
-		quality = 1
-	}
-	if quality > 10 {
-		quality = 10
-	}
-	return strconv.Itoa(quality)
+	return MJPEGQualityQScale(quality)
 }

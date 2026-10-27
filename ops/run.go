@@ -439,12 +439,8 @@ func ConvertHEIC(ctx context.Context, runner *ffexec.Runner, opts ConvertHEICOpt
 			args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", opts.Width, opts.Height))
 		}
 	}
-	q := opts.Quality
-	if q == 0 {
-		q = 5
-	}
 	args = append(args,
-		"-q:v", encode.QualityToQScale(q),
+		"-q:v", encode.MJPEGQualityQScale(opts.Quality),
 		"-pix_fmt", "yuvj420p",
 		"-y", opts.OutputPath,
 	)

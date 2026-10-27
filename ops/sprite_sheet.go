@@ -19,36 +19,51 @@ import (
 type SpriteFormat string
 
 const (
+	// SpriteFormatJPEG encodes the tiled sheet as MJPEG (default).
 	SpriteFormatJPEG SpriteFormat = "jpeg"
+	// SpriteFormatWebP encodes the tiled sheet with libwebp.
 	SpriteFormatWebP SpriteFormat = "webp"
 )
 
 // SpriteSheetOptions configures thumbnail sprite generation in one ffmpeg process.
 type SpriteSheetOptions struct {
-	Input      InputSource
+	// Input is the media URL or path to sample.
+	Input InputSource
+	// OutputPath is the sprite image file to write.
 	OutputPath string
-	WebVTTPath string // optional sidecar for player scrub previews
+	// WebVTTPath, when set, writes a WebVTT sidecar with #xywh cues for scrub previews.
+	WebVTTPath string
 
+	// TileWidth and TileHeight are the fixed cell size in pixels (defaults 160×90).
 	TileWidth  int
 	TileHeight int
-	Columns    int
-	Rows       int
+	// Columns and Rows define the tile grid when TileCount is zero.
+	Columns int
+	Rows    int
 	// TileCount when > 0 overrides Columns*Rows (grid is derived from Columns when Rows is zero).
 	TileCount int
 
-	IntervalSec float64 // when > 0, sample every IntervalSec (fps=1/interval)
-	StartSec    float64
-	EndSec      float64 // 0 = full duration
+	// IntervalSec, when > 0, samples every IntervalSec seconds on the post-seek timeline.
+	IntervalSec float64
+	// StartSec is the media time of the first sample (default 0).
+	StartSec float64
+	// EndSec limits sampling; 0 means full duration.
+	EndSec float64
 
+	// DurationSec skips ffprobe when the caller already knows the media length.
 	DurationSec float64
 	// LightProbe overrides default lightweight -probesize/-analyzeduration when duration is known.
 	LightProbe *CaptureLightProbe
-	Decode     encode.VideoDecodeProfile
+	// Decode selects hardware or software decode (same profile as transcode).
+	Decode encode.VideoDecodeProfile
 	// KeyframeOnly limits decode to keyframes when true (default when IntervalSec >= 2).
 	KeyframeOnly *bool
-	Accuracy     CaptureAccuracy
+	// Accuracy controls seek behavior for the sampling window.
+	Accuracy CaptureAccuracy
 
-	Format  SpriteFormat
+	// Format selects JPEG or WebP output.
+	Format SpriteFormat
+	// Quality is 1–100 (higher is better); 0 uses encode.DefaultFrameQuality.
 	Quality int
 	RTSP    *RTSPInputOptions
 	Timeout time.Duration
@@ -56,16 +71,16 @@ type SpriteSheetOptions struct {
 
 // SpriteSheetResult describes the generated sprite sheet.
 type SpriteSheetResult struct {
-	OutputPath   string
-	WebVTTPath   string
-	Columns      int
-	Rows         int
-	TileWidth    int
-	TileHeight   int
-	TileCount    int
+	OutputPath   string // path to the tiled image written by ffmpeg
+	WebVTTPath   string // optional WebVTT sidecar path when requested
+	Columns      int    // tile grid width in cells
+	Rows         int    // tile grid height in cells
+	TileWidth    int    // fixed tile width in pixels
+	TileHeight   int    // fixed tile height in pixels
+	TileCount    int    // number of samples placed in the grid
 	IntervalSec  float64
 	DecodeAccel  capabilities.AccelType
-	DecodeDriver string
+	DecodeDriver string // resolved decoder or hwaccel key used for input
 }
 
 // SpriteSheetCapabilities exposes whether hardware decode can run sprite jobs.
@@ -114,6 +129,10 @@ func SpriteSheet(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 	}
 
 	keyframeOnly := spriteKeyframeOnly(opts, interval)
+	if opts.WebVTTPath != "" && keyframeOnly {
+		// WebVTT cue times assume nominal spacing; keyframe-only decode drifts from those timestamps.
+		keyframeOnly = false
+	}
 	filter := spriteSheetFilter(resolver, opts.Decode, sel, layout, interval, keyframeOnly)
 
 	args := []string{"-hide_banner", "-nostats"}
@@ -137,15 +156,11 @@ func SpriteSheet(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 	if format == "" {
 		format = SpriteFormatJPEG
 	}
-	q := opts.Quality
-	if q == 0 {
-		q = 85
-	}
 	switch format {
 	case SpriteFormatWebP:
-		args = append(args, "-c:v", "libwebp", "-quality", fmt.Sprintf("%d", q))
+		args = append(args, "-c:v", "libwebp", "-quality", fmt.Sprintf("%d", encode.WebPQuality(opts.Quality)))
 	default:
-		args = append(args, "-q:v", encode.QualityToQScale(q))
+		args = append(args, "-q:v", encode.MJPEGQualityQScale(opts.Quality))
 	}
 	args = append(args, "-f", "image2", "-y", opts.OutputPath)
 
@@ -174,7 +189,7 @@ func SpriteSheet(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 	}
 
 	if opts.WebVTTPath != "" {
-		if err := writeSpriteWebVTT(opts.WebVTTPath, filepath.Base(opts.OutputPath), layout, interval); err != nil {
+		if err := writeSpriteWebVTT(opts.WebVTTPath, filepath.Base(opts.OutputPath), layout, interval, keyframeOnly); err != nil {
 			return result, err
 		}
 	}
@@ -191,6 +206,7 @@ type spriteLayout struct {
 	EndSec     float64
 }
 
+// resolveSpriteLayout derives grid geometry, sample count, and interval from options (and duration when needed).
 func resolveSpriteLayout(ctx context.Context, runner *ffexec.Runner, opts SpriteSheetOptions) (spriteLayout, float64, error) {
 	tw := opts.TileWidth
 	th := opts.TileHeight
@@ -262,6 +278,7 @@ func resolveSpriteLayout(ctx context.Context, runner *ffexec.Runner, opts Sprite
 	}, interval, nil
 }
 
+// spriteKeyframeOnly picks keyframe-only decode unless the caller overrides KeyframeOnly.
 func spriteKeyframeOnly(opts SpriteSheetOptions, interval float64) bool {
 	if opts.KeyframeOnly != nil {
 		return *opts.KeyframeOnly
@@ -269,10 +286,10 @@ func spriteKeyframeOnly(opts SpriteSheetOptions, interval float64) bool {
 	return interval >= 2.0
 }
 
+// spriteSheetFilter builds the -vf chain: temporal select, scale/pad, and tile.
 func spriteSheetFilter(r *encode.Resolver, decode encode.VideoDecodeProfile, sel capabilities.DecoderSelection, layout spriteLayout, interval float64, keyframeOnly bool) string {
 	// prev_selected_t spaces samples by interval on the post-seek timeline (works across ffmpeg 6–8).
 	selectExpr := fmt.Sprintf("isnan(prev_selected_t)+gte(t-prev_selected_t\\,%.6f)", interval)
-	scale := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", layout.TileWidth, layout.TileHeight)
 	tile := fmt.Sprintf("tile=%dx%d", layout.Columns, layout.Rows)
 
 	hw := sel.Accel != capabilities.AccelNone && sel.Decoder != "" && !decode.ForceSoftware
@@ -280,7 +297,7 @@ func spriteSheetFilter(r *encode.Resolver, decode encode.VideoDecodeProfile, sel
 	if hw {
 		parts = append(parts, spriteHWScaleChain(r, sel, layout.TileWidth, layout.TileHeight))
 	} else {
-		parts = append(parts, scale)
+		parts = append(parts, spriteScalePadFilter(layout.TileWidth, layout.TileHeight))
 	}
 	parts = append(parts, tile)
 	if keyframeOnly {
@@ -289,33 +306,56 @@ func spriteSheetFilter(r *encode.Resolver, decode encode.VideoDecodeProfile, sel
 	return strings.Join(parts, ",")
 }
 
+// spriteScalePadFilter letterboxes into a fixed WxH cell using software scale+pad.
+func spriteScalePadFilter(w, h int) string {
+	return fmt.Sprintf(
+		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
+		w, h, w, h,
+	)
+}
+
+// spritePadSuffix returns a pad filter suffix for fixed WxH cells after hwdownload.
+func spritePadSuffix(w, h int) string {
+	return fmt.Sprintf(",pad=%d:%d:(ow-iw)/2:(oh-ih)/2", w, h)
+}
+
+// spriteHWScaleChain returns the scale/hwdownload/pad chain matching the active decode backend.
 func spriteHWScaleChain(r *encode.Resolver, sel capabilities.DecoderSelection, w, h int) string {
+	pad := spritePadSuffix(w, h)
 	switch sel.Accel {
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		if r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vaapi") {
-			return fmt.Sprintf("scale_vaapi=w=%d:h=%d,hwdownload,format=nv12", w, h)
+			return fmt.Sprintf("scale_vaapi=w=%d:h=%d:force_original_aspect_ratio=decrease,hwdownload,format=nv12%s", w, h, pad)
 		}
-		return fmt.Sprintf("hwdownload,format=nv12,scale=%d:%d:force_original_aspect_ratio=decrease", w, h)
+		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
+	case capabilities.AccelVulkan:
+		// scale_vulkan has no force_original_aspect_ratio; letterbox via software scale after hwdownload.
+		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	case capabilities.AccelVideoToolbox:
 		if r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vt") {
-			return fmt.Sprintf("hwdownload,format=nv12,scale_vt=w=trunc(iw*min(%d\\,ih)/ih/2)*2:h=min(%d\\,ih)", h, h)
+			return fmt.Sprintf("scale_vt=w=%d:h=%d:force_original_aspect_ratio=decrease,hwdownload,format=nv12%s", w, h, pad)
 		}
-		return fmt.Sprintf("hwdownload,format=nv12,scale=%d:%d:force_original_aspect_ratio=decrease", w, h)
+		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	case capabilities.AccelNVENC:
 		if r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_cuda") {
-			return fmt.Sprintf("hwdownload,format=nv12,scale_cuda=%d:%d:force_original_aspect_ratio=decrease", w, h)
+			return fmt.Sprintf("scale_cuda=%d:%d:force_original_aspect_ratio=decrease,hwdownload,format=nv12%s", w, h, pad)
 		}
-		return fmt.Sprintf("hwdownload,format=nv12,scale=%d:%d:force_original_aspect_ratio=decrease", w, h)
+		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	case capabilities.AccelQSV:
-		return fmt.Sprintf("hwdownload,format=nv12,scale=%d:%d:force_original_aspect_ratio=decrease", w, h)
+		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	default:
-		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", w, h)
+		return spriteScalePadFilter(w, h)
 	}
 }
 
-func writeSpriteWebVTT(path string, imageName string, layout spriteLayout, interval float64) error {
+// writeSpriteWebVTT writes WebVTT cues with #xywh regions for each tile.
+func writeSpriteWebVTT(path string, imageName string, layout spriteLayout, interval float64, keyframeOnly bool) error {
 	var b strings.Builder
-	b.WriteString("WEBVTT\n\n")
+	b.WriteString("WEBVTT\n")
+	if keyframeOnly {
+		b.WriteString("NOTE Keyframe-only sampling: cue times are nominal (start + n×interval); thumbnails align to keyframes.\n")
+	}
+	b.WriteString("\n")
 	for i := 0; i < layout.TileCount; i++ {
 		start := layout.StartSec + float64(i)*interval
 		end := start + interval
@@ -332,6 +372,7 @@ func writeSpriteWebVTT(path string, imageName string, layout spriteLayout, inter
 	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
+// formatVTTTime formats seconds as WebVTT timestamps (HH:MM:SS.mmm).
 func formatVTTTime(sec float64) string {
 	if sec < 0 {
 		sec = 0

@@ -58,21 +58,31 @@ func AtPercent(percent float64) FramePosition {
 
 // FrameOptions configures single-frame capture to a writer or file.
 type FrameOptions struct {
-	Input       InputSource
-	RTSP        *RTSPInputOptions
-	At          FramePosition
+	// Input is the media source (URL/path and stream type).
+	Input InputSource
+	// RTSP carries transport and probe tuning for RTSP inputs.
+	RTSP *RTSPInputOptions
+	// At selects which frame to capture (zero value = first frame).
+	At FramePosition
+	// DurationSec skips ffprobe when the caller already knows media length.
 	DurationSec float64
-	Accuracy    CaptureAccuracy
-	Width       int
-	Height      int
-	ScaleMode   ScaleMode
-	Format      FrameFormat
-	Quality     int
+	// Accuracy selects fast keyframe seek vs exact decode-to-time.
+	Accuracy CaptureAccuracy
+	// Width and Height scale the output when both are positive.
+	Width  int
+	Height int
+	// ScaleMode controls letterboxing when scaling.
+	ScaleMode ScaleMode
+	// Format selects JPEG, WebP, or PNG output.
+	Format FrameFormat
+	// Quality is 1–100 (higher is better); 0 uses encode.DefaultFrameQuality. PNG ignores quality.
+	Quality int
 	// LightProbe sets lightweight ffmpeg input -probesize/-analyzeduration when duration/seek is known.
 	LightProbe *CaptureLightProbe
 	// MeanLuma when non-nil is filled with average luma (0–255) of the encoded frame.
 	MeanLuma *float64
-	Timeout  time.Duration
+	// Timeout bounds the ffmpeg invocation (default 60s).
+	Timeout time.Duration
 }
 
 // FrameCaptureValidationError reports invalid FrameOptions before ffmpeg runs.
@@ -210,42 +220,30 @@ func resolveFrameEncoder(caps *capabilities.Capabilities, format FrameFormat) (f
 	}
 }
 
-func frameQualityQScale(format FrameFormat, quality int) string {
-	q := quality
-	switch format {
-	case FrameWebP, FramePNG:
-		if q == 0 {
-			q = 80
-		}
-		if q < 1 {
-			q = 1
-		}
-		if q > 100 {
-			q = 100
-		}
-		return encode.QualityToQScale(1 + (q-1)*9/99)
-	default:
-		return encode.QualityToQScale(q)
-	}
-}
-
+// frameCaptureArgs maps FrameOptions to shared ffmpeg argv fragments for one frame.
 func frameCaptureArgs(opts FrameOptions, enc frameEncoder, seekSec float64) FrameCaptureArgs {
 	scale := ""
 	if opts.Width > 0 && opts.Height > 0 {
 		scale = PreviewScaleFilter(opts.Width, opts.Height, opts.ScaleMode)
 	}
 	skipProbe := opts.DurationSec > 0 || seekSec > 0 || opts.At.kind != framePosFirst
-	return FrameCaptureArgs{
+	fa := FrameCaptureArgs{
 		SeekSec:      seekSec,
 		Accuracy:     opts.Accuracy,
 		SkipProbe:    skipProbe,
 		LightProbe:   opts.LightProbe,
 		KeyframeOnly: opts.Accuracy == CaptureFast,
 		ScaleFilter:  scale,
-		QScale:       frameQualityQScale(opts.Format, opts.Quality),
 		VideoCodec:   enc.vcodec,
 		MuxerFormat:  enc.muxer,
 	}
+	switch opts.Format {
+	case FrameWebP:
+		fa.WebPQuality = encode.WebPQuality(opts.Quality)
+	default:
+		fa.QScale = encode.MJPEGQualityQScale(opts.Quality)
+	}
+	return fa
 }
 
 // CaptureFrame streams one encoded frame to w at seekSec (from ResolveFrameSeekSec).
@@ -296,6 +294,7 @@ func CaptureFrameFile(ctx context.Context, runner *ffexec.Runner, caps *capabili
 	return captureFrameToPath(ctx, runner, caps, path, opts, seekSec, true)
 }
 
+// captureFrameToPath writes a frame to path, optionally via a same-directory temp file and rename.
 func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, path string, opts FrameOptions, seekSec float64, atomic bool) error {
 	if strings.TrimSpace(path) == "" {
 		return &FrameCaptureValidationError{Field: "path", Msg: "required"}
@@ -319,6 +318,9 @@ func captureFrameToPath(ctx context.Context, runner *ffexec.Runner, caps *capabi
 			}
 		}()
 		if err := CaptureFrame(ctx, runner, caps, tmp, opts, seekSec); err != nil {
+			return err
+		}
+		if err := tmp.Chmod(0o644); err != nil {
 			return err
 		}
 		if err := tmp.Close(); err != nil {
@@ -392,11 +394,14 @@ func ScreenshotOptionsToFrame(opts ScreenshotOptions) FrameOptions {
 	return fo
 }
 
+// LegacyPreviewDefaultQuality is the 1–100 frame quality equivalent to historic VideoPreview -q:v 10.
+const LegacyPreviewDefaultQuality = 72
+
 // PreviewOptionsToFrame maps legacy preview options to FrameOptions (MJPEG stream).
 func PreviewOptionsToFrame(opts PreviewOptions, seekSec float64) FrameOptions {
 	q := opts.Quality
 	if q == 0 {
-		q = 10
+		q = LegacyPreviewDefaultQuality
 	}
 	return FrameOptions{
 		Input:       InputSource{URL: opts.Input, StreamType: probe.StreamFile},

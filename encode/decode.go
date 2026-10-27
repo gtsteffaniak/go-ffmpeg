@@ -218,7 +218,19 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 
 	switch sel.Accel {
 	case capabilities.AccelNVENC:
-		return []string{"-c:v", sel.Decoder}, nil
+		args := []string{
+			"-hwaccel", "cuda",
+			"-hwaccel_output_format", "cuda",
+			"-c:v", sel.Decoder,
+		}
+		choice := platform.GPUChoice{}
+		if r.Caps != nil && r.Caps.SelectedGPU != nil {
+			choice = *r.Caps.SelectedGPU
+		}
+		if choice.CUDAIndex >= 0 {
+			args = append(args, "-hwaccel_device", fmt.Sprintf("%d", choice.CUDAIndex))
+		}
+		return args, nil
 	case capabilities.AccelQSV:
 		return []string{"-init_hw_device", "qsv=hw", "-c:v", sel.Decoder}, nil
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
@@ -234,6 +246,7 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 			"-init_hw_device", "vaapi=va:" + renderDev,
 			"-hwaccel", "vaapi",
 			"-hwaccel_device", "va",
+			"-hwaccel_output_format", "vaapi",
 			"-c:v", sw,
 		}, nil
 	case capabilities.AccelVulkan:
