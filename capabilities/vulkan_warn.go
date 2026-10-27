@@ -1,32 +1,13 @@
 package capabilities
 
-import "strings"
-
-// VulkanProbeWarnLines returns startup warn lines for failed Vulkan encoder probes.
+// VulkanProbeWarnLines returns startup warn lines for failed Vulkan encoder
+// probes. It is a filtered view of [Capabilities.StartupHardwareWarnLines], so
+// calling it alongside [Capabilities.GPUPresentRemediationLogLines] never emits
+// the same remediation twice.
+//
+// Prefer [Capabilities.StartupHardwareWarnLines], which merges both emitters.
 func (c *Capabilities) VulkanProbeWarnLines() []string {
-	if c == nil || !c.VulkanEncoderRequested {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	var lines []string
-	for _, probe := range c.EncoderProbeResults() {
-		if probe.Accel != AccelVulkan || probe.Available {
-			continue
-		}
-		if !vulkanProbeWarnCode(probe.Code) {
-			continue
-		}
-		line := probe.Encoder + ": [" + string(probe.Code) + "] " + probe.Hint
-		if extra := vulkanVendorRemediation(c.DetectionHost, probe.Code); extra != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(extra)) {
-			line += " | " + extra
-		}
-		if _, ok := seen[line]; ok {
-			continue
-		}
-		seen[line] = struct{}{}
-		lines = append(lines, "vulkan probe: "+line)
-	}
-	return lines
+	return c.warnLinesOfKind(warnKindVulkan)
 }
 
 func vulkanProbeWarnCode(code HWProbeCode) bool {
@@ -53,6 +34,9 @@ func vulkanVendorRemediation(host DetectionHost, code HWProbeCode) string {
 			return "Docker: --device /dev/dri/renderD128; NVIDIA: --gpus all -e NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute"
 		}
 	case HWProbeVulkanNoVideoEncode, HWProbeVulkanDriverTooOld:
+		if wsl := wslRemediation(host.WSL, host.DRI, host.Presence.NVIDIA, "vulkan", code); wsl != "" {
+			return wsl
+		}
 		if host.Presence.AMD {
 			return "AMD: Mesa RADV 24.2+ with VK_KHR_video_encode_queue; Fedora: mesa-va-drivers-freeworld + recent mesa-vulkan-drivers"
 		}

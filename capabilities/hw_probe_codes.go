@@ -41,8 +41,10 @@ const (
 	// Fix: install the NVIDIA driver stack; in containers use --gpus all and the NVIDIA toolkit.
 	HWProbeNvidiaLibsMissing HWProbeCode = "nvidia_libs_missing"
 
-	// HWProbeNVENCUnsupported means the GPU or driver does not expose NVENC for this codec.
-	// Fix: update the driver or choose another encoder.
+	// HWProbeNVENCUnsupported means this GPU generation has no NVENC unit for the
+	// codec (for example AV1 on Ampere). It is a hardware capability limit, not a
+	// driver problem, so it is never promoted to [HWProbeGPUPresentDriverMissing].
+	// Fix: use another hardware codec or the software encoder.
 	HWProbeNVENCUnsupported HWProbeCode = "nvenc_unsupported_gpu"
 
 	// HWProbeNVENCSessionLimit means NVENC concurrent session limit was hit during probe.
@@ -72,8 +74,11 @@ const (
 	// Fix: pass render nodes or --gpus all with video capabilities on NVIDIA.
 	HWProbeVulkanNoDevice HWProbeCode = "vulkan_no_device"
 
-	// HWProbeVulkanNoVideoEncode means the driver lacks Vulkan video encode queues.
-	// Fix: upgrade Mesa RADV/ANV or the NVIDIA driver.
+	// HWProbeVulkanNoVideoEncode means the driver/ICD lacks Vulkan video encode
+	// queues (VK_KHR_video_encode_queue), including the ENOSYS / -38
+	// "Function not implemented" failure. On WSL there is no NVIDIA Vulkan ICD, so
+	// this is the expected result there.
+	// Fix: upgrade Mesa RADV/ANV or the NVIDIA driver, or use NVENC/VAAPI.
 	HWProbeVulkanNoVideoEncode HWProbeCode = "vulkan_no_video_encode_driver"
 
 	// HWProbeVulkanDriverTooOld means the Vulkan driver API is too old for video encode.
@@ -121,7 +126,7 @@ func HintForProbeCode(code HWProbeCode) string {
 	case HWProbeNvidiaLibsMissing:
 		return "install NVIDIA driver userspace libraries (libcuda.so.1, libnvidia-encode.so.1); in containers use --gpus all with NVIDIA Container Toolkit"
 	case HWProbeNVENCUnsupported:
-		return "GPU or driver does not support NVENC for this codec; update the driver or pick another encoder"
+		return "this GPU does not support NVENC for this codec (hardware generation limit, not a driver update); use another hardware codec or the software encoder"
 	case HWProbeNVENCSessionLimit:
 		return "NVENC session limit reached; stop other encoders or reduce concurrent NVENC jobs"
 	case HWProbeTimeout:

@@ -112,7 +112,7 @@ _ = svc.CaptureFrame(ctx, w, ffmpeg.FrameOptions{
 })
 ```
 
-`Screenshot` and `VideoPreview` remain as deprecated wrappers. See [docs/capture.md](docs/capture.md).
+`Screenshot` and `VideoPreview` remain as deprecated wrappers (callable, but excluded from the advertised `EnabledOps` list and the capability report). See [docs/capture.md](docs/capture.md).
 
 ## Examples
 

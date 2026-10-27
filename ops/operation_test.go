@@ -57,6 +57,50 @@ func TestEvaluateOps(t *testing.T) {
 	}
 }
 
+// Deprecated operations stay callable but must not be advertised in the
+// capability report's enabled/disabled lists.
+func TestEvaluateOpsExcludesDeprecatedFromAdvertised(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.BuildProfile = capabilities.BuildFull
+	for _, p := range []string{"file", "tcp", "http", "https", "rtsp", "hls"} {
+		caps.Protocols[p] = true
+	}
+	caps.Encoders["mjpeg"] = capabilities.EncoderCapability{Available: true}
+	for _, f := range []string{"scale", "segment", "concat", "fps", "tile", "transpose"} {
+		caps.Filters[f] = true
+	}
+	ops.EvaluateOps(caps)
+
+	for _, name := range caps.EnabledOps {
+		if name == "Screenshot" || name == "VideoPreview" {
+			t.Fatalf("deprecated op %s advertised in EnabledOps: %v", name, caps.EnabledOps)
+		}
+	}
+	if _, ok := caps.DisabledOps["Screenshot"]; ok {
+		t.Fatalf("deprecated op Screenshot advertised in DisabledOps")
+	}
+
+	// Backward compatibility: calling the deprecated op still resolves.
+	deprecated := 0
+	for _, op := range ops.All() {
+		if op.Name() == "Screenshot" || op.Name() == "VideoPreview" {
+			deprecated++
+			if !ops.IsDeprecated(op) {
+				t.Fatalf("%s should be marked deprecated", op.Name())
+			}
+			if ok, _ := ops.Supported(op, caps); !ok {
+				t.Fatalf("%s should remain supported for existing callers", op.Name())
+			}
+		}
+	}
+	if deprecated != 2 {
+		t.Fatalf("found %d deprecated ops, want 2", deprecated)
+	}
+	if len(caps.DeprecatedOps) != 2 {
+		t.Fatalf("DeprecatedOps = %v, want 2 entries", caps.DeprecatedOps)
+	}
+}
+
 type probeStreamOpTest struct{}
 
 func (probeStreamOpTest) Name() string { return "ProbeStream" }

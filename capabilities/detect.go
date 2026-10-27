@@ -30,7 +30,6 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.GeneratedAt = time.Now()
 	caps.FFmpegBinary = ProbeFFmpegBinary(runner.FFmpegPath)
 	caps.DetectionHost = NewDetectionHost()
-
 	verRes, err := runner.RunFFmpeg(ctx, "-version")
 	if err != nil {
 		return nil, err
@@ -57,6 +56,11 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	hardwarePlat := platform.Detect()
 	caps.Platform = hardwarePlat
 	caps.HardwarePlatform = hardwarePlat
+	// Enrich the remediation host with WSL/DRI gates from the platform probe
+	// (NewDetectionHost only reads PCI presence and distro). This lets every
+	// remediation path branch on real host state instead of string matching.
+	caps.DetectionHost.WSL = hardwarePlat.WSL
+	caps.DetectionHost.DRI = hardwarePlat.DRI
 	caps.AllowSoftware = true
 	if opts.AllowSoftware != nil {
 		caps.AllowSoftware = *opts.AllowSoftware

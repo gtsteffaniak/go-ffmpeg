@@ -79,6 +79,10 @@ func (c *Capabilities) ReportWithOptions(w io.Writer, opts ReportOptions) error 
 			fmt.Fprintf(w, "  %s: %s\n", st.red(name), st.dim(strings.Join(reasons, "; ")))
 		}
 	}
+	if len(c.DeprecatedOps) > 0 {
+		fmt.Fprintf(w, "%s %s\n", st.section("Operations deprecated:"),
+			st.dim(strings.Join(c.DeprecatedOps, ", ")+" (available, not advertised)"))
+	}
 	return nil
 }
 

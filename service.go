@@ -74,10 +74,7 @@ func (s *Service) Reload(ctx context.Context) error {
 	if probeLine := caps.HardwareProbeSummaryLine(); probeLine != "" {
 		log.Info(probeLine)
 	}
-	for _, line := range caps.GPUPresentRemediationLogLines() {
-		log.Warn(line)
-	}
-	for _, line := range caps.VulkanProbeWarnLines() {
+	for _, line := range caps.StartupHardwareWarnLines() {
 		log.Warn(line)
 	}
 	report := caps.ReportString()
@@ -1026,6 +1023,25 @@ func (s *Service) ProbeVideoFPS(ctx context.Context, path string) (float64, erro
 		return probeErr
 	})
 	return fps, err
+}
+
+// ProbeVideoKeyframeTimesBounded returns the keyframe times found in the first
+// windowSec of the file. See ops.ProbeVideoKeyframeTimesBounded: a bounded
+// result can prove stream copy impossible but never that it is safe.
+func (s *Service) ProbeVideoKeyframeTimesBounded(ctx context.Context, path string, windowSec float64) ([]float64, error) {
+	if err := s.ensureDetected(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.require("ProbeStream"); err != nil {
+		return nil, err
+	}
+	var times []float64
+	err := s.runWithClass(ctx, concurrency.SlotProbe, path, func() error {
+		var probeErr error
+		times, probeErr = ops.ProbeVideoKeyframeTimesBounded(ctx, s.runner, path, windowSec)
+		return probeErr
+	})
+	return times, err
 }
 
 // ProbeVideoKeyframeTimes returns keyframe presentation times in seconds.

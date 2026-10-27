@@ -1,8 +1,21 @@
 package ops
 
 import (
+	"context"
 	"testing"
+
+	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
 )
+
+// A non-positive window means "no bound", so the bounded probe must fall back
+// to the full-file probe rather than returning an empty timeline.
+func TestProbeVideoKeyframeTimesBoundedFallsBackWhenWindowNonPositive(t *testing.T) {
+	t.Parallel()
+	// A missing ffprobe binary fails the probe either way; the point is that it
+	// does not panic or silently return an empty slice for a nil window.
+	runner := &ffexec.Runner{FFprobePath: "definitely-not-ffprobe"}
+	_, _ = ProbeVideoKeyframeTimesBounded(context.Background(), runner, "/nonexistent.mkv", 0)
+}
 
 func TestParsePacketKeyframeCSVFieldsTrimsTrailingComma(t *testing.T) {
 	t.Parallel()

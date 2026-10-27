@@ -16,9 +16,15 @@ type DetectionHost struct {
 	Distro platform.DistroContext `json:"distro,omitempty"`
 	// Container is true when [platform.RunningInContainer] reports isolation.
 	Container bool `json:"container,omitempty"`
+	// WSL is [platform.Info.WSL]; remediation is WSL-aware without string matching.
+	WSL bool `json:"wsl,omitempty"`
+	// DRI is [platform.Info.DRI] (a /dev/dri render node exists).
+	DRI bool `json:"dri,omitempty"`
 }
 
 // NewDetectionHost probes the host once for remediation (no ffmpeg smoke tests).
+// WSL and DRI are filled in by [Detect] from the platform probe so this call
+// does not repeat the expensive host detection.
 func NewDetectionHost() DetectionHost {
 	return DetectionHost{
 		Presence:  platform.DetectGPUPresence(),
@@ -27,15 +33,21 @@ func NewDetectionHost() DetectionHost {
 	}
 }
 
-// probeCodeDriverRelated reports whether code may be upgraded to gpu_present_driver_missing.
+// probeCodeDriverRelated reports whether code may be upgraded to
+// [HWProbeGPUPresentDriverMissing]. Capability limits (a GPU that simply does
+// not implement a codec, or a missing Vulkan video-encode extension) and
+// runtime resource limits are intentionally excluded: promoting them would
+// tell the operator to install a driver that is already working.
 func probeCodeDriverRelated(code HWProbeCode) bool {
 	switch code {
 	case HWProbeStaticBinary, HWProbeNoDevice, HWProbeDevicePermission,
 		HWProbeLibvaMissing, HWProbeVADriverMissing, HWProbeVADriverInitFailed,
-		HWProbeNvidiaLibsMissing, HWProbeVulkanLoaderMissing, HWProbeVulkanNoDevice,
-		HWProbeVulkanNoVideoEncode, HWProbeVulkanDriverTooOld, HWProbeUnknown:
+		HWProbeNvidiaLibsMissing, HWProbeUnknown:
 		return true
 	default:
+		// Vulkan failures are reported by their own code and remediation, and
+		// nvenc_unsupported_gpu / nvenc_session_limit describe hardware or
+		// runtime limits rather than a missing driver stack.
 		return false
 	}
 }
@@ -109,6 +121,20 @@ func ApplyHostRemediation(host DetectionHost, encoderKind string, binary FFmpegB
 		return code, hint
 	}
 	if !probeCodeDriverRelated(code) {
+		// Not a driver-stack failure, so the code must not be promoted.
+		// Vulkan on WSL still gets a host-specific hint appended (without
+		// changing the code) so the remediation reflects reality.
+		if encoderKind == "vulkan" && host.WSL && !strings.Contains(strings.ToLower(hint), "wsl") {
+			if msg := wslRemediation(host.WSL, host.DRI, host.Presence.NVIDIA, encoderKind, code); msg != "" {
+				switch {
+				case code == HWProbeVulkanNoVideoEncode, hint == "":
+					// The generic hint says "update the driver", which is wrong on WSL.
+					hint = msg
+				default:
+					hint += " | " + msg
+				}
+			}
+		}
 		return code, hint
 	}
 	remediation := HostRemediationMessage(host, vendor, encoderKind, binary)
@@ -152,11 +178,19 @@ func HostRemediationMessage(host DetectionHost, vendor, encoderKind string, bina
 			parts = append(parts, msg)
 		}
 	case "nvidia":
-		if host.Container {
+		switch {
+		case host.Container:
 			parts = append(parts, "Docker: run with --gpus all and NVIDIA Container Toolkit; use a non-static ffmpeg image with libnvidia-encode")
-		} else if host.Presence.WSLDXG {
-			parts = append(parts, "WSL: ensure Windows NVIDIA driver is current and /usr/lib/wsl/lib is mounted")
-		} else {
+		case host.WSL:
+			// The NVENC driver stack failed on a WSL host that has GPU
+			// paravirtualization; the actionable fix is the /dev/dxg + WSL
+			// userspace library path, never "update the Windows driver".
+			msg := wslRemediation(host.WSL, host.DRI, host.Presence.NVIDIA, encoderKind, HWProbeGPUPresentDriverMissing)
+			if msg == "" {
+				msg = "WSL: /dev/dxg is present but the NVIDIA userspace libraries are not usable; check /usr/lib/wsl/lib is on the loader path"
+			}
+			parts = append(parts, msg)
+		default:
 			parts = append(parts, "install the proprietary NVIDIA driver including libnvidia-encode.so.1 and libcuda.so.1")
 		}
 	}
@@ -198,36 +232,13 @@ func encoderBackendLabel(kind string) string {
 	}
 }
 
-// GPUPresentRemediationLogLines returns warn-level startup lines for probes with
-// [HWProbeGPUPresentDriverMissing]. Safe to call after detection; read-only.
+// GPUPresentRemediationLogLines returns warn-level startup lines for probes
+// classified as [HWProbeGPUPresentDriverMissing]. It is a filtered view of
+// [Capabilities.StartupHardwareWarnLines] so the same remediation is never
+// emitted by both this and [Capabilities.VulkanProbeWarnLines]; prefer the
+// merged [Capabilities.StartupHardwareWarnLines]. Safe to call after detection.
 func (c *Capabilities) GPUPresentRemediationLogLines() []string {
-	if c == nil {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	var lines []string
-	for _, probe := range c.EncoderProbeResults() {
-		if probe.Available || probe.Code != HWProbeGPUPresentDriverMissing {
-			continue
-		}
-		line := probe.Encoder + ": " + probe.Hint
-		if _, ok := seen[line]; ok {
-			continue
-		}
-		seen[line] = struct{}{}
-		lines = append(lines, "hardware probe: "+line)
-	}
-	if len(lines) == 0 {
-		for vendor, msg := range c.vendorLevelRemediation() {
-			line := vendor + ": " + msg
-			if _, ok := seen[line]; ok {
-				continue
-			}
-			seen[line] = struct{}{}
-			lines = append(lines, "hardware probe: "+line)
-		}
-	}
-	return lines
+	return c.warnLinesOfKind(warnKindGPUPresent)
 }
 
 // vendorLevelRemediation builds fallback messages when no per-encoder row matched.

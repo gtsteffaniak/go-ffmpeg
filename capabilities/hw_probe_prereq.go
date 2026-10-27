@@ -140,11 +140,16 @@ func checkVulkanPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string
 		if exists {
 			return renderNodePermissionResult(deps)
 		}
+		// WSL2 has no /dev/dri render node by design (GPU paravirtualization
+		// uses /dev/dxg) and no NVIDIA Vulkan ICD, so Vulkan video encode is
+		// simply unavailable there. Report the capability limit rather than
+		// asking the operator to mount a render node that cannot exist, and do
+		// not tell them to update a driver that is already working.
+		if plat.WSL {
+			return HWProbeVulkanNoVideoEncode, wslPlatformRemediation(plat, "vulkan", HWProbeVulkanNoVideoEncode)
+		}
 		code := HWProbeVulkanNoDevice
 		hint := HintForProbeCode(code)
-		if plat.WSL {
-			hint += "; WSL: ensure wsl --update and pass /dev/dxg; mount /dev/dri when using DRI render nodes"
-		}
 		if gid, ok := renderGroupGID(deps); ok {
 			hint += fmt.Sprintf(" (render group gid %d)", gid)
 		}

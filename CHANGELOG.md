@@ -11,7 +11,9 @@
 
 ### Changed
 
-- `Screenshot` and `VideoPreview` are thin wrappers over the capture core (deprecated; behavior preserved, including preview default seek at 10% when unset).
+- `Screenshot` and `VideoPreview` are thin wrappers over the capture core (deprecated; behavior preserved, including preview default seek at 10% when unset). Deprecated operations are no longer advertised: `ops` exposes `Operation.Deprecated()` / `ops.IsDeprecated`, `EvaluateOps` keeps them out of `EnabledOps`/`DisabledOps`, and `Capabilities.DeprecatedOps` + the capability report list them separately. They remain callable.
+- Startup hardware warnings are de-duplicated through one source (`Capabilities.StartupHardwareWarnLines`): one `hardware probe:` line per distinct remediation and one `vulkan probe:` line naming every affected Vulkan encoder. `GPUPresentRemediationLogLines()` / `VulkanProbeWarnLines()` are now filtered views of the same source and can no longer duplicate text.
+- Probe classification no longer promotes hardware capability limits or driver feature gaps to `gpu_present_driver_missing`. AV1 (and other missing NVENC codecs, e.g. Ampere) classify as `nvenc_unsupported_gpu`; Vulkan encode failures, including ENOSYS / `-38 Function not implemented` and `VK_KHR_video_encode_queue` gaps, classify as `vulkan_no_video_encode_driver`. WSL remediation is centralized and WSL-aware: it reports the missing NVIDIA Vulkan ICD and points at NVENC instead of a `/dev/dri` render node or a driver update.
 - `VideoPreview` skips a duration ffprobe when `SeekSec` is set and `DurationSec` is unknown.
 - Frame and sprite **quality** use a unified **1–100** scale (default 85). MJPEG/WebP mapping is shared across `CaptureFrame`, `Screenshot`, and `SpriteSheet`.
 - `CaptureFrameFile` publishes outputs with explicit mode **0644**.

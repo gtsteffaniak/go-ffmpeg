@@ -37,6 +37,13 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
 	case strings.Contains(lower, "openencodesessionex failed") && strings.Contains(lower, "unsupported device"):
 		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
+	// A GPU without an NVENC unit for the codec (for example AV1 on Ampere)
+	// reports "Codec not supported" plus "No capable devices found". This is a
+	// hardware capability limit, not a missing driver, so it must not be
+	// promoted to gpu_present_driver_missing by [ApplyHostRemediation].
+	case strings.Contains(lower, "no capable devices found") ||
+		(strings.Contains(lower, "codec not supported") && encoderKind == "nvenc"):
+		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
 	case strings.Contains(lower, "no nvenc capable devices") || strings.Contains(lower, "nvenc api version"):
 		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
 	case strings.Contains(lower, "too many concurrent sessions") || strings.Contains(lower, "encoder sessions") && strings.Contains(lower, "exceeded"):
@@ -45,6 +52,16 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 		return HWProbeNotCompiled, HintForProbeCode(HWProbeNotCompiled)
 	case strings.Contains(lower, "libvulkan") && (strings.Contains(lower, "cannot open") || strings.Contains(lower, "failed to load")):
 		return HWProbeVulkanLoaderMissing, HintForProbeCode(HWProbeVulkanLoaderMissing)
+	// Vulkan video encode missing the codec extension is reported as ENOSYS
+	// ("Function not implemented") / -38, or an explicit extension/queue message.
+	// Treat it as "driver/ICD lacks Vulkan video encode", never as a missing
+	// device or permission problem.
+	case strings.Contains(lower, "vk_khr_video_encode") || strings.Contains(lower, "video encode queue") ||
+		strings.Contains(lower, "function not implemented") || strings.Contains(lower, "error code: -38") ||
+		strings.Contains(lower, "enosys"):
+		if encoderKind == "vulkan" || strings.Contains(lower, "vulkan") {
+			return HWProbeVulkanNoVideoEncode, HintForProbeCode(HWProbeVulkanNoVideoEncode)
+		}
 	case strings.Contains(lower, "vk_error") || strings.Contains(lower, "failed to create vulkan"):
 		if strings.Contains(lower, "video") || strings.Contains(lower, "encode") {
 			return HWProbeVulkanNoVideoEncode, HintForProbeCode(HWProbeVulkanNoVideoEncode)
