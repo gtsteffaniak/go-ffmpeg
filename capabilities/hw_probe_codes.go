@@ -190,7 +190,7 @@ func formatProbeError(code HWProbeCode, hint, detail string) string {
 		msg += " " + hint
 	}
 	if detail != "" {
-		msg += " (" + truncateProbeDetail(detail, 160) + ")"
+		msg += " (" + cutAtWord(detail, 160) + ")"
 	}
 	return msg
 }

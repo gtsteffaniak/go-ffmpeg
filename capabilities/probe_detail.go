@@ -9,6 +9,9 @@ import (
 // ffmpegLogPrefix matches "[component @ 0xADDR] " prefixes in ffmpeg stderr.
 var ffmpegLogPrefix = regexp.MustCompile(`^\[[^\]]*@ 0x[0-9a-fA-F]+\]\s*(\[[^\]]*@ 0x[0-9a-fA-F]+\]\s*)*`)
 
+// tagSummaryLine matches the "[hardware] ..." summary lines built by hwTroubleshoot.
+var tagSummaryLine = regexp.MustCompile(`^\[(hardware|driver|runtime|permission|compile)\]\s`)
+
 var probeDetailKeywords = []string{
 	"error", "fail", "unsupported", "not supported", "no usable", "cannot", "unable",
 	"permission denied", "no capable", "not found", "no such", "impossible to convert",
@@ -29,7 +32,7 @@ var probeDetailNoise = []string{
 // duplicates, cut at a word boundary. It never contains newlines.
 func compactProbeDetail(raw string, max int) string {
 	seen := map[string]struct{}{}
-	var picked []string
+	var picked, summaries []string
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(ffmpegLogPrefix.ReplaceAllString(strings.TrimSpace(line), ""))
 		if line == "" {
@@ -43,7 +46,16 @@ func compactProbeDetail(raw string, max int) string {
 			continue
 		}
 		seen[lower] = struct{}{}
+		// "[hardware] ..." style summaries are produced by hwTroubleshoot and
+		// duplicate the probe hint; only keep them when nothing more specific exists.
+		if tagSummaryLine.MatchString(line) {
+			summaries = append(summaries, line)
+			continue
+		}
 		picked = append(picked, line)
+	}
+	if len(picked) == 0 {
+		picked = summaries
 	}
 	if len(picked) == 0 {
 		for _, line := range strings.Split(raw, "\n") {

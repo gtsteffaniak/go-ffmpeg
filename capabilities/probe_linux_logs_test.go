@@ -113,3 +113,25 @@ func TestCompactProbeDetail(t *testing.T) {
 		t.Fatalf("long detail not cut at boundary: %q", long)
 	}
 }
+
+func TestCompactProbeDetailDropsDuplicateSummary(t *testing.T) {
+	raw := "[hardware] AV1 encode not supported by this GPU's VAAPI driver\n" + stderrAV1VAAPI
+	got := compactProbeDetail(raw, 240)
+	if strings.Contains(got, "[hardware]") {
+		t.Fatalf("summary line duplicates the probe hint: %q", got)
+	}
+	if only := compactProbeDetail("[hardware] VP9 encode not supported", 240); !strings.Contains(only, "[hardware]") {
+		t.Fatalf("summary must be kept when nothing else exists: %q", only)
+	}
+}
+
+func TestFormatProbeErrorCutsAtWordBoundary(t *testing.T) {
+	detail := strings.Repeat("Current resolution is unsupported; ", 10)
+	msg := formatProbeError(HWProbeCodecUnsupported, "hint", detail)
+	if strings.Contains(msg, "...") {
+		t.Fatalf("must not cut mid-word with '...': %q", msg)
+	}
+	if strings.Contains(msg, "unsuppo…") || strings.Contains(msg, "Curr…") {
+		t.Fatalf("cut mid-word: %q", msg)
+	}
+}
