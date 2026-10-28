@@ -325,7 +325,7 @@ func spriteHWScaleChain(r *encode.Resolver, sel capabilities.DecoderSelection, w
 	switch sel.Accel {
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		if r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_vaapi") {
-			return fmt.Sprintf("scale_vaapi=w=%d:h=%d:force_original_aspect_ratio=decrease,hwdownload,format=nv12%s", w, h, pad)
+			return fmt.Sprintf("scale_vaapi=w=%d:h=%d:force_original_aspect_ratio=decrease:format=nv12,hwdownload,format=nv12%s", w, h, pad)
 		}
 		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	case capabilities.AccelVulkan:
@@ -338,9 +338,11 @@ func spriteHWScaleChain(r *encode.Resolver, sel capabilities.DecoderSelection, w
 		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	case capabilities.AccelNVENC:
 		if r != nil && r.Caps != nil && r.Caps.FilterAvailable("scale_cuda") {
-			return fmt.Sprintf("scale_cuda=%d:%d:force_original_aspect_ratio=decrease,hwdownload,format=nv12%s", w, h, pad)
+			return fmt.Sprintf("scale_cuda=w=%d:h=%d:force_original_aspect_ratio=decrease:format=nv12,hwdownload,format=nv12%s", w, h, pad)
 		}
-		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
+		// Without scale_cuda the decoder args omit -hwaccel_output_format cuda,
+		// so frames are already in system memory (no hwdownload).
+		return spriteScalePadFilter(w, h)
 	case capabilities.AccelQSV:
 		return fmt.Sprintf("hwdownload,format=nv12,%s", spriteScalePadFilter(w, h))
 	default:

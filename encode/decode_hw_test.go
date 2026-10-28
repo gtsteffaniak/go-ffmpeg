@@ -42,6 +42,7 @@ func TestVideoDecoderArgsCUDA(t *testing.T) {
 		},
 	}
 	caps.Decoders["h264_cuvid"] = capabilities.DecoderCapability{Name: "h264_cuvid", Available: true, Compiled: true}
+	caps.Filters["scale_cuda"] = true
 	r := encode.NewResolver(caps)
 	args, err := r.VideoDecoderArgs(encode.VideoDecodeProfile{Codec: capabilities.CodecH264})
 	if err != nil {
@@ -73,5 +74,22 @@ func TestVideoDecoderArgsVulkanOutputFormat(t *testing.T) {
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-hwaccel_output_format vulkan") {
 		t.Fatalf("expected vulkan hw surface: %v", args)
+	}
+}
+
+// Without scale_cuda nothing can consume CUDA surfaces, so frames must be
+// downloaded to system memory by the decoder (no -hwaccel_output_format cuda).
+func TestVideoDecoderArgsCUDAWithoutScaleCudaUsesSystemMemory(t *testing.T) {
+	caps := capabilities.NewCapabilities()
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		DecodePreferred: capabilities.DecoderSelection{Decoder: "h264_cuvid", Accel: capabilities.AccelNVENC, Kind: "nvenc"},
+	}
+	caps.Decoders["h264_cuvid"] = capabilities.DecoderCapability{Name: "h264_cuvid", Available: true, Compiled: true}
+	args, err := encode.NewResolver(caps).VideoDecoderArgs(encode.VideoDecodeProfile{Codec: capabilities.CodecH264})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(args, " "), "-hwaccel_output_format") {
+		t.Fatalf("must not keep CUDA surfaces without scale_cuda: %v", args)
 	}
 }

@@ -171,28 +171,28 @@ func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 	return args, nil
 }
 
-// nvencVideoFilters builds the filter graph for NVENC. With CUDA decode the
-// frames stay on the GPU (-hwaccel_output_format cuda), so a software scale or
-// format filter would fail with "Impossible to convert between the formats".
+// nvencVideoFilters builds the filter graph for NVENC.
+//
+// With CUDA decode and scale_cuda available, [Resolver.VideoDecoderArgs] keeps
+// frames on the GPU (-hwaccel_output_format cuda). They are scaled and converted
+// to nv12 on the GPU, then downloaded as software nv12 frames: hwdownload is
+// pinned to nv12 (the sw_format scale_cuda just produced), so there is no
+// format negotiation ambiguity, and the encoder keeps receiving software frames
+// as before (so the trailing -pix_fmt yuv420p stays valid).
+//
+// Without scale_cuda the decoder args omit the CUDA output format, so frames are
+// already in system memory and the plain software graph applies.
 func (r *Resolver) nvencVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
-	if r.decodeAccel(decode) != capabilities.AccelNVENC {
+	if r.decodeAccel(decode) != capabilities.AccelNVENC || !r.Caps.FilterAvailable("scale_cuda") {
 		return videoFilterScaleOnly(maxHeight)
 	}
 	var parts []string
-	if r.Caps.FilterAvailable("scale_cuda") {
-		// Scale and convert (10-bit -> nv12) on the GPU; NVENC consumes CUDA frames.
-		if maxHeight > 0 {
-			parts = append(parts, fmt.Sprintf("scale_cuda=w=-2:h=min(%d\\,ih):format=nv12", maxHeight))
-		} else {
-			parts = append(parts, "scale_cuda=format=nv12")
-		}
+	if maxHeight > 0 {
+		parts = append(parts, fmt.Sprintf("scale_cuda=w=-2:h=min(%d\\,ih):format=nv12", maxHeight))
 	} else {
-		parts = append(parts, "hwdownload", hwDownloadFormats)
-		if maxHeight > 0 {
-			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
-		}
-		parts = append(parts, "format=yuv420p")
+		parts = append(parts, "scale_cuda=format=nv12")
 	}
+	parts = append(parts, "hwdownload", "format=nv12")
 	return []string{"-vf", strings.Join(parts, ",")}, nil
 }
 

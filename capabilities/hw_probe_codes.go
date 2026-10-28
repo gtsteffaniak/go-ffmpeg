@@ -107,6 +107,10 @@ type EncoderProbeResult struct {
 	Available bool `json:"available"`
 	// Code classifies failure; empty when Available is true.
 	Code HWProbeCode `json:"code,omitempty"`
+	// OriginalCode is the classifier result before [ApplyHostRemediation] may
+	// promote it; [demoteSiblingProbeFailures] only demotes originally-unknown
+	// failures so genuine driver-init errors are never relabelled.
+	OriginalCode HWProbeCode `json:"originalCode,omitempty"`
 	// Hint is a short remediation line; may include distro guidance.
 	Hint string `json:"hint,omitempty"`
 	// Detail is truncated ffmpeg stderr from the probe, for operators.

@@ -37,13 +37,11 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 	// entrypoint for this codec profile (for example AV1 on Gen12). Hardware limit.
 	case (encoderKind == "vaapi" || encoderKind == "") && strings.Contains(lower, "no usable encoding entrypoint"):
 		return HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported)
-	// The oneVPL runtime initialised (otherwise "error creating a mfx session"
-	// would be reported) but rejected the encode parameters for this codec.
-	case encoderKind == "qsv" && !strings.Contains(lower, "mfx session") && !strings.Contains(lower, "mfx_err") &&
-		(strings.Contains(lower, "not supported by the qsv runtime") ||
-			strings.Contains(lower, "selected ratecontrol mode is unsupported") ||
-			strings.Contains(lower, "current resolution is unsupported") ||
-			strings.Contains(lower, "current pixel format is unsupported")):
+	// QSV reports an unsupported codec separately from parameter mismatches.
+	// Parameter-only rejections stay neutral here; [demoteSiblingProbeFailures]
+	// turns them into a codec limit only with evidence (a sibling probe with the
+	// same parameters passed on the same backend).
+	case encoderKind == "qsv" && strings.Contains(lower, "current codec type is unsupported"):
 		return HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported)
 	case strings.Contains(lower, "cannot load libcuda") || strings.Contains(lower, "libnvidia-encode.so") && strings.Contains(lower, "cannot open shared object"):
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
