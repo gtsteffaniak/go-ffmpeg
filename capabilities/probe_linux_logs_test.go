@@ -135,3 +135,62 @@ func TestFormatProbeErrorCutsAtWordBoundary(t *testing.T) {
 		t.Fatalf("cut mid-word: %q", msg)
 	}
 }
+
+func summaryCaps() *Capabilities {
+	caps := NewCapabilities()
+	caps.EncoderHierarchy = []AccelType{AccelVAAPI, AccelQSV}
+	for _, name := range []string{"h264_vaapi", "hevc_vaapi", "h264_qsv", "hevc_qsv"} {
+		kind := "vaapi"
+		if strings.HasSuffix(name, "qsv") {
+			kind = "qsv"
+		}
+		caps.Encoders[name] = EncoderCapability{Name: name, Kind: kind, Tested: true, Available: true}
+	}
+	for _, c := range []VideoCodec{CodecH264, CodecHEVC, CodecAV1, CodecVP9} {
+		caps.CodecMatrix[c] = CodecSupport{DecodePreferred: DecoderSelection{Decoder: "hwaccel:vaapi:" + string(c), Accel: AccelVAAPI}}
+	}
+	caps.EncoderProbes = []EncoderProbeResult{
+		{Encoder: "h264_vaapi", Accel: AccelVAAPI, Available: true},
+		{Encoder: "av1_vaapi", Accel: AccelVAAPI, Code: HWProbeCodecUnsupported},
+		{Encoder: "av1_qsv", Accel: AccelQSV, Code: HWProbeCodecUnsupported},
+		{Encoder: "vp9_vaapi", Accel: AccelVAAPI, Code: HWProbeCodecUnsupported},
+	}
+	return caps
+}
+
+func TestHardwareSupportSummaryInfoForCapabilityLimits(t *testing.T) {
+	line, warn := summaryCaps().HardwareSupportSummary()
+	if warn {
+		t.Fatalf("GPU capability limits must not warn: %q", line)
+	}
+	want := "hardware encode: VAAPI [h264 hevc], QSV [h264 hevc] | decode: h264 hevc av1 vp9 | no hw encode: av1 vp9 (GPU limit)"
+	if line != want {
+		t.Fatalf("line=%q\nwant=%q", line, want)
+	}
+}
+
+func TestHardwareSupportSummaryWarnsWhenDriverFixable(t *testing.T) {
+	caps := NewCapabilities()
+	caps.EncoderProbes = []EncoderProbeResult{{
+		Encoder: "h264_nvenc", Accel: AccelNVENC, Code: HWProbeGPUPresentDriverMissing,
+		Hint: "GPU detected (NVIDIA) but NVENC encode is unavailable on this host; install the proprietary NVIDIA driver including libnvidia-encode.so.1",
+	}, {
+		Encoder: "hevc_nvenc", Accel: AccelNVENC, Code: HWProbeGPUPresentDriverMissing,
+		Hint: "GPU detected (NVIDIA) but NVENC encode is unavailable on this host; install the proprietary NVIDIA driver including libnvidia-encode.so.1",
+	}}
+	line, warn := caps.HardwareSupportSummary()
+	if !warn {
+		t.Fatalf("driver-fixable gap must warn: %q", line)
+	}
+	want := "missing driver: NVENC | fix: install the proprietary NVIDIA driver including libnvidia-encode.so.1"
+	if line != want {
+		t.Fatalf("line=%q\nwant=%q", line, want)
+	}
+}
+
+func TestHardwareSupportSummarySoftwareOnly(t *testing.T) {
+	line, warn := NewCapabilities().HardwareSupportSummary()
+	if warn || line != "hardware encode: none (software only)" {
+		t.Fatalf("line=%q warn=%v", line, warn)
+	}
+}

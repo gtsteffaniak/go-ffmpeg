@@ -54,7 +54,7 @@ Access via `capabilities.Capabilities.EncoderProbeResults()` or JSON on the capa
 
 **UI log line:** `Capabilities.HardwareProbeSummaryLine()` — e.g. `hw probes: ffmpeg=dynamic | available: h264_nvenc, hevc_nvenc`.
 
-When a GPU is present in sysfs but probes fail, startup logs **de-duplicated warn** lines via `Capabilities.StartupHardwareWarnLines()` (`Service.Reload` / `New`). The merged emitter reports one `hardware probe:` line per distinct `gpu_present_driver_missing` remediation and one `vulkan probe:` line naming every affected Vulkan encoder, so the same text is never repeated per codec. Legacy `GPUPresentRemediationLogLines()` / `VulkanProbeWarnLines()` now return filtered views of the same source, so calling all three cannot duplicate a line.
+When a GPU is present in sysfs but probes fail, startup logs one overview line via `Capabilities.HardwareSupportSummary()` (warn only when a driver install would fix it); Vulkan failures use `Capabilities.StartupHardwareWarnLines()` (`Service.Reload` / `New`). The merged emitter reports one `hardware probe:` line per distinct `gpu_present_driver_missing` remediation and one `vulkan probe:` line naming every affected Vulkan encoder, so the same text is never repeated per codec. Legacy `GPUPresentRemediationLogLines()` / `VulkanProbeWarnLines()` now return filtered views of the same source, so calling all three cannot duplicate a line.
 
 Only genuine driver-stack failures are promoted to `gpu_present_driver_missing`. Capability limits — a GPU generation that lacks an encoder (for example AV1 on Ampere) or a driver without Vulkan video encode — keep their own code (`nvenc_unsupported_gpu`, `vulkan_no_video_encode_driver`) and are reported without telling the operator to update a working driver.
 
