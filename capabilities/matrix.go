@@ -124,10 +124,11 @@ type EncoderCapability struct {
 	Available      bool        `json:"available"`
 	Kind           string      `json:"kind"`
 	TestError      string      `json:"testError,omitempty"`
-	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`     // Layered detection code; fixed after Detect.
-	ProbeHint      string      `json:"probeHint,omitempty"`     // Short remediation; may include distro text.
-	ProbeDetail    string      `json:"probeDetail,omitempty"`   // Truncated probe stderr for operators.
-	SelectionNote  string      `json:"selectionNote,omitempty"` // e.g. available, not selected
+	ProbeCode      HWProbeCode `json:"probeCode,omitempty"`         // Layered detection code; fixed after Detect.
+	ProbeOriginal  HWProbeCode `json:"probeOriginalCode,omitempty"` // Classifier code before host remediation promotion.
+	ProbeHint      string      `json:"probeHint,omitempty"`         // Short remediation; may include distro text.
+	ProbeDetail    string      `json:"probeDetail,omitempty"`       // Truncated probe stderr for operators.
+	SelectionNote  string      `json:"selectionNote,omitempty"`     // e.g. available, not selected
 	OutOfSelection bool        `json:"outOfSelection,omitempty"`
 }
 

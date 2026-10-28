@@ -29,8 +29,13 @@ func TestClassifyAV1VAAPIIsHardwareLimit(t *testing.T) {
 	}
 }
 
-func TestClassifyAV1QSVIsHardwareLimit(t *testing.T) {
+// Parameter-only QSV rejections are not proof of a codec limit on their own.
+func TestClassifyQSVParameterMismatchIsNeutral(t *testing.T) {
 	code, _ := ClassifyHWProbeFailure(stderrAV1QSV, nil, "qsv")
+	if code != HWProbeUnknown {
+		t.Fatalf("code=%s want %s", code, HWProbeUnknown)
+	}
+	code, _ = ClassifyHWProbeFailure("Current codec type is unsupported", nil, "qsv")
 	if code != HWProbeCodecUnsupported {
 		t.Fatalf("code=%s want %s", code, HWProbeCodecUnsupported)
 	}
@@ -61,8 +66,13 @@ func TestDemoteSiblingProbeFailures(t *testing.T) {
 	caps.Encoders["h264_vaapi"] = EncoderCapability{Name: "h264_vaapi", Kind: "vaapi", Tested: true, Available: true}
 	caps.Encoders["av1_vaapi"] = EncoderCapability{
 		Name: "av1_vaapi", Kind: "vaapi", Tested: true,
-		ProbeCode: HWProbeGPUPresentDriverMissing,
+		ProbeCode: HWProbeGPUPresentDriverMissing, ProbeOriginal: HWProbeUnknown,
 		ProbeHint: "GPU detected (Intel) but VAAPI encode is unavailable on this host; install ...",
+	}
+	// A genuine driver-init failure is never demoted, even with a working sibling.
+	caps.Encoders["hevc_vaapi"] = EncoderCapability{
+		Name: "hevc_vaapi", Kind: "vaapi", Tested: true,
+		ProbeCode: HWProbeGPUPresentDriverMissing, ProbeOriginal: HWProbeVADriverInitFailed,
 	}
 	// No working sibling on qsv: stays a driver problem.
 	caps.Encoders["h264_qsv"] = EncoderCapability{Name: "h264_qsv", Kind: "qsv", Tested: true, ProbeCode: HWProbeGPUPresentDriverMissing}
@@ -75,6 +85,9 @@ func TestDemoteSiblingProbeFailures(t *testing.T) {
 	}
 	if strings.Contains(av1.ProbeHint, "install") || strings.Contains(av1.TestError, "install") {
 		t.Fatalf("demoted probe must not keep install advice: hint=%q err=%q", av1.ProbeHint, av1.TestError)
+	}
+	if got := caps.Encoders["hevc_vaapi"].ProbeCode; got != HWProbeGPUPresentDriverMissing {
+		t.Fatalf("driver-init failure must be preserved, got %s", got)
 	}
 	if got := caps.Encoders["h264_qsv"].ProbeCode; got != HWProbeGPUPresentDriverMissing {
 		t.Fatalf("h264_qsv must be left alone, got %s", got)
@@ -192,5 +205,12 @@ func TestHardwareSupportSummarySoftwareOnly(t *testing.T) {
 	line, warn := NewCapabilities().HardwareSupportSummary()
 	if warn || line != "hardware encode: none (software only)" {
 		t.Fatalf("line=%q warn=%v", line, warn)
+	}
+}
+
+func TestCompactProbeDetailFallbackStripsPrefix(t *testing.T) {
+	got := compactProbeDetail("[h264_nvenc @ 0xabc123] Device busy\nConversion failed!", 240)
+	if strings.Contains(got, "0x") || got != "Device busy" {
+		t.Fatalf("fallback must strip the log prefix, got %q", got)
 	}
 }

@@ -59,7 +59,8 @@ func compactProbeDetail(raw string, max int) string {
 	}
 	if len(picked) == 0 {
 		for _, line := range strings.Split(raw, "\n") {
-			if line = strings.TrimSpace(line); line != "" {
+			line = strings.TrimSpace(ffmpegLogPrefix.ReplaceAllString(strings.TrimSpace(line), ""))
+			if line != "" {
 				picked = append(picked, line)
 				break
 			}

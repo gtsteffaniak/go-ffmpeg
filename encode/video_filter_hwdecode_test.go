@@ -85,18 +85,20 @@ func TestNVENCHwDecodeUsesScaleCuda(t *testing.T) {
 	caps.Filters["scale_cuda"] = true
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "-vf scale_cuda=w=-2:h=min(720\\,ih):format=nv12") {
+	if !strings.Contains(got, "-vf scale_cuda=w=-2:h=min(720\\,ih):format=nv12,hwdownload,format=nv12") {
 		t.Fatalf("want scale_cuda graph, got %q", got)
 	}
 }
 
-func TestNVENCHwDecodeWithoutScaleCudaDownloads(t *testing.T) {
+// Without scale_cuda the decoder emits system-memory frames (see decode args),
+// so the plain software graph (which also converts 10-bit) applies.
+func TestNVENCHwDecodeWithoutScaleCudaUsesSoftwareGraph(t *testing.T) {
 	caps := hwFilterCaps("h264_nvenc", capabilities.AccelNVENC, "nvenc", cudaDecode())
 	caps.Decoders["av1_cuvid"] = capabilities.DecoderCapability{Name: "av1_cuvid", Available: true, Compiled: true}
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "hwdownload,format=nv12|p010le,scale=-2:min(720\\,ih),format=yuv420p") {
-		t.Fatalf("want hwdownload fallback graph, got %q", got)
+	if strings.Contains(got, "hwdownload") || !strings.Contains(got, "scale=-2:min(720\\,ih),format=yuv420p") {
+		t.Fatalf("want software graph, got %q", got)
 	}
 }
 

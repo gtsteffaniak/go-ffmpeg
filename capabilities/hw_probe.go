@@ -35,12 +35,14 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 		res.Code = HWProbeStaticBinary
 		res.Hint = HintForProbeCode(res.Code)
 		res.Detail = "ffmpeg binary is statically linked on Linux"
+		res.OriginalCode = res.Code
 		res.Code, res.Hint = ApplyHostRemediation(in.Host, in.EncoderKind, in.Binary, res.Code, res.Hint)
 		return res
 	}
 
 	if code, hint := CheckHostPrerequisites(in.EncoderKind, in.Platform); code != HWProbeOK {
 		res.Code = code
+		res.OriginalCode = code
 		res.Hint = hint
 		if res.Hint == "" {
 			res.Hint = HintForProbeCode(code)
@@ -61,6 +63,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 		return res
 	}
 	res.Code, res.Hint = ClassifyHWProbeFailure(detail, nil, in.EncoderKind)
+	res.OriginalCode = res.Code
 	if res.Hint == "" {
 		res.Hint = HintForProbeCode(res.Code)
 	}
@@ -121,6 +124,7 @@ func ApplyEncoderProbe(enc *EncoderCapability, probe EncoderProbeResult) {
 	}
 	enc.Available = probe.Available
 	enc.ProbeCode = probe.Code
+	enc.ProbeOriginal = probe.OriginalCode
 	enc.ProbeHint = probe.Hint
 	enc.ProbeDetail = probe.Detail
 	if probe.Available {

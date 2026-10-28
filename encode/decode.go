@@ -218,11 +218,14 @@ func (r *Resolver) VideoDecoderArgs(profile VideoDecodeProfile) ([]string, error
 
 	switch sel.Accel {
 	case capabilities.AccelNVENC:
-		args := []string{
-			"-hwaccel", "cuda",
-			"-hwaccel_output_format", "cuda",
-			"-c:v", sel.Decoder,
+		args := []string{"-hwaccel", "cuda"}
+		// Keep decoded frames on the GPU only when scale_cuda can consume them.
+		// Otherwise ffmpeg downloads frames to system memory, which the
+		// software scale/format graph handles (including 10-bit -> yuv420p).
+		if r.Caps.FilterAvailable("scale_cuda") {
+			args = append(args, "-hwaccel_output_format", "cuda")
 		}
+		args = append(args, "-c:v", sel.Decoder)
 		choice := platform.GPUChoice{}
 		if r.Caps != nil && r.Caps.SelectedGPU != nil {
 			choice = *r.Caps.SelectedGPU

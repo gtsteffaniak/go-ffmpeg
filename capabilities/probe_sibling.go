@@ -30,6 +30,12 @@ func demoteSiblingProbeFailures(caps *Capabilities) {
 		if !ok || !enc.Tested || enc.Available {
 			continue
 		}
+		// Only failures the classifier could not explain are demoted. A genuine
+		// driver-init/permission/library error keeps its code even if a sibling
+		// passed, because each encoder runs an independent probe.
+		if enc.ProbeOriginal != HWProbeUnknown {
+			continue
+		}
 		if enc.ProbeCode != HWProbeUnknown && enc.ProbeCode != HWProbeGPUPresentDriverMissing {
 			continue
 		}
@@ -39,11 +45,12 @@ func demoteSiblingProbeFailures(caps *Capabilities) {
 		enc.TestError = formatProbeError(HWProbeCodecUnsupported, hint, enc.ProbeDetail)
 		caps.Encoders[known.Name] = enc
 		caps.refreshEncoderProbeIndex(EncoderProbeResult{
-			Encoder: known.Name,
-			Accel:   accelForEncoderKind(known.Kind),
-			Code:    HWProbeCodecUnsupported,
-			Hint:    hint,
-			Detail:  enc.ProbeDetail,
+			Encoder:      known.Name,
+			Accel:        accelForEncoderKind(known.Kind),
+			Code:         HWProbeCodecUnsupported,
+			OriginalCode: enc.ProbeOriginal,
+			Hint:         hint,
+			Detail:       enc.ProbeDetail,
 		})
 	}
 }
