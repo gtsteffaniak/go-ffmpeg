@@ -13,6 +13,7 @@ func TestProbeFFmpegBinaryStaticELF(t *testing.T) {
 	writeELF64NoInterp(path)
 	info := probeFFmpegBinary(path, linkProbeDeps{
 		ReadFile: readFileHead,
+		GOOS:     "linux", // mock a Linux host so the ELF logic runs on any OS
 		Ldd: func(string) ([]byte, error) {
 			return []byte("not a dynamic executable"), nil
 		},
@@ -20,10 +21,10 @@ func TestProbeFFmpegBinaryStaticELF(t *testing.T) {
 	if info.Kind != FFmpegLinkStatic {
 		t.Fatalf("kind=%s want static", info.Kind)
 	}
-	if !gpuAccelBlockedByStaticBinary(info, "h264_vaapi") {
+	if !gpuAccelBlockedByStaticBinaryOS(info, "h264_vaapi", "linux") {
 		t.Fatal("vaapi should be blocked on static linux")
 	}
-	if gpuAccelBlockedByStaticBinary(info, "v4l2m2m") {
+	if gpuAccelBlockedByStaticBinaryOS(info, "v4l2m2m", "linux") {
 		t.Fatal("v4l2m2m should work on static linux")
 	}
 }
@@ -34,6 +35,7 @@ func TestProbeFFmpegBinaryDynamicELF(t *testing.T) {
 	writeELF64WithInterp(path, "/lib64/ld-linux-x86-64.so.2")
 	info := probeFFmpegBinary(path, linkProbeDeps{
 		ReadFile: readFileHead,
+		GOOS:     "linux", // mock a Linux host so the ELF logic runs on any OS
 		Ldd: func(string) ([]byte, error) {
 			return []byte("linux-vdso.so.1"), nil
 		},
@@ -54,6 +56,7 @@ func TestProbeFFmpegBinaryShellWrapperNotStatic(t *testing.T) {
 	}
 	info := probeFFmpegBinary(path, linkProbeDeps{
 		ReadFile: readFileHead,
+		GOOS:     "linux", // mock a Linux host so the ELF logic runs on any OS
 		Ldd: func(string) ([]byte, error) {
 			return []byte("not a dynamic executable"), nil
 		},
@@ -61,7 +64,7 @@ func TestProbeFFmpegBinaryShellWrapperNotStatic(t *testing.T) {
 	if info.Kind != FFmpegLinkUnknown {
 		t.Fatalf("kind=%s want unknown for shell wrapper", info.Kind)
 	}
-	if gpuAccelBlockedByStaticBinary(info, "h264_vaapi") {
+	if gpuAccelBlockedByStaticBinaryOS(info, "h264_vaapi", "linux") {
 		t.Fatal("unknown link kind must not block GPU backends")
 	}
 }

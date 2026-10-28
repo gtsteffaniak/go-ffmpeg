@@ -322,13 +322,17 @@ func writeSingleEncoderRow(w io.Writer, st reportStyle, c *Capabilities, group e
 	if enc.SelectionNote != "" {
 		fmt.Fprintf(w, "      %s\n", st.dim("↳ "+enc.SelectionNote))
 	}
-	if enc.TestError != "" && !skipVP9Dup {
+	// Rows outside the selected device were not part of the selection; their
+	// probe failures (for example Vulkan on an Intel iGPU) are not actionable,
+	// so only the "skipped" note above is shown.
+	quietRow := enc.OutOfSelection && !encodeAvail
+	if enc.TestError != "" && !skipVP9Dup && !quietRow {
 		writeHints(w, st, enc.TestError)
 		if vp9IntelEncodeHintShown != nil && isVP9IntelLinuxEncodeUnavailable(name, c.Platform) {
 			*vp9IntelEncodeHintShown = true
 		}
 	}
-	if decodeErr != "" && decodeErr != enc.TestError && !skipVP9Dup {
+	if decodeErr != "" && decodeErr != enc.TestError && !skipVP9Dup && !quietRow {
 		writeHints(w, st, decodeErr)
 	}
 	if hasDecode && !encodeAvail && decodeAvail && !isVP9IntelLinuxEncodeUnavailable(name, c.Platform) {

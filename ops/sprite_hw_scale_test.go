@@ -53,7 +53,7 @@ func TestSpriteHWScaleChainVAAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(filter, "scale_vaapi=w=160:h=90:force_original_aspect_ratio=decrease,hwdownload,format=nv12,pad=160:90") {
+	if !strings.Contains(filter, "scale_vaapi=w=160:h=90:force_original_aspect_ratio=decrease:format=nv12,hwdownload,format=nv12,pad=160:90") {
 		t.Fatalf("unexpected vaapi chain: %s", filter)
 	}
 }
@@ -113,7 +113,7 @@ func TestSpriteHWScaleChainCUDA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(filter, "scale_cuda=160:90") || strings.Contains(filter, "hwdownload,format=nv12,scale_cuda") {
+	if !strings.Contains(filter, "scale_cuda=w=160:h=90:force_original_aspect_ratio=decrease:format=nv12,hwdownload") || strings.Contains(filter, "hwdownload,format=nv12,scale_cuda") {
 		t.Fatalf("scale_cuda must precede hwdownload: %s", filter)
 	}
 }

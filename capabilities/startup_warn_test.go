@@ -54,14 +54,18 @@ func TestStartupHardwareWarnLinesDeduplicated(t *testing.T) {
 			}
 		}
 	}
-	if hardwareCount != 1 {
-		t.Fatalf("hardware warn lines = %d, want 1: %v", hardwareCount, lines)
+	if hardwareCount != 0 {
+		t.Fatalf("hardware warn lines = %d, want 0 (capability limits are info): %v", hardwareCount, lines)
 	}
 	if vulkanCount != 1 {
 		t.Fatalf("vulkan warn lines = %d, want 1: %v", vulkanCount, lines)
 	}
-	if len(lines) != 2 {
-		t.Fatalf("lines = %d, want 2: %v", len(lines), lines)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d, want 1: %v", len(lines), lines)
+	}
+	info := caps.StartupHardwareInfoLines()
+	if len(info) != 1 || !strings.Contains(info[0], "av1_nvenc") {
+		t.Fatalf("info lines = %v, want one line naming av1_nvenc", info)
 	}
 }
 

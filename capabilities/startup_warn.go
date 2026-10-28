@@ -82,11 +82,9 @@ func (c *Capabilities) startupWarnLines() []startupWarnLine {
 		switch probe.Code {
 		case HWProbeGPUPresentDriverMissing:
 			add(warnKindGPUPresent, "hardware probe: "+probe.Encoder+": "+probe.Hint)
-		case HWProbeNVENCUnsupported:
-			// Hardware generation limit (for example AV1 encode on Ampere).
-			// Not a driver problem, so report it without remediation churn.
-			add(warnKindCapability, "hardware probe: "+probe.Encoder+" ("+vendorBackendLabel(probe.Accel)+"): not supported by this GPU; use another hardware codec or the software encoder")
 		}
+		// Capability limits (NVENC unsupported, hw_codec_unsupported) are not
+		// warnings; see [Capabilities.StartupHardwareInfoLines].
 	}
 	add(warnKindVulkan, vulkanWarnLine(vulkanEncoders, vulkanCode, vulkanHint))
 
@@ -96,6 +94,30 @@ func (c *Capabilities) startupWarnLines() []startupWarnLine {
 		}
 	}
 	return out
+}
+
+// StartupHardwareInfoLines returns info-level startup lines for hardware
+// capability limits: encoders whose backend works but whose GPU cannot encode
+// the codec (for example AV1 on Intel Gen12 or NVIDIA Ampere). These are
+// expected on many GPUs, carry no install advice, and are reported as one line.
+func (c *Capabilities) StartupHardwareInfoLines() []string {
+	if c == nil {
+		return nil
+	}
+	var names []string
+	for _, probe := range c.EncoderProbeResults() {
+		if probe.Available {
+			continue
+		}
+		if probe.Code == HWProbeCodecUnsupported || probe.Code == HWProbeNVENCUnsupported {
+			names = append(names, probe.Encoder)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return []string{"hardware encode not supported by this GPU (hardware limit, not a driver problem): " +
+		strings.Join(names, ", ") + "; other hardware codecs or software encoding are used for these"}
 }
 
 // vulkanWarnLine formats one Vulkan failure line, naming every affected encoder.

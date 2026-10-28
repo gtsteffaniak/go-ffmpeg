@@ -33,6 +33,16 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 		(strings.Contains(lower, "vaapi") || strings.Contains(lower, "libva") ||
 			strings.Contains(lower, "va driver") || strings.Contains(lower, "_drv_video")):
 		return HWProbeVADriverMissing, HintForProbeCode(HWProbeVADriverMissing)
+	// The VA driver loaded and opened the device, but it exposes no encode
+	// entrypoint for this codec profile (for example AV1 on Gen12). Hardware limit.
+	case (encoderKind == "vaapi" || encoderKind == "") && strings.Contains(lower, "no usable encoding entrypoint"):
+		return HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported)
+	// QSV reports an unsupported codec separately from parameter mismatches.
+	// Parameter-only rejections stay neutral here; [demoteSiblingProbeFailures]
+	// turns them into a codec limit only with evidence (a sibling probe with the
+	// same parameters passed on the same backend).
+	case encoderKind == "qsv" && strings.Contains(lower, "current codec type is unsupported"):
+		return HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported)
 	case strings.Contains(lower, "cannot load libcuda") || strings.Contains(lower, "libnvidia-encode.so") && strings.Contains(lower, "cannot open shared object"):
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
 	case strings.Contains(lower, "openencodesessionex failed") && strings.Contains(lower, "unsupported device"):

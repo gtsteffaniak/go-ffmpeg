@@ -71,10 +71,14 @@ func (s *Service) Reload(ctx context.Context) error {
 	ops.EvaluateOps(caps)
 	log := WithGroup(s.cfg.Logger, "ffmpeg")
 	log.Info(caps.SummaryLine())
-	if probeLine := caps.HardwareProbeSummaryLine(); probeLine != "" {
-		log.Info(probeLine)
+	if line, warn := caps.HardwareSupportSummary(); line != "" {
+		if warn {
+			log.Warn(line)
+		} else {
+			log.Info(line)
+		}
 	}
-	for _, line := range caps.StartupHardwareWarnLines() {
+	for _, line := range caps.VulkanProbeWarnLines() {
 		log.Warn(line)
 	}
 	report := caps.ReportString()

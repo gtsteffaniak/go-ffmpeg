@@ -26,6 +26,8 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 	switch sel.Accel {
 	case capabilities.AccelVAAPI, capabilities.AccelD3D12:
 		return r.vaapiVideoFilters(decode, maxHeight)
+	case capabilities.AccelNVENC:
+		return r.nvencVideoFilters(decode, maxHeight)
 	case capabilities.AccelQSV:
 		return qsvVideoFilters(maxHeight)
 	case capabilities.AccelVulkan:
@@ -114,14 +116,51 @@ func decodeUsesVulkan(r *Resolver, decode VideoDecodeProfile) bool {
 	return sel.Accel == capabilities.AccelVulkan
 }
 
-func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
-	parts := []string{}
-	if maxHeight > 0 {
-		parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+// decodeAccel returns the hardware decode backend that [Resolver.VideoDecoderArgs]
+// will use for decode, or [capabilities.AccelNone] for software decode.
+func (r *Resolver) decodeAccel(decode VideoDecodeProfile) capabilities.AccelType {
+	if decode.ForceSoftware || r == nil || r.Caps == nil {
+		return capabilities.AccelNone
 	}
-	parts = append(parts, "format=nv12", "hwupload")
+	sel, err := r.ResolveDecoder(decode)
+	if err != nil || sel.Decoder == "" {
+		return capabilities.AccelNone
+	}
+	return sel.Accel
+}
+
+// hwDownloadFormats lists the surface formats hwdownload may produce for 8-bit
+// and 10-bit sources; the format filter picks whichever the decoder emitted.
+const hwDownloadFormats = "format=nv12|p010le"
+
+func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
+	accel := r.decodeAccel(decode)
+	hwDecode := accel == capabilities.AccelVAAPI || accel == capabilities.AccelD3D12
+
+	var parts []string
+	switch {
+	case hwDecode && r.Caps.FilterAvailable("scale_vaapi"):
+		// Frames are VAAPI surfaces (-hwaccel_output_format vaapi). Scale and
+		// convert (10-bit -> nv12) on the GPU; software filters cannot take them.
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale_vaapi=w=-2:h=min(%d\\,ih):format=nv12", maxHeight))
+		} else {
+			parts = append(parts, "scale_vaapi=format=nv12")
+		}
+	case hwDecode:
+		parts = append(parts, "hwdownload", hwDownloadFormats)
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+		}
+		parts = append(parts, "format=nv12", "hwupload")
+	default:
+		if maxHeight > 0 {
+			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+		}
+		parts = append(parts, "format=nv12", "hwupload")
+	}
 	args := []string{"-filter_hw_device", "va", "-vf", strings.Join(parts, ",")}
-	if decode.ForceSoftware || decode.Accel == capabilities.AccelNone || decode.Accel == "" {
+	if !hwDecode {
 		if r == nil || r.Caps == nil {
 			return args, nil
 		}
@@ -130,6 +169,31 @@ func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 		args = append(init, args...)
 	}
 	return args, nil
+}
+
+// nvencVideoFilters builds the filter graph for NVENC.
+//
+// With CUDA decode and scale_cuda available, [Resolver.VideoDecoderArgs] keeps
+// frames on the GPU (-hwaccel_output_format cuda). They are scaled and converted
+// to nv12 on the GPU, then downloaded as software nv12 frames: hwdownload is
+// pinned to nv12 (the sw_format scale_cuda just produced), so there is no
+// format negotiation ambiguity, and the encoder keeps receiving software frames
+// as before (so the trailing -pix_fmt yuv420p stays valid).
+//
+// Without scale_cuda the decoder args omit the CUDA output format, so frames are
+// already in system memory and the plain software graph applies.
+func (r *Resolver) nvencVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
+	if r.decodeAccel(decode) != capabilities.AccelNVENC || !r.Caps.FilterAvailable("scale_cuda") {
+		return videoFilterScaleOnly(maxHeight)
+	}
+	var parts []string
+	if maxHeight > 0 {
+		parts = append(parts, fmt.Sprintf("scale_cuda=w=-2:h=min(%d\\,ih):format=nv12", maxHeight))
+	} else {
+		parts = append(parts, "scale_cuda=format=nv12")
+	}
+	parts = append(parts, "hwdownload", "format=nv12")
+	return []string{"-vf", strings.Join(parts, ",")}, nil
 }
 
 func qsvVideoFilters(maxHeight int) ([]string, error) {

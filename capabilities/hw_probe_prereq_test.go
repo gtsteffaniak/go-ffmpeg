@@ -59,7 +59,7 @@ func TestPrereqLibResolvableLDLibraryPath(t *testing.T) {
 
 func TestPrereqStaticBinarySkipsInProbe(t *testing.T) {
 	info := FFmpegBinaryInfo{Kind: FFmpegLinkStatic}
-	if !gpuAccelBlockedByStaticBinary(info, "h264_qsv") {
+	if !gpuAccelBlockedByStaticBinaryOS(info, "h264_qsv", "linux") {
 		t.Fatal("qsv should be blocked")
 	}
 }

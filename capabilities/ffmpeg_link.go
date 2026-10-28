@@ -40,6 +40,16 @@ type FFmpegBinaryInfo struct {
 type linkProbeDeps struct {
 	ReadFile func(string) ([]byte, error)
 	Ldd      func(string) ([]byte, error)
+	// GOOS overrides [runtime.GOOS] so Linux behavior can be tested on any host.
+	// Empty means the real host OS.
+	GOOS string
+}
+
+func (d linkProbeDeps) goos() string {
+	if d.GOOS != "" {
+		return d.GOOS
+	}
+	return runtime.GOOS
 }
 
 func defaultLinkProbeDeps() linkProbeDeps {
@@ -75,7 +85,7 @@ func probeFFmpegBinary(ffmpegPath string, deps linkProbeDeps) FFmpegBinaryInfo {
 	if ffmpegPath == "" {
 		return FFmpegBinaryInfo{Kind: FFmpegLinkUnknown}
 	}
-	if runtime.GOOS != "linux" {
+	if deps.goos() != "linux" {
 		return FFmpegBinaryInfo{Kind: FFmpegLinkDynamic}
 	}
 	kind, interp, isELF := elfLinkKind(ffmpegPath, deps.ReadFile)
@@ -103,7 +113,12 @@ func probeFFmpegBinary(ffmpegPath string, deps linkProbeDeps) FFmpegBinaryInfo {
 // gpuAccelBlockedByStaticBinary reports whether encoderKind must be blocked on static Linux ffmpeg.
 // v4l2m2m and software encoders are still allowed.
 func gpuAccelBlockedByStaticBinary(info FFmpegBinaryInfo, encoderKind string) bool {
-	if info.Kind != FFmpegLinkStatic || runtime.GOOS != "linux" {
+	return gpuAccelBlockedByStaticBinaryOS(info, encoderKind, runtime.GOOS)
+}
+
+// gpuAccelBlockedByStaticBinaryOS is [gpuAccelBlockedByStaticBinary] for an explicit GOOS.
+func gpuAccelBlockedByStaticBinaryOS(info FFmpegBinaryInfo, encoderKind, goos string) bool {
+	if info.Kind != FFmpegLinkStatic || goos != "linux" {
 		return false
 	}
 	switch encoderKind {
