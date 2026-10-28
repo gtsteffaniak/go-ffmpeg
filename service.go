@@ -74,6 +74,9 @@ func (s *Service) Reload(ctx context.Context) error {
 	if probeLine := caps.HardwareProbeSummaryLine(); probeLine != "" {
 		log.Info(probeLine)
 	}
+	for _, line := range caps.StartupHardwareInfoLines() {
+		log.Info(line)
+	}
 	for _, line := range caps.StartupHardwareWarnLines() {
 		log.Warn(line)
 	}

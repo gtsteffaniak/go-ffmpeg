@@ -94,6 +94,7 @@ func PopulateEncoders(ctx context.Context, caps *Capabilities, runner *ffexec.Ru
 		}
 		caps.Encoders[known.Name] = enc
 	}
+	demoteSiblingProbeFailures(caps)
 }
 
 // PopulateDecoders fills decoder capabilities including hardware decode smoke tests.

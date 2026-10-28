@@ -47,6 +47,12 @@ const (
 	// Fix: use another hardware codec or the software encoder.
 	HWProbeNVENCUnsupported HWProbeCode = "nvenc_unsupported_gpu"
 
+	// HWProbeCodecUnsupported means the backend works (the driver stack loaded and
+	// other codecs encode) but this GPU/driver has no hardware encoder for this
+	// codec, for example AV1 encode on Intel Gen12 or Ampere. It is a hardware
+	// capability limit and is never promoted to [HWProbeGPUPresentDriverMissing].
+	HWProbeCodecUnsupported HWProbeCode = "hw_codec_unsupported"
+
 	// HWProbeNVENCSessionLimit means NVENC concurrent session limit was hit during probe.
 	// Fix: reduce concurrent NVENC jobs or close other encoders.
 	HWProbeNVENCSessionLimit HWProbeCode = "nvenc_session_limit"
@@ -127,6 +133,8 @@ func HintForProbeCode(code HWProbeCode) string {
 		return "install NVIDIA driver userspace libraries (libcuda.so.1, libnvidia-encode.so.1); in containers use --gpus all with NVIDIA Container Toolkit"
 	case HWProbeNVENCUnsupported:
 		return "this GPU does not support NVENC for this codec (hardware generation limit, not a driver update); use another hardware codec or the software encoder"
+	case HWProbeCodecUnsupported:
+		return "this GPU cannot hardware-encode this codec (hardware generation limit, not a missing driver); it may still decode it, and other codecs encode in hardware"
 	case HWProbeNVENCSessionLimit:
 		return "NVENC session limit reached; stop other encoders or reduce concurrent NVENC jobs"
 	case HWProbeTimeout:

@@ -1,0 +1,115 @@
+package capabilities
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/gtsteffaniak/go-ffmpeg/platform"
+)
+
+// Real stderr captured from Intel Raptor Lake / Tiger Lake and RTX 3050 hosts.
+const (
+	stderrAV1VAAPI = `[av1_vaapi @ 0x557d2f9eeb80] No usable encoding entrypoint found for profile VAProfileAV1Profile0 (32).
+[vost#0:0/av1_vaapi @ 0x557d2f9ee580] [enc:av1_vaapi @ 0x557d2f9eeb00] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.
+[vost#0:0/av1_vaapi @ 0x557d2f9ee580] Task finished with error code: -22 (Invalid argument)
+Conversion failed!`
+
+	stderrAV1QSV = `[av1_qsv @ 0x560fda132200] Using the constant quantization parameter (CQP) by default.
+[av1_qsv @ 0x560fda132200] Selected ratecontrol mode is unsupported
+[av1_qsv @ 0x560fda132200] Current frame rate is unsupported
+[av1_qsv @ 0x560fda132200] Current resolution is unsupported
+[av1_qsv @ 0x560fda132200] some encoding parameters are not supported by the QSV runtime. Please double check the input parameters.
+Conversion failed!`
+)
+
+func TestClassifyAV1VAAPIIsHardwareLimit(t *testing.T) {
+	code, _ := ClassifyHWProbeFailure(stderrAV1VAAPI, nil, "vaapi")
+	if code != HWProbeCodecUnsupported {
+		t.Fatalf("code=%s want %s", code, HWProbeCodecUnsupported)
+	}
+}
+
+func TestClassifyAV1QSVIsHardwareLimit(t *testing.T) {
+	code, _ := ClassifyHWProbeFailure(stderrAV1QSV, nil, "qsv")
+	if code != HWProbeCodecUnsupported {
+		t.Fatalf("code=%s want %s", code, HWProbeCodecUnsupported)
+	}
+}
+
+func TestQSVSessionFailureStaysDriverRelated(t *testing.T) {
+	code, _ := ClassifyHWProbeFailure("Error creating a MFX session: -9", nil, "qsv")
+	if code == HWProbeCodecUnsupported {
+		t.Fatal("MFX session failure is a runtime problem, not a codec limit")
+	}
+}
+
+func TestCodecUnsupportedNeverPromotedToDriverMissing(t *testing.T) {
+	host := DetectionHost{Presence: platform.GPUPresence{Intel: true}}
+	code, hint := ApplyHostRemediation(host, "vaapi", FFmpegBinaryInfo{}, HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported))
+	if code != HWProbeCodecUnsupported {
+		t.Fatalf("code=%s, capability limits must not be promoted", code)
+	}
+	if strings.Contains(hint, "pacman") || strings.Contains(hint, "install") {
+		t.Fatalf("hint must not suggest installing packages: %q", hint)
+	}
+}
+
+// A backend with a working encoder has a working driver stack, so a leftover
+// unknown/driver-style failure for another codec is a hardware limit.
+func TestDemoteSiblingProbeFailures(t *testing.T) {
+	caps := NewCapabilities()
+	caps.Encoders["h264_vaapi"] = EncoderCapability{Name: "h264_vaapi", Kind: "vaapi", Tested: true, Available: true}
+	caps.Encoders["av1_vaapi"] = EncoderCapability{
+		Name: "av1_vaapi", Kind: "vaapi", Tested: true,
+		ProbeCode: HWProbeGPUPresentDriverMissing,
+		ProbeHint: "GPU detected (Intel) but VAAPI encode is unavailable on this host; install ...",
+	}
+	// No working sibling on qsv: stays a driver problem.
+	caps.Encoders["h264_qsv"] = EncoderCapability{Name: "h264_qsv", Kind: "qsv", Tested: true, ProbeCode: HWProbeGPUPresentDriverMissing}
+
+	demoteSiblingProbeFailures(caps)
+
+	av1 := caps.Encoders["av1_vaapi"]
+	if av1.ProbeCode != HWProbeCodecUnsupported {
+		t.Fatalf("av1_vaapi code=%s want %s", av1.ProbeCode, HWProbeCodecUnsupported)
+	}
+	if strings.Contains(av1.ProbeHint, "install") || strings.Contains(av1.TestError, "install") {
+		t.Fatalf("demoted probe must not keep install advice: hint=%q err=%q", av1.ProbeHint, av1.TestError)
+	}
+	if got := caps.Encoders["h264_qsv"].ProbeCode; got != HWProbeGPUPresentDriverMissing {
+		t.Fatalf("h264_qsv must be left alone, got %s", got)
+	}
+}
+
+func TestStartupInfoLineForCodecLimits(t *testing.T) {
+	caps := NewCapabilities()
+	caps.EncoderProbes = []EncoderProbeResult{
+		{Encoder: "av1_vaapi", Accel: AccelVAAPI, Code: HWProbeCodecUnsupported},
+		{Encoder: "av1_qsv", Accel: AccelQSV, Code: HWProbeCodecUnsupported},
+		{Encoder: "h264_vaapi", Accel: AccelVAAPI, Available: true},
+	}
+	if warns := caps.StartupHardwareWarnLines(); len(warns) != 0 {
+		t.Fatalf("capability limits must not warn: %v", warns)
+	}
+	info := caps.StartupHardwareInfoLines()
+	if len(info) != 1 || !strings.Contains(info[0], "av1_qsv, av1_vaapi") || strings.Contains(info[0], "install") {
+		t.Fatalf("info=%v", info)
+	}
+}
+
+func TestCompactProbeDetail(t *testing.T) {
+	got := compactProbeDetail(stderrAV1VAAPI, 240)
+	if strings.Contains(got, "\n") || strings.Contains(got, "0x") {
+		t.Fatalf("detail must be single-line without addresses: %q", got)
+	}
+	if !strings.Contains(got, "No usable encoding entrypoint found for profile VAProfileAV1Profile0") {
+		t.Fatalf("detail lost the root cause: %q", got)
+	}
+	if strings.Contains(got, "Task finished") || strings.Contains(got, "Conversion failed") {
+		t.Fatalf("noise lines should be dropped: %q", got)
+	}
+	long := compactProbeDetail(strings.Repeat("error word ", 100), 50)
+	if len(long) > 60 || !strings.HasSuffix(long, "…") {
+		t.Fatalf("long detail not cut at boundary: %q", long)
+	}
+}

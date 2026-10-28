@@ -36,11 +36,7 @@ func hwTroubleshoot(encoderName, kind, output string, plat platform.Info) (prima
 		}
 		if vaapiHardwareLimit(output) {
 			primary = fmt.Sprintf("[hardware] %s encode not supported by this GPU's VAAPI driver", vaapiCodecName(encoderName))
-			hints = []string{
-				"Not an OS or FFmpeg compile issue — other VAAPI codecs may still work",
-				"Use the software encoder listed under the same codec section above",
-			}
-			return primary, hints
+			return primary, nil
 		}
 		if strings.Contains(output, "failed to initialise vaapi") || strings.Contains(output, "cannot load libva") {
 			primary = "[driver] VAAPI initialization failed"

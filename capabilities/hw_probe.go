@@ -64,7 +64,7 @@ func ProbeHardwareEncoder(ctx context.Context, runner *ffexec.Runner, in Layered
 	if res.Hint == "" {
 		res.Hint = HintForProbeCode(res.Code)
 	}
-	res.Detail = truncateProbeDetail(detail, 400)
+	res.Detail = compactProbeDetail(detail, 240)
 	res.Code, res.Hint = ApplyHostRemediation(in.Host, in.EncoderKind, in.Binary, res.Code, res.Hint)
 	return res
 }
