@@ -30,15 +30,20 @@ type ProbeStreamOptions struct {
 
 // StreamInfo holds ffprobe results for a stream.
 type StreamInfo struct {
-	IsValid      bool    `json:"isValid"`
-	HasVideo     bool    `json:"hasVideo"`
-	HasAudio     bool    `json:"hasAudio"`
-	VideoCodec   string  `json:"videoCodec,omitempty"`
-	AudioCodec   string  `json:"audioCodec,omitempty"`
-	VideoBitrate int     `json:"videoBitrate,omitempty"`
-	Width        int     `json:"width,omitempty"`
-	Height       int     `json:"height,omitempty"`
-	Duration     float64 `json:"duration,omitempty"`
+	IsValid      bool   `json:"isValid"`
+	HasVideo     bool   `json:"hasVideo"`
+	HasAudio     bool   `json:"hasAudio"`
+	VideoCodec   string `json:"videoCodec,omitempty"`
+	AudioCodec   string `json:"audioCodec,omitempty"`
+	VideoBitrate int    `json:"videoBitrate,omitempty"`
+	Width        int    `json:"width,omitempty"`
+	Height       int    `json:"height,omitempty"`
+	// PixelFormat is the first video stream's pix_fmt (e.g. yuv420p, yuv420p10le).
+	PixelFormat string `json:"pixelFormat,omitempty"`
+	// FrameRate is r_frame_rate and TimeBase is the stream time_base, both as ffprobe prints them.
+	FrameRate string  `json:"frameRate,omitempty"`
+	TimeBase  string  `json:"timeBase,omitempty"`
+	Duration  float64 `json:"duration,omitempty"`
 	// StartTime is the container timeline offset of the first packet (format start_time).
 	StartTime  float64 `json:"startTime,omitempty"`
 	FormatName string  `json:"formatName,omitempty"`
@@ -132,6 +137,9 @@ type probeStreamEntry struct {
 	CodecName    string `json:"codec_name"`
 	BitRate      string `json:"bit_rate"`
 	AvgFrameRate string `json:"avg_frame_rate"`
+	RFrameRate   string `json:"r_frame_rate"`
+	TimeBase     string `json:"time_base"`
+	PixFmt       string `json:"pix_fmt"`
 	Width        int    `json:"width"`
 	Height       int    `json:"height"`
 }
@@ -148,6 +156,9 @@ func applyProbeStreams(info *StreamInfo, streams []probeStreamEntry) (hasVideoBi
 			info.VideoCodec = s.CodecName
 			info.Width = s.Width
 			info.Height = s.Height
+			info.PixelFormat = s.PixFmt
+			info.FrameRate = s.RFrameRate
+			info.TimeBase = s.TimeBase
 			if s.BitRate != "" {
 				if br, err := strconv.Atoi(s.BitRate); err == nil && br > 0 {
 					info.VideoBitrate = br

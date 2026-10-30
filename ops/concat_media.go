@@ -78,6 +78,16 @@ func DecideConcatPlan(opts ConcatMediaOptions, facts []SourceFacts) ConcatPlan {
 	case len(facts) == 0:
 		plan.Action, plan.Reason = ConcatActionTranscode, "no inputs"
 	default:
+		for i, f := range facts {
+			// Missing frame rate or time base means the demuxer cannot be trusted to
+			// line the inputs up, so re-encode rather than copy.
+			if (f.HasVideo && (f.VideoCodec == "" || f.FrameRate == "" || f.TimeBase == "")) ||
+				(f.HasAudio && f.AudioCodec == "") {
+				plan.Action = ConcatActionTranscode
+				plan.Reason = fmt.Sprintf("input %d has incomplete stream facts", i)
+				return plan
+			}
+		}
 		first := facts[0]
 		for i, f := range facts[1:] {
 			if f != first {
@@ -89,6 +99,21 @@ func DecideConcatPlan(opts ConcatMediaOptions, facts []SourceFacts) ConcatPlan {
 		plan.Action, plan.Reason = ConcatActionCopy, "all inputs share codecs, dimensions and stream layout"
 	}
 	return plan
+}
+
+// validateConcatOptions rejects scale and rate settings that cannot be applied.
+// Width and Height must be set together, and nothing may be negative.
+func validateConcatOptions(opts ConcatMediaOptions) error {
+	if opts.Width < 0 || opts.Height < 0 {
+		return fmt.Errorf("concat media: Width and Height must not be negative")
+	}
+	if (opts.Width > 0) != (opts.Height > 0) {
+		return fmt.Errorf("concat media: set both Width and Height to rescale, or neither")
+	}
+	if opts.FPS < 0 {
+		return fmt.Errorf("concat media: FPS must not be negative")
+	}
+	return nil
 }
 
 // BuildConcatList renders a concat demuxer list. Single quotes in paths are
@@ -128,8 +153,9 @@ func BuildConcatMediaArgs(runner *ffexec.Runner, caps *capabilities.Capabilities
 	if opts.FPS > 0 {
 		args = append(args, "-r", fmt.Sprintf("%.3f", opts.FPS))
 	}
+	// vidArgs already carries the pixel format chosen for the encoder (for example
+	// nv12 for QSV), so it is not overridden here.
 	args = append(args, vidArgs...)
-	args = append(args, "-pix_fmt", "yuv420p")
 	args = append(args, "-c:a", "aac")
 	return append(args, "-y", opts.OutputPath), nil
 }
@@ -139,6 +165,9 @@ func BuildConcatMediaArgs(runner *ffexec.Runner, caps *capabilities.Capabilities
 func ConcatMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts ConcatMediaOptions) (ConcatPlan, error) {
 	if len(opts.Inputs) == 0 {
 		return ConcatPlan{}, fmt.Errorf("concat media: no inputs")
+	}
+	if err := validateConcatOptions(opts); err != nil {
+		return ConcatPlan{}, err
 	}
 	facts := make([]SourceFacts, 0, len(opts.Inputs))
 	for _, in := range opts.Inputs {

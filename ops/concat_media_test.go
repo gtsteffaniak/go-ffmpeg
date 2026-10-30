@@ -11,12 +11,18 @@ import (
 
 func TestDecideConcatPlan(t *testing.T) {
 	t.Parallel()
-	a := ops.SourceFacts{Probed: true, HasVideo: true, HasAudio: true, VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080}
+	a := ops.SourceFacts{Probed: true, HasVideo: true, HasAudio: true, VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, FrameRate: "25/1", TimeBase: "1/12800"}
 	b := a
 	b.Width = 1280
 	noAudio := a
 	noAudio.HasAudio = false
 	noAudio.AudioCodec = ""
+	otherRate := a
+	otherRate.FrameRate = "30000/1001"
+	otherBase := a
+	otherBase.TimeBase = "1/90000"
+	noTimeBase := a
+	noTimeBase.TimeBase = ""
 	unprobed := ops.SourceFacts{}
 
 	cases := []struct {
@@ -29,6 +35,9 @@ func TestDecideConcatPlan(t *testing.T) {
 		{"dimension mismatch transcodes", ops.ConcatMediaOptions{Inputs: []string{"a", "b"}}, []ops.SourceFacts{a, b}, ops.ConcatActionTranscode},
 		{"audio presence mismatch transcodes", ops.ConcatMediaOptions{Inputs: []string{"a", "b"}}, []ops.SourceFacts{a, noAudio}, ops.ConcatActionTranscode},
 		{"unprobed input transcodes", ops.ConcatMediaOptions{Inputs: []string{"a", "b"}}, []ops.SourceFacts{a, unprobed}, ops.ConcatActionTranscode},
+		{"frame rate mismatch transcodes", ops.ConcatMediaOptions{Inputs: []string{"a", "b"}}, []ops.SourceFacts{a, otherRate}, ops.ConcatActionTranscode},
+		{"time base mismatch transcodes", ops.ConcatMediaOptions{Inputs: []string{"a", "b"}}, []ops.SourceFacts{a, otherBase}, ops.ConcatActionTranscode},
+		{"missing time base is incomplete", ops.ConcatMediaOptions{Inputs: []string{"a"}}, []ops.SourceFacts{noTimeBase}, ops.ConcatActionTranscode},
 		{"fps change forces transcode", ops.ConcatMediaOptions{Inputs: []string{"a"}, FPS: 24}, []ops.SourceFacts{a}, ops.ConcatActionTranscode},
 		{"rescale forces transcode", ops.ConcatMediaOptions{Inputs: []string{"a"}, Width: 640, Height: 360}, []ops.SourceFacts{a}, ops.ConcatActionTranscode},
 		{"no inputs transcodes", ops.ConcatMediaOptions{}, nil, ops.ConcatActionTranscode},

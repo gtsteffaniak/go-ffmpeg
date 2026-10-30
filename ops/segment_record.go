@@ -78,6 +78,11 @@ type SourceFacts struct {
 	AudioCodec string
 	Width      int
 	Height     int
+	// BitDepth is 0 when the pixel format is unknown.
+	BitDepth int
+	// FrameRate and TimeBase are ffprobe's r_frame_rate and time_base strings.
+	FrameRate string
+	TimeBase  string
 }
 
 // SourceFactsFromProbe converts a probe result into SourceFacts.
@@ -93,7 +98,30 @@ func SourceFactsFromProbe(info probe.StreamInfo, err error) SourceFacts {
 		AudioCodec: strings.ToLower(info.AudioCodec),
 		Width:      info.Width,
 		Height:     info.Height,
+		BitDepth:   bitDepthFromPixFmt(info.PixelFormat),
+		FrameRate:  info.FrameRate,
+		TimeBase:   info.TimeBase,
 	}
+}
+
+// bitDepthFromPixFmt maps an ffprobe pix_fmt name to its luma bit depth. It
+// returns 0 for formats it does not recognise, so callers can stay conservative.
+func bitDepthFromPixFmt(pixFmt string) int {
+	pf := strings.ToLower(pixFmt)
+	switch {
+	case pf == "":
+		return 0
+	// Match the explicit depth markers only; a bare "12" substring also occurs in
+	// 8-bit names such as nv12.
+	case strings.Contains(pf, "p010") || strings.Contains(pf, "10le") || strings.Contains(pf, "10be"):
+		return 10
+	case strings.Contains(pf, "p012") || strings.Contains(pf, "12le") || strings.Contains(pf, "12be"):
+		return 12
+	case strings.HasPrefix(pf, "yuv") || strings.HasPrefix(pf, "nv12") || strings.HasPrefix(pf, "nv21") ||
+		strings.HasPrefix(pf, "rgb") || strings.HasPrefix(pf, "bgr") || strings.HasPrefix(pf, "gray"):
+		return 8
+	}
+	return 0
 }
 
 // mp4VideoCopyable lists video codecs that are routinely muxed to MP4 and played
@@ -115,6 +143,7 @@ type SegmentPlan struct {
 	Audio          string // "copy", "aac" or "none"
 	AudioReason    string
 	HardwareDecode bool
+	BitDepth       int // probed source bit depth; used to pick the hwdownload format
 	SegmentSeconds int
 	Aligned        bool
 	Fragmented     bool
@@ -158,7 +187,10 @@ func DecideSegmentPlan(opts SegmentRecordOptions, src SourceFacts) SegmentPlan {
 	}
 	plan.Video, plan.VideoCodec, plan.VideoReason = decideVideo(mode, opts.Profile, src)
 	plan.Audio, plan.AudioReason = decideAudio(mode, opts.AudioCodec, src)
-	if plan.Video == "transcode" && opts.HardwareDecode && src.Probed && src.VideoCodec != "" {
+	plan.BitDepth = src.BitDepth
+	// Hardware decode needs the source bit depth so the filter graph can pick the
+	// hwdownload format. Unknown depth means software decode.
+	if plan.Video == "transcode" && opts.HardwareDecode && src.Probed && src.VideoCodec != "" && src.BitDepth > 0 {
 		plan.HardwareDecode = true
 	}
 	return plan
@@ -272,12 +304,19 @@ func BuildSegmentRecordArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 
 	args := []string{"-hide_banner", "-nostats", "-fflags", "+genpts", "-correct_ts_overflow", "1"}
 	args = appendInputFlags(args, runner, opts.Input, opts.RTSP, nil)
+	// Hardware decode is an input option plus a matching filter chain that
+	// downloads frames from the hardware surface. Both are used together or not
+	// at all; if either cannot be built the recording decodes in software.
+	var hwDecodeArgs, hwFilterArgs []string
 	if plan.HardwareDecode {
-		// Best effort: a missing decoder means software decode, not a failed recording.
-		if decodeArgs, err := resolver.VideoDecoderArgs(encode.VideoDecodeProfile{Codec: capabilities.VideoCodec(plan.SourceCodec)}); err == nil {
-			args = append(args, decodeArgs...)
+		dp := encode.VideoDecodeProfile{Codec: capabilities.VideoCodec(plan.SourceCodec), BitDepth: plan.BitDepth}
+		d, dErr := resolver.VideoDecoderArgs(dp)
+		f, fErr := resolver.VideoFilterArgs(videoTargetProfile(opts.Profile, plan.VideoCodec), dp, 0)
+		if dErr == nil && fErr == nil {
+			hwDecodeArgs, hwFilterArgs = d, f
 		}
 	}
+	args = append(args, hwDecodeArgs...)
 	args = append(args, opts.ExtraInputArgs...)
 	args = append(args, "-i", opts.Input.URL)
 
@@ -294,6 +333,7 @@ func BuildSegmentRecordArgs(runner *ffexec.Runner, caps *capabilities.Capabiliti
 		if err != nil {
 			return nil, err
 		}
+		args = append(args, hwFilterArgs...)
 		args = append(args, vidArgs...)
 	}
 	switch plan.Audio {

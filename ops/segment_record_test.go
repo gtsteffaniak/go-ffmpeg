@@ -41,7 +41,17 @@ func hasPair(args []string, flag, value string) bool {
 }
 
 func probed(video, audio string) ops.SourceFacts {
-	return ops.SourceFacts{Probed: true, HasVideo: true, HasAudio: audio != "", VideoCodec: video, AudioCodec: audio}
+	return ops.SourceFacts{Probed: true, HasVideo: true, HasAudio: audio != "", VideoCodec: video, AudioCodec: audio, BitDepth: 8}
+}
+
+func TestDecideSegmentPlanSoftwareDecodeWhenBitDepthUnknown(t *testing.T) {
+	t.Parallel()
+	opts := ops.SegmentRecordOptions{Mode: ops.RecordAuto, HardwareDecode: true}
+	src := probed("mjpeg", "")
+	src.BitDepth = 0
+	if plan := ops.DecideSegmentPlan(opts, src); plan.HardwareDecode {
+		t.Fatal("unknown bit depth must fall back to software decode")
+	}
 }
 
 func TestDecideSegmentPlanVideoTable(t *testing.T) {
