@@ -55,7 +55,7 @@ func TestVAAPIHwDecodeWithoutScaleVAAPIDownloads(t *testing.T) {
 	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "hwdownload,format=nv12|p010le,scale=-2:min(720\\,ih),format=nv12,hwupload") {
+	if !strings.Contains(got, "hwdownload,format=nv12,scale=-2:min(720\\,ih),format=nv12,hwupload") {
 		t.Fatalf("want hwdownload fallback graph, got %q", got)
 	}
 }
@@ -75,6 +75,98 @@ func TestVAAPISoftwareDecodeStillUploads(t *testing.T) {
 
 func cudaDecode() capabilities.DecoderSelection {
 	return capabilities.DecoderSelection{Decoder: "av1_cuvid", Accel: capabilities.AccelNVENC, Kind: "nvenc"}
+}
+
+// softwareEncFilterCaps builds caps whose preferred encoder resolves to software
+// (libx264) while decode uses the supplied hardware decoder selection.
+func softwareEncFilterCaps(dec capabilities.DecoderSelection) *capabilities.Capabilities {
+	caps := capabilities.NewCapabilities()
+	caps.Platform.Details = map[string]string{"render_device": "/dev/dri/renderD128"}
+	caps.Encoders["libx264"] = capabilities.EncoderCapability{Name: "libx264", Kind: "software", Compiled: true, Available: true}
+	caps.CodecMatrix[capabilities.CodecH264] = capabilities.CodecSupport{
+		Preferred:       capabilities.EncoderSelection{Encoder: "libx264", Accel: capabilities.AccelNone, Kind: "software"},
+		DecodePreferred: dec,
+	}
+	caps.CodecMatrix[capabilities.CodecAV1] = capabilities.CodecSupport{DecodePreferred: dec}
+	return caps
+}
+
+func vaapiCudaStyleDecode() capabilities.DecoderSelection {
+	return capabilities.DecoderSelection{Decoder: "hwaccel:vaapi:av1", Accel: capabilities.AccelVAAPI, Kind: "vaapi", SWCodec: "av1"}
+}
+
+// A software encoder (libx264) with CUDA decode must download the CUDA surfaces
+// before any software filter: "Impossible to convert between the formats ...
+// src: cuda" otherwise.
+func TestSoftwareEncoderWithCUDADecodeDownloads(t *testing.T) {
+	caps := softwareEncFilterCaps(cudaDecode())
+	caps.Decoders["av1_cuvid"] = capabilities.DecoderCapability{Name: "av1_cuvid", Available: true, Compiled: true}
+	caps.Filters["scale_cuda"] = true
+
+	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
+	if !strings.Contains(got, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p") {
+		t.Fatalf("want hwdownload software graph, got %q", got)
+	}
+	if strings.Contains(got, "cuda") {
+		t.Fatalf("software encoder graph must not reference cuda: %q", got)
+	}
+}
+
+// ForceSoftware on an otherwise-hardware profile must also download CUDA frames
+// before the software graph.
+func TestSoftwareEncoderForceSoftwareWithCUDADecodeDownloads(t *testing.T) {
+	caps := softwareEncFilterCaps(cudaDecode())
+	caps.Decoders["av1_cuvid"] = capabilities.DecoderCapability{Name: "av1_cuvid", Available: true, Compiled: true}
+	caps.Filters["scale_cuda"] = true
+
+	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, ForceSoftware: false})
+	if !strings.Contains(got, "hwdownload") {
+		t.Fatalf("want hwdownload first, got %q", got)
+	}
+
+	// With software decode there is nothing to download.
+	soft := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, ForceSoftware: true})
+	if strings.Contains(soft, "hwdownload") {
+		t.Fatalf("software decode must not hwdownload: %q", soft)
+	}
+}
+
+// A software encoder with CUDA decode but no scale_cuda: the decoder emits
+// system-memory frames, so the plain software graph applies.
+func TestSoftwareEncoderWithCUDADecodeWithoutScaleCudaUsesSoftwareGraph(t *testing.T) {
+	caps := softwareEncFilterCaps(cudaDecode())
+	caps.Decoders["av1_cuvid"] = capabilities.DecoderCapability{Name: "av1_cuvid", Available: true, Compiled: true}
+
+	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
+	if strings.Contains(got, "hwdownload") || !strings.Contains(got, "scale=-2:min(720\\,ih),format=yuv420p") {
+		t.Fatalf("want plain software graph, got %q", got)
+	}
+}
+
+// A software encoder with VAAPI decode must download the VAAPI surfaces first.
+func TestSoftwareEncoderWithVAAPIDecodeDownloads(t *testing.T) {
+	caps := softwareEncFilterCaps(vaapiCudaStyleDecode())
+	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
+
+	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
+	if !strings.Contains(got, "-vf hwdownload,format=nv12") {
+		t.Fatalf("want vaapi hwdownload graph, got %q", got)
+	}
+	if strings.Contains(got, "scale_vaapi") || strings.Contains(got, "hwupload") {
+		t.Fatalf("software encoder must not keep vaapi surfaces: %q", got)
+	}
+}
+
+// NVENC encode with VAAPI decode must download the VAAPI surfaces (the NVENC
+// branch only handles NVENC decode; anything else falls back to software).
+func TestNVENCEncoderWithVAAPIDecodeDownloads(t *testing.T) {
+	caps := hwFilterCaps("h264_nvenc", capabilities.AccelNVENC, "nvenc", vaapiCudaStyleDecode())
+	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
+
+	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
+	if !strings.Contains(got, "hwdownload") {
+		t.Fatalf("want hwdownload for vaapi decode under nvenc encode, got %q", got)
+	}
 }
 
 // CUDA surfaces must never reach a software scale filter ("Impossible to
@@ -109,5 +201,27 @@ func TestNVENCSoftwareDecodeKeepsSoftwareScale(t *testing.T) {
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, ForceSoftware: true})
 	if !strings.Contains(got, "scale=-2:min(720\\,ih),format=yuv420p") || strings.Contains(got, "cuda") {
 		t.Fatalf("software decode graph wrong: %q", got)
+	}
+}
+
+// hwdownload only transfers to the surface's own sw_format, so a 10-bit source
+// must pin p010le ("Invalid output format nv12 for hwframe download" otherwise)
+// while 8-bit and unknown depths pin nv12.
+func TestHwDownloadFormatFollowsBitDepth(t *testing.T) {
+	caps := softwareEncFilterCaps(vaapiCudaStyleDecode())
+	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
+
+	for _, tc := range []struct {
+		depth int
+		want  string
+	}{
+		{0, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p"},
+		{8, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p"},
+		{10, "-vf hwdownload,format=p010le,scale=-2:min(720\\,ih),format=yuv420p"},
+	} {
+		got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, BitDepth: tc.depth})
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("BitDepth %d: want %q, got %q", tc.depth, tc.want, got)
+		}
 	}
 }

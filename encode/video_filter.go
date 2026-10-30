@@ -17,7 +17,7 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 		return nil, nil
 	}
 	if profile.ForceSoftware {
-		return videoFilterScaleOnly(maxHeight)
+		return r.softwareVideoFilters(decode, maxHeight)
 	}
 	sel, err := r.ResolveEncoder(profile)
 	if err != nil {
@@ -29,13 +29,13 @@ func (r *Resolver) VideoFilterArgs(profile VideoProfile, decode VideoDecodeProfi
 	case capabilities.AccelNVENC:
 		return r.nvencVideoFilters(decode, maxHeight)
 	case capabilities.AccelQSV:
-		return qsvVideoFilters(maxHeight)
+		return r.qsvVideoFilters(decode, maxHeight)
 	case capabilities.AccelVulkan:
 		return r.vulkanVideoFilters(decode, maxHeight)
 	case capabilities.AccelVideoToolbox:
 		return r.videotoolboxVideoFilters(decode, maxHeight)
 	default:
-		return videoFilterScaleOnly(maxHeight)
+		return r.softwareVideoFilters(decode, maxHeight)
 	}
 }
 
@@ -44,6 +44,41 @@ func videoFilterScaleOnly(maxHeight int) ([]string, error) {
 		return []string{"-vf", "format=yuv420p"}, nil
 	}
 	return []string{"-vf", fmt.Sprintf("scale=-2:min(%d\\,ih),format=yuv420p", maxHeight)}, nil
+}
+
+// decodeEmitsHardwareFrames reports whether VideoDecoderArgs will keep decoded
+// frames in a hardware pixel format (cuda, vaapi, vulkan, videotoolbox). When
+// true, a software filter graph must download the frames first with hwdownload,
+// or ffmpeg fails with "Impossible to convert between the formats ... src: cuda".
+//
+// QSV decode keeps frames in system memory (its decoder args set no
+// -hwaccel_output_format), and NVENC keeps CUDA surfaces only when scale_cuda
+// exists (see VideoDecoderArgs).
+func (r *Resolver) decodeEmitsHardwareFrames(decode VideoDecodeProfile) bool {
+	switch r.decodeAccel(decode) {
+	case capabilities.AccelVAAPI, capabilities.AccelD3D12, capabilities.AccelVulkan, capabilities.AccelVideoToolbox:
+		return true
+	case capabilities.AccelNVENC:
+		return r.Caps.FilterAvailable("scale_cuda")
+	default:
+		return false
+	}
+}
+
+// softwareVideoFilters builds the graph for a software encoder. Hardware-decoded
+// frames are downloaded to system memory first so the software scale/format
+// chain can consume them; the trailing format=yuv420p gives libx264 its
+// expected pixel format and converts 10-bit downloads.
+func (r *Resolver) softwareVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
+	if !r.decodeEmitsHardwareFrames(decode) {
+		return videoFilterScaleOnly(maxHeight)
+	}
+	parts := []string{"hwdownload", hwDownloadFormat(decode)}
+	if maxHeight > 0 {
+		parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
+	}
+	parts = append(parts, "format=yuv420p")
+	return []string{"-vf", strings.Join(parts, ",")}, nil
 }
 
 // scaleVTFilter caps the output height while preserving aspect ratio.
@@ -129,9 +164,17 @@ func (r *Resolver) decodeAccel(decode VideoDecodeProfile) capabilities.AccelType
 	return sel.Accel
 }
 
-// hwDownloadFormats lists the surface formats hwdownload may produce for 8-bit
-// and 10-bit sources; the format filter picks whichever the decoder emitted.
-const hwDownloadFormats = "format=nv12|p010le"
+// hwDownloadFormat returns the format filter that pins hwdownload's output to
+// the decoded surface's sw_format: p010le for sources deeper than 8 bits, nv12
+// otherwise. hwdownload only transfers to the frame context's own format, and a
+// list such as "nv12|p010le" lets negotiation pick nv12 for 10-bit surfaces,
+// which fails with "Invalid output format nv12 for hwframe download".
+func hwDownloadFormat(decode VideoDecodeProfile) string {
+	if decode.BitDepth > 8 {
+		return "format=p010le"
+	}
+	return "format=nv12"
+}
 
 func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
 	accel := r.decodeAccel(decode)
@@ -148,7 +191,7 @@ func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 			parts = append(parts, "scale_vaapi=format=nv12")
 		}
 	case hwDecode:
-		parts = append(parts, "hwdownload", hwDownloadFormats)
+		parts = append(parts, "hwdownload", hwDownloadFormat(decode))
 		if maxHeight > 0 {
 			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
 		}
@@ -184,7 +227,11 @@ func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 // already in system memory and the plain software graph applies.
 func (r *Resolver) nvencVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
 	if r.decodeAccel(decode) != capabilities.AccelNVENC || !r.Caps.FilterAvailable("scale_cuda") {
-		return videoFilterScaleOnly(maxHeight)
+		// NVENC encode with non-NVENC decode, or CUDA decode without scale_cuda
+		// (frames already in system memory): the software graph applies, but a
+		// hardware decode backend (vaapi/vulkan/videotoolbox) still needs the
+		// frames downloaded first.
+		return r.softwareVideoFilters(decode, maxHeight)
 	}
 	var parts []string
 	if maxHeight > 0 {
@@ -196,8 +243,14 @@ func (r *Resolver) nvencVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 	return []string{"-vf", strings.Join(parts, ",")}, nil
 }
 
-func qsvVideoFilters(maxHeight int) ([]string, error) {
+func (r *Resolver) qsvVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
 	parts := []string{}
+	// QSV decode emits system-memory frames, but another hardware backend
+	// (vaapi/cuda/vulkan/videotoolbox) chosen for decode keeps them on the GPU,
+	// so download before the software scale/format into QSV's nv12 input.
+	if r.decodeEmitsHardwareFrames(decode) {
+		parts = append(parts, "hwdownload", hwDownloadFormat(decode))
+	}
 	if maxHeight > 0 {
 		parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
 	}
