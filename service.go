@@ -25,6 +25,10 @@ type Service struct {
 	limiter  *concurrency.Limiter
 	detectMu sync.Mutex
 	mu       sync.RWMutex
+	// detectTried, detectErr and detectRuns cache the first detection outcome (guarded by mu).
+	detectTried bool
+	detectErr   error
+	detectRuns  int
 }
 
 // New creates and optionally detects a Service.
@@ -54,6 +58,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 
 // Reload re-runs capability detection.
 func (s *Service) Reload(ctx context.Context) error {
+	s.mu.Lock()
+	s.detectRuns++
+	s.mu.Unlock()
 	dctx, cancel := context.WithTimeout(ctx, s.cfg.DetectTimeout)
 	defer cancel()
 

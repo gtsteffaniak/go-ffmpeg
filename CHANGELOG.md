@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `SegmentRecord` intent API: `SegmentRecordOptions.Mode` (`RecordAuto`, `RecordCopy`, `RecordTranscode`; zero value stays `RecordTranscode`), `AlignSegmentsToClock` (wall-clock segment boundaries, duration must divide 24h), `Fragmented` (playable in-progress segments), `AudioCodec` (`""`, `aac`, `copy`), `AudioBitrate`, `HardwareDecode`, and `OnPlan` callback receiving a `SegmentPlan` that explains each copy/transcode decision. `Profile.Codec = encode.CodecCopy` still requests a video copy. `ExtraInputArgs` and `ExtraOutputArgs` remain as escape hatches.
+- `ConcatMedia` joins files, stream-copying when inputs share codecs, dimensions and stream layout, and re-encoding otherwise (or when `Width`/`Height`/`FPS` are set). It returns a `ConcatPlan`. The concat list file is managed internally.
+- Pure decision helpers `DecideSegmentPlan`, `DecideConcatPlan`, `BuildSegmentRecordArgs`, `BuildConcatMediaArgs` and `BuildConcatList` are exported for tests and dry runs.
+
 ## v1.6.0 (unreleased)
 
 ### Added

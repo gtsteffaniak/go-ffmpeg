@@ -22,9 +22,20 @@ func (s *Service) ensureDetected(ctx context.Context) error {
 		s.mu.RUnlock()
 		return nil
 	}
+	if s.detectTried {
+		// The first run failed; return that error instead of re-probing on every call.
+		err := s.detectErr
+		s.mu.RUnlock()
+		return err
+	}
 	s.mu.RUnlock()
 
-	return s.Reload(ctx)
+	err := s.Reload(ctx)
+	s.mu.Lock()
+	s.detectTried = true
+	s.detectErr = err
+	s.mu.Unlock()
+	return err
 }
 
 func (s *Service) acquireLease(ctx context.Context, class concurrency.SlotClass, inputPath string) (*concurrency.Lease, error) {
