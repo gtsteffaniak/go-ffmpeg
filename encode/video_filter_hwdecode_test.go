@@ -55,7 +55,7 @@ func TestVAAPIHwDecodeWithoutScaleVAAPIDownloads(t *testing.T) {
 	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "hwdownload,format=nv12|p010le,scale=-2:min(720\\,ih),format=nv12,hwupload") {
+	if !strings.Contains(got, "hwdownload,format=nv12,scale=-2:min(720\\,ih),format=nv12,hwupload") {
 		t.Fatalf("want hwdownload fallback graph, got %q", got)
 	}
 }
@@ -104,7 +104,7 @@ func TestSoftwareEncoderWithCUDADecodeDownloads(t *testing.T) {
 	caps.Filters["scale_cuda"] = true
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "-vf hwdownload,format=nv12|p010le,scale=-2:min(720\\,ih),format=yuv420p") {
+	if !strings.Contains(got, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p") {
 		t.Fatalf("want hwdownload software graph, got %q", got)
 	}
 	if strings.Contains(got, "cuda") {
@@ -149,7 +149,7 @@ func TestSoftwareEncoderWithVAAPIDecodeDownloads(t *testing.T) {
 	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
 
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1})
-	if !strings.Contains(got, "-vf hwdownload,format=nv12|p010le") {
+	if !strings.Contains(got, "-vf hwdownload,format=nv12") {
 		t.Fatalf("want vaapi hwdownload graph, got %q", got)
 	}
 	if strings.Contains(got, "scale_vaapi") || strings.Contains(got, "hwupload") {
@@ -201,5 +201,27 @@ func TestNVENCSoftwareDecodeKeepsSoftwareScale(t *testing.T) {
 	got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, ForceSoftware: true})
 	if !strings.Contains(got, "scale=-2:min(720\\,ih),format=yuv420p") || strings.Contains(got, "cuda") {
 		t.Fatalf("software decode graph wrong: %q", got)
+	}
+}
+
+// hwdownload only transfers to the surface's own sw_format, so a 10-bit source
+// must pin p010le ("Invalid output format nv12 for hwframe download" otherwise)
+// while 8-bit and unknown depths pin nv12.
+func TestHwDownloadFormatFollowsBitDepth(t *testing.T) {
+	caps := softwareEncFilterCaps(vaapiCudaStyleDecode())
+	caps.Decoders["hwaccel:vaapi:av1"] = capabilities.DecoderCapability{Name: "hwaccel:vaapi:av1", Available: true, Compiled: true}
+
+	for _, tc := range []struct {
+		depth int
+		want  string
+	}{
+		{0, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p"},
+		{8, "-vf hwdownload,format=nv12,scale=-2:min(720\\,ih),format=yuv420p"},
+		{10, "-vf hwdownload,format=p010le,scale=-2:min(720\\,ih),format=yuv420p"},
+	} {
+		got := filterString(t, caps, encode.VideoDecodeProfile{Codec: capabilities.CodecAV1, BitDepth: tc.depth})
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("BitDepth %d: want %q, got %q", tc.depth, tc.want, got)
+		}
 	}
 }

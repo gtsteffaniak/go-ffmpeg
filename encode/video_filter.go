@@ -73,7 +73,7 @@ func (r *Resolver) softwareVideoFilters(decode VideoDecodeProfile, maxHeight int
 	if !r.decodeEmitsHardwareFrames(decode) {
 		return videoFilterScaleOnly(maxHeight)
 	}
-	parts := []string{"hwdownload", hwDownloadFormats}
+	parts := []string{"hwdownload", hwDownloadFormat(decode)}
 	if maxHeight > 0 {
 		parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
 	}
@@ -164,9 +164,17 @@ func (r *Resolver) decodeAccel(decode VideoDecodeProfile) capabilities.AccelType
 	return sel.Accel
 }
 
-// hwDownloadFormats lists the surface formats hwdownload may produce for 8-bit
-// and 10-bit sources; the format filter picks whichever the decoder emitted.
-const hwDownloadFormats = "format=nv12|p010le"
+// hwDownloadFormat returns the format filter that pins hwdownload's output to
+// the decoded surface's sw_format: p010le for sources deeper than 8 bits, nv12
+// otherwise. hwdownload only transfers to the frame context's own format, and a
+// list such as "nv12|p010le" lets negotiation pick nv12 for 10-bit surfaces,
+// which fails with "Invalid output format nv12 for hwframe download".
+func hwDownloadFormat(decode VideoDecodeProfile) string {
+	if decode.BitDepth > 8 {
+		return "format=p010le"
+	}
+	return "format=nv12"
+}
 
 func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]string, error) {
 	accel := r.decodeAccel(decode)
@@ -183,7 +191,7 @@ func (r *Resolver) vaapiVideoFilters(decode VideoDecodeProfile, maxHeight int) (
 			parts = append(parts, "scale_vaapi=format=nv12")
 		}
 	case hwDecode:
-		parts = append(parts, "hwdownload", hwDownloadFormats)
+		parts = append(parts, "hwdownload", hwDownloadFormat(decode))
 		if maxHeight > 0 {
 			parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))
 		}
@@ -241,7 +249,7 @@ func (r *Resolver) qsvVideoFilters(decode VideoDecodeProfile, maxHeight int) ([]
 	// (vaapi/cuda/vulkan/videotoolbox) chosen for decode keeps them on the GPU,
 	// so download before the software scale/format into QSV's nv12 input.
 	if r.decodeEmitsHardwareFrames(decode) {
-		parts = append(parts, "hwdownload", hwDownloadFormats)
+		parts = append(parts, "hwdownload", hwDownloadFormat(decode))
 	}
 	if maxHeight > 0 {
 		parts = append(parts, fmt.Sprintf("scale=-2:min(%d\\,ih)", maxHeight))

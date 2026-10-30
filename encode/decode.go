@@ -21,6 +21,14 @@ type VideoDecodeProfile struct {
 
 	// ForceSoftware skips hardware decode initialization.
 	ForceSoftware bool
+
+	// BitDepth is the source's luma bit depth (e.g. 8 or 10). When a filter
+	// graph has to hwdownload hardware-decoded frames, it selects the download
+	// format from this: nv12 for 8-bit (and the zero value), p010le above 8.
+	// hwdownload only accepts the surface's own sw_format, so a 10-bit source
+	// left at the zero value fails with "Invalid output format nv12 for
+	// hwframe download".
+	BitDepth int
 }
 
 // ResolveDecoder picks a decoder for profile using cached capabilities.
