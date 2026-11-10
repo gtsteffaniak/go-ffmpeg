@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
@@ -116,16 +117,31 @@ func validateConcatOptions(opts ConcatMediaOptions) error {
 	return nil
 }
 
+// validateConcatListPath rejects paths that would break or inject concat list
+// lines (for example newlines inside the quoted path).
+func validateConcatListPath(path string) error {
+	for i, r := range path {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("concat media: input path contains control character U+%04X at index %d", r, i)
+		}
+	}
+	return nil
+}
+
 // BuildConcatList renders a concat demuxer list. Single quotes in paths are
-// escaped with the demuxer's '\” idiom.
-func BuildConcatList(paths []string) string {
+// escaped with the demuxer's '\” idiom. Paths must not contain control
+// characters, which would inject extra list lines when ffmpeg reads the file.
+func BuildConcatList(paths []string) (string, error) {
 	var b strings.Builder
 	for _, p := range paths {
+		if err := validateConcatListPath(p); err != nil {
+			return "", err
+		}
 		b.WriteString("file '")
 		b.WriteString(strings.ReplaceAll(p, "'", `'\''`))
 		b.WriteString("'\n")
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 // BuildConcatMediaArgs returns the ffmpeg argv for a resolved plan. listPath is
@@ -133,6 +149,8 @@ func BuildConcatList(paths []string) string {
 func BuildConcatMediaArgs(runner *ffexec.Runner, caps *capabilities.Capabilities, opts ConcatMediaOptions, plan ConcatPlan, listPath string) ([]string, error) {
 	args := []string{"-hide_banner", "-nostats"}
 	args = runner.AppendProtocolWhitelistArgs(args)
+	// Absolute paths in the concat list require -safe 0; inputs are validated so
+	// control characters cannot inject extra list lines (see validateConcatListPath).
 	args = append(args, "-f", "concat", "-safe", "0", "-i", listPath)
 	if plan.Action == ConcatActionCopy {
 		return append(args, "-c", "copy", "-y", opts.OutputPath), nil
@@ -189,7 +207,11 @@ func ConcatMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 		return plan, fmt.Errorf("concat media: create list: %w", err)
 	}
 	defer os.Remove(list.Name())
-	if _, err := list.WriteString(BuildConcatList(absInputs)); err != nil {
+	listContent, err := BuildConcatList(absInputs)
+	if err != nil {
+		return plan, err
+	}
+	if _, err := list.WriteString(listContent); err != nil {
 		list.Close()
 		return plan, fmt.Errorf("concat media: write list: %w", err)
 	}
