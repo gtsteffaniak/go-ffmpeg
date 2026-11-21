@@ -17,6 +17,7 @@ func init() {
 	Register(hlsContinuousOp{})
 	Register(hlsVODOp{})
 	Register(timelapseCompileOp{})
+	Register(concatMediaOp{})
 	Register(extractSubtitleOp{})
 	Register(convertHEICOp{})
 	Register(detectSubtitlesOp{})
@@ -138,6 +139,13 @@ func (timelapseCompileOp) Requirements() RequirementSet {
 		MinProfile:  capabilities.BuildFull,
 		Filters:     []string{"scale", "concat", "fps"},
 	}
+}
+
+type concatMediaOp struct{}
+
+func (concatMediaOp) Name() string { return "ConcatMedia" }
+func (concatMediaOp) Requirements() RequirementSet {
+	return RequirementSet{Protocols: []string{"file"}}
 }
 
 type extractSubtitleOp struct{}

@@ -14,11 +14,12 @@ High-level tasks on `Service`:
 | Sprite sheet | `SpriteSheet` | Tiled JPEG/WebP + optional WebVTT; one ffmpeg pass; HW decode when configured |
 | Convert | `ConvertHEIC` | HEIC/HEIF → JPEG; more formats planned |
 | Transcode | `Transcode` | `VideoProfile` + optional decode profile |
-| Segmented record | `SegmentRecord` | MP4 segments |
+| Segmented record | `SegmentRecord` | MP4 segments. Intent API: `Mode` (`RecordAuto` probes and copies a compatible source, otherwise transcodes; `RecordCopy`; `RecordTranscode`), `AlignSegmentsToClock`, `Fragmented`, `AudioCodec` (`""`/`aac`/`copy`), `HardwareDecode`, and `OnPlan` to log the chosen `SegmentPlan` |
 | Live fMP4 | `FMP4StreamCopy`, `FMP4Transcode` | Stream to `io.Writer` |
 | HLS on-demand | `HLSSegment`, `HLSInitAndSegment`, `HLSSegmentMedia` | fMP4 fragments for MSE |
 | HLS continuous | `StartHLSContinuous` | Long-running `-f hls` disk cache |
-| Timelapse | `TimelapseCompile` | Concat list → video |
+| Timelapse | `TimelapseCompile` | Concat list → video (re-encode) |
+| Concat | `ConcatMedia` | Joins files; stream-copies when inputs match, re-encodes otherwise (or when `Width`/`Height`/`FPS` are set). Returns the `ConcatPlan` |
 | Subtitles | `DetectSubtitles`, `ExtractSubtitle` | WebVTT extract |
 
 Unsupported operations return `ErrUnsupported` with reasons from capability detection. Unsupported profiles return `ErrProfileUnsupported` before ffmpeg runs.

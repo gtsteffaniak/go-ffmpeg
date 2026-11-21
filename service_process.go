@@ -2,6 +2,7 @@ package ffmpeg
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gtsteffaniak/go-ffmpeg/concurrency"
 )
@@ -22,9 +23,34 @@ func (s *Service) ensureDetected(ctx context.Context) error {
 		s.mu.RUnlock()
 		return nil
 	}
+	if s.detectTried {
+		// The first run failed; return that error instead of re-probing on every call.
+		err := s.detectErr
+		s.mu.RUnlock()
+		return err
+	}
 	s.mu.RUnlock()
 
-	return s.Reload(ctx)
+	err := s.Reload(ctx)
+	if !shouldCacheDetectErr(err) {
+		// The caller gave up, which says nothing about the host. Let a later call retry.
+		return err
+	}
+	s.mu.Lock()
+	s.detectTried = true
+	s.detectErr = err
+	s.mu.Unlock()
+	return err
+}
+
+// shouldCacheDetectErr reports whether a detection error describes the host and
+// is safe to cache. Context cancellation and deadline expiry are caller-side and
+// must not stick until an explicit Reload.
+func shouldCacheDetectErr(err error) bool {
+	if err == nil {
+		return true
+	}
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 func (s *Service) acquireLease(ctx context.Context, class concurrency.SlotClass, inputPath string) (*concurrency.Lease, error) {

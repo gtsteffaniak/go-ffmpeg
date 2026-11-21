@@ -225,10 +225,23 @@ type SegmentRecordOptions struct {
 	RTSP            *RTSPInputOptions
 	ExtraInputArgs  []string
 	ExtraOutputArgs []string
+
+	// Intent fields (see segment_record.go). Setting any of them selects the intent
+	// path; the zero value keeps the argv below unchanged.
+	Mode                 RecordMode
+	AudioCodec           string
+	AudioBitrate         string
+	AlignSegmentsToClock bool
+	Fragmented           bool
+	HardwareDecode       bool
+	OnPlan               func(SegmentPlan)
 }
 
 // SegmentRecord starts segmented recording; returns after ffmpeg completes or ctx cancelled.
 func SegmentRecord(ctx context.Context, runner *ffexec.Runner, caps *capabilities.Capabilities, opts SegmentRecordOptions) error {
+	if opts.usesIntent() {
+		return segmentRecordIntent(ctx, runner, caps, opts)
+	}
 	if err := os.MkdirAll(opts.OutputDir, 0o755); err != nil {
 		return err
 	}
