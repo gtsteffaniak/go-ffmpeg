@@ -4,13 +4,13 @@
 
 ### Added
 
-- Motion detection task: `Service.DetectMotion` (`MotionDetectOptions` → `MotionResult`). One decode-only ffmpeg pass (`fps`, optional `crop`, `scale`, `format=gray`, `tblend=difference`, `signalstats`, `metadata=print`) measures the mean luma difference between consecutive samples and returns merged `MotionEvent` spans. Options cover sample rate, analysis width, threshold, minimum event duration, merge gap, bounded `StartSec`/`EndSec`, RTSP input tuning, and a normalized `MotionCrop` zone (`{X,Y,W,H}` in 0–1) applied **before** scaling so a UI-picked rectangle restricts analysis.
+- Motion detection task: `Service.DetectMotion` (`MotionDetectOptions` → `MotionResult`). Software decode is enforced so analysis filters never receive hardware surfaces; `StartSec` is added back to event times; bounded windows and live inputs skip duration ffprobe; invalid crop rectangles and reversed `EndSec` windows are rejected. One decode-only ffmpeg pass (`fps`, optional `crop`, `scale`, `format=gray`, `tblend=difference`, `signalstats`, `metadata=print`) measures the mean luma difference between consecutive samples and returns merged `MotionEvent` spans. Options cover sample rate, analysis width, threshold, minimum event duration, merge gap, bounded `StartSec`/`EndSec`, RTSP input tuning, and a normalized `MotionCrop` zone (`{X,Y,W,H}` in 0–1) applied **before** scaling so a UI-picked rectangle restricts analysis.
 - `ops.BuildMotionFilter` and `ops.ResolveMotionDefaults` for callers that need to persist or display the exact analysis settings.
 - `DetectMotion` capability registered in `ops`; `crop`, `tblend`, `signalstats` and `metadata` added to `KnownFilters`, so capability reports explain missing analysis filters.
 
 ### Notes
 
-- Motion analysis always falls back to software decode; a hardware decoder profile that cannot be resolved does not fail the operation.
+- Motion analysis always uses software decode so grayscale analysis filters never receive hardware surfaces.
 ## Unreleased
 
 ### Added

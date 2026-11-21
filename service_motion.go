@@ -42,7 +42,7 @@ func (s *Service) DetectMotion(ctx context.Context, opts MotionDetectOptions) (M
 	s.mu.RUnlock()
 
 	dur := opts.DurationSec
-	if dur <= 0 {
+	if dur <= 0 && ops.MotionNeedsMediaDuration(opts) {
 		err := s.runWithClass(ctx, concurrency.SlotProbe, opts.Input.URL, func() error {
 			var probeErr error
 			dur, probeErr = probe.GetMediaDuration(ctx, s.runner, opts.Input.URL)

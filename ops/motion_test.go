@@ -7,7 +7,10 @@ import (
 
 func TestBuildMotionFilterFullFrame(t *testing.T) {
 	d := ResolveMotionDefaults(MotionDetectOptions{})
-	got := BuildMotionFilter(d, MotionCrop{})
+	got, err := BuildMotionFilter(d, MotionCrop{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "fps=2.000000,scale=320:-2,format=gray,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-"
 	if got != want {
 		t.Fatalf("filter mismatch\n got: %s\nwant: %s", got, want)
@@ -16,7 +19,10 @@ func TestBuildMotionFilterFullFrame(t *testing.T) {
 
 func TestBuildMotionFilterCrop(t *testing.T) {
 	d := ResolveMotionDefaults(MotionDetectOptions{})
-	got := BuildMotionFilter(d, MotionCrop{X: 0.1, Y: 0.2, W: 0.5, H: 0.25})
+	got, err := BuildMotionFilter(d, MotionCrop{X: 0.1, Y: 0.2, W: 0.5, H: 0.25})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "fps=2.000000,crop=iw*0.500000:ih*0.250000:iw*0.100000:ih*0.200000,scale=320:-2,format=gray,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-"
 	if got != want {
 		t.Fatalf("filter mismatch\n got: %s\nwant: %s", got, want)
@@ -24,12 +30,22 @@ func TestBuildMotionFilterCrop(t *testing.T) {
 }
 
 func TestMotionCropNormalization(t *testing.T) {
-	c := MotionCrop{X: 0.9, Y: 0.9, W: 0.5, H: 0.5}.normalizedCrop()
-	if c.X != 0.9 || c.Y != 0.9 {
-		t.Fatalf("origin should be clamped not moved: %+v", c)
+	c, err := MotionCrop{X: 0.9, Y: 0.9, W: 0.5, H: 0.5}.normalizedCrop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.X != 0.5 || c.Y != 0.5 {
+		t.Fatalf("origin should shift to keep the span inside the frame: %+v", c)
 	}
 	if c.X+c.W > 1.0001 || c.Y+c.H > 1.0001 {
 		t.Fatalf("crop must stay inside the frame: %+v", c)
+	}
+	edge, err := MotionCrop{X: 1, Y: 0, W: 0.1, H: 0.5}.normalizedCrop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edge.X != 0.9 || edge.W != 0.1 {
+		t.Fatalf("edge crop should shift origin, not zero width: %+v", edge)
 	}
 	if !(MotionCrop{}).Normalized() {
 		t.Fatal("empty crop must report full frame")
@@ -78,6 +94,17 @@ func TestMergeMotionEvents(t *testing.T) {
 	// A single 0.5s sample at 2fps expands to exactly the minimum duration and is kept.
 	if events[1].StartSec != 2.5 || events[1].EndSec != 3.0 {
 		t.Fatalf("second event window wrong: %+v", events[1])
+	}
+}
+
+func TestResolveMotionDefaultsMinDuration(t *testing.T) {
+	d := ResolveMotionDefaults(MotionDetectOptions{})
+	if d.MinDurationSec != 0.5 {
+		t.Fatalf("omitted MinDurationSec should default to 0.5, got %v", d.MinDurationSec)
+	}
+	d = ResolveMotionDefaults(MotionDetectOptions{MinDurationSec: -1})
+	if d.MinDurationSec != 0 {
+		t.Fatalf("negative MinDurationSec should disable filtering, got %v", d.MinDurationSec)
 	}
 }
 

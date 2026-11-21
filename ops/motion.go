@@ -12,6 +12,7 @@ import (
 	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
 	"github.com/gtsteffaniak/go-ffmpeg/encode"
 	ffexec "github.com/gtsteffaniak/go-ffmpeg/exec"
+	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
 // MotionCrop restricts motion analysis to a rectangle of the frame.
@@ -29,10 +30,14 @@ func (c MotionCrop) Normalized() bool {
 	return c.W <= 0 || c.H <= 0
 }
 
-// normalizedCrop clamps the rectangle into 0–1 and applies a minimum size.
-func (c MotionCrop) normalizedCrop() MotionCrop {
+// ErrMotionCropInvalid is returned when a crop rectangle cannot fit inside the frame.
+var ErrMotionCropInvalid = fmt.Errorf("motion detect: crop rectangle is invalid or too small")
+
+// normalizedCrop clamps the rectangle into 0–1, shifts the origin when needed so
+// W×H stays inside the frame, and rejects zero-area crops that would silently drop the ROI.
+func (c MotionCrop) normalizedCrop() (MotionCrop, error) {
 	if c.Normalized() {
-		return MotionCrop{}
+		return MotionCrop{}, nil
 	}
 	x := clamp01(c.X)
 	y := clamp01(c.Y)
@@ -46,12 +51,15 @@ func (c MotionCrop) normalizedCrop() MotionCrop {
 		h = minSpan
 	}
 	if x+w > 1 {
-		w = 1 - x
+		x = math.Max(0, 1-w)
 	}
 	if y+h > 1 {
-		h = 1 - y
+		y = math.Max(0, 1-h)
 	}
-	return MotionCrop{X: x, Y: y, W: w, H: h}
+	if w < minSpan || h < minSpan || x+w > 1.000001 || y+h > 1.000001 {
+		return MotionCrop{}, ErrMotionCropInvalid
+	}
+	return MotionCrop{X: x, Y: y, W: w, H: h}, nil
 }
 
 func clamp01(v float64) float64 {
@@ -83,7 +91,8 @@ type MotionDetectOptions struct {
 	Threshold float64
 	// Crop limits analysis to a normalized rectangle (optional).
 	Crop MotionCrop
-	// MinDurationSec drops events shorter than this (default 0.5s).
+	// MinDurationSec drops events shorter than this (default 0.5s when omitted as zero).
+	// Values below zero disable the minimum-duration filter.
 	MinDurationSec float64
 	// MergeGapSec merges consecutive motion samples separated by at most this gap.
 	// Zero uses 1.5 sample intervals.
@@ -152,7 +161,10 @@ func ResolveMotionDefaults(opts MotionDetectOptions) MotionDefaults {
 		threshold = 2
 	}
 	minDur := opts.MinDurationSec
-	if minDur < 0 {
+	switch {
+	case minDur == 0:
+		minDur = 0.5
+	case minDur < 0:
 		minDur = 0
 	}
 	gap := opts.MergeGapSec
@@ -169,9 +181,13 @@ func ResolveMotionDefaults(opts MotionDetectOptions) MotionDefaults {
 }
 
 // BuildMotionFilter returns the -vf chain used for motion analysis.
-func BuildMotionFilter(defaults MotionDefaults, crop MotionCrop) string {
+func BuildMotionFilter(defaults MotionDefaults, crop MotionCrop) (string, error) {
 	parts := []string{fmt.Sprintf("fps=%s", formatMotionNumber(defaults.SampleFPS))}
-	if c := crop.normalizedCrop(); !c.Normalized() {
+	if !crop.Normalized() {
+		c, err := crop.normalizedCrop()
+		if err != nil {
+			return "", err
+		}
 		// Crop before scaling so the zone keeps as much detail as possible.
 		parts = append(parts, fmt.Sprintf(
 			"crop=iw*%s:ih*%s:iw*%s:ih*%s",
@@ -186,7 +202,21 @@ func BuildMotionFilter(defaults MotionDefaults, crop MotionCrop) string {
 		"signalstats",
 		"metadata=print:key=lavfi.signalstats.YAVG:file=-",
 	)
-	return strings.Join(parts, ",")
+	return strings.Join(parts, ","), nil
+}
+
+// MotionNeedsMediaDuration reports whether DetectMotion should ffprobe duration before running.
+// Live inputs and explicitly bounded windows (EndSec > 0) derive timing from samples instead.
+func MotionNeedsMediaDuration(opts MotionDetectOptions) bool {
+	if opts.DurationSec > 0 || opts.EndSec > 0 {
+		return false
+	}
+	switch opts.Input.StreamType {
+	case probe.StreamRTSP, probe.StreamHLS, probe.StreamHTTP:
+		return false
+	default:
+		return true
+	}
 }
 
 // formatMotionNumber renders a float without a trailing ".000000".
@@ -203,16 +233,36 @@ func DetectMotion(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 
 	defaults := ResolveMotionDefaults(opts)
 
+	if !opts.Crop.Normalized() {
+		if caps != nil && !caps.FilterAvailable("crop") {
+			return MotionResult{}, fmt.Errorf("motion detect: crop filter is required for ROI analysis but is unavailable")
+		}
+		if _, err := opts.Crop.normalizedCrop(); err != nil {
+			return MotionResult{}, err
+		}
+	}
+
+	if opts.EndSec > 0 && opts.EndSec <= opts.StartSec {
+		return MotionResult{}, fmt.Errorf("motion detect: EndSec must be greater than StartSec")
+	}
+
+	// Analysis uses software scale/format filters only; force software decode so
+	// hardware surfaces never reach the grayscale graph.
 	resolver := encode.NewResolver(caps)
-	decodeArgs, err := resolver.VideoDecoderArgs(opts.Decode)
+	decodeProf := opts.Decode
+	decodeProf.ForceSoftware = true
+	decodeArgs, err := resolver.VideoDecoderArgs(decodeProf)
 	if err != nil {
-		// Analysis always has a software fallback: motion detection does not need
-		// the requested hardware decoder, so run plain software decode instead.
 		decodeArgs = nil
 	}
 	var sel capabilities.DecoderSelection
 	if caps != nil {
-		sel, _ = resolver.ResolveDecoder(opts.Decode)
+		sel, _ = resolver.ResolveDecoder(decodeProf)
+	}
+
+	vf, err := BuildMotionFilter(defaults, opts.Crop)
+	if err != nil {
+		return MotionResult{}, err
 	}
 
 	args := []string{"-hide_banner", "-nostats"}
@@ -226,7 +276,7 @@ func DetectMotion(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 	if opts.EndSec > opts.StartSec {
 		args = append(args, "-t", formatMotionNumber(opts.EndSec-opts.StartSec))
 	}
-	args = append(args, "-vf", BuildMotionFilter(defaults, opts.Crop))
+	args = append(args, "-vf", vf)
 	args = appendCaptureOutputTuning(args)
 	args = append(args, "-f", "null", "-")
 
@@ -245,6 +295,11 @@ func DetectMotion(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 	samples := parseMotionSamples(res.Stdout)
 	if len(samples) == 0 {
 		samples = parseMotionSamples(res.Stderr)
+	}
+	if opts.StartSec > 0 {
+		for i := range samples {
+			samples[i].TimeSec += opts.StartSec
+		}
 	}
 
 	result := MotionResult{

@@ -188,6 +188,8 @@ func (detectMotionOp) Requirements() RequirementSet { return motionDetectRequire
 
 func motionDetectRequirements() RequirementSet {
 	return RequirementSet{
+		// crop is validated at runtime when a normalized ROI is set; full-frame analysis
+		// does not need crop to be present.
 		Filters:   []string{"fps", "scale", "format", "tblend", "signalstats", "metadata"},
 		Protocols: []string{"file", "tcp"},
 	}
