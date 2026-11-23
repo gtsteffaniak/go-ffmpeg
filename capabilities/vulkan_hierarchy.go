@@ -9,7 +9,10 @@ import (
 type VulkanEncoderMode string
 
 const (
-	VulkanEncoderOff      VulkanEncoderMode = ""
+	// VulkanEncoderOff disables Vulkan in the encoder hierarchy (explicit opt-out).
+	VulkanEncoderOff VulkanEncoderMode = "off"
+	// VulkanEncoderAuto (empty config) appends Vulkan after detection when an encode probe passed.
+	VulkanEncoderAuto VulkanEncoderMode = ""
 	VulkanEncoderFallback VulkanEncoderMode = "fallback"
 )
 
@@ -17,8 +20,10 @@ const (
 func ParseVulkanEncoderMode(raw string) (VulkanEncoderMode, error) {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	switch s {
-	case "", "off", "false", "disabled", "none":
+	case "off", "false", "disabled", "none":
 		return VulkanEncoderOff, nil
+	case "", "default", "auto":
+		return VulkanEncoderAuto, nil
 	case "fallback", "lowest", "on", "enabled", "true":
 		return VulkanEncoderFallback, nil
 	default:
@@ -43,4 +48,30 @@ func MergeVulkanHierarchy(hierarchy []AccelType, explicit []AccelType, mode Vulk
 	out := append([]AccelType(nil), hierarchy...)
 	out = append(out, AccelVulkan)
 	return out
+}
+
+// AppendWorkingVulkan adds AccelVulkan after vendor backends when any Vulkan
+// encoder passed functional detection and the caller did not opt out.
+func AppendWorkingVulkan(hierarchy []AccelType, explicit []AccelType, mode VulkanEncoderMode, caps *Capabilities) []AccelType {
+	if len(explicit) > 0 || mode == VulkanEncoderOff || caps == nil {
+		return hierarchy
+	}
+	if mode == VulkanEncoderFallback {
+		return hierarchy
+	}
+	for _, a := range hierarchy {
+		if a == AccelVulkan {
+			return hierarchy
+		}
+	}
+	for _, known := range KnownEncoders {
+		if !known.HW || known.Kind != "vulkan" {
+			continue
+		}
+		if enc, ok := caps.Encoders[known.Name]; ok && enc.Available {
+			out := append([]AccelType(nil), hierarchy...)
+			return append(out, AccelVulkan)
+		}
+	}
+	return hierarchy
 }

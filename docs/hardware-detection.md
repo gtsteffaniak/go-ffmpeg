@@ -89,6 +89,7 @@ Alpine and other families get generic `apk`/`install` hints derived from the sam
 | `va_driver_missing` | No `*_drv_video.so` | Install Intel/AMD/Mesa VA driver; set `LIBVA_DRIVER_NAME` |
 | `va_driver_init_failed` | VA init failed (often **-12**) | Driver/GPU mismatch, permissions, or static ffmpeg |
 | `nvidia_libs_missing` | CUDA/NVENC libs not found | Install driver; WSL: check `/usr/lib/wsl/lib`; containers: `--gpus all` + NVIDIA Container Toolkit |
+| `nvenc_driver_too_old` | FFmpeg needs a newer NVENC API than the installed NVIDIA driver provides | Update the NVIDIA driver or use an FFmpeg build matched to the driver |
 | `nvenc_unsupported_gpu` | This GPU generation has no NVENC unit for the codec (e.g. AV1 on Ampere) | Not a driver update; use another hardware codec or the software encoder |
 | `nvenc_session_limit` | Too many NVENC sessions | Reduce concurrent NVENC jobs |
 | `timeout` | Probe hung | Driver/GPU health, load |
@@ -118,7 +119,7 @@ These codes describe **startup detection**. A later transcode may still fail at 
 
 ### Vulkan selection
 
-By default Vulkan is **not** in the encoder hierarchy (vendor paths win). Set `Config.VulkanEncoder` to `"fallback"` to append Vulkan after VAAPI/NVENC/QSV/AMF/VideoToolbox, or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
+When Vulkan encode probes pass, Vulkan is appended after vendor backends and before software (unless `VulkanEncoder: off`). Set `VulkanEncoder` to `"fallback"` to include Vulkan in the hierarchy before probes (legacy), or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
 
 Failed Vulkan probes log a single `vulkan probe: h264_vulkan, hevc_vulkan, av1_vulkan: …` warn line (one line covering every affected encoder) with vendor-specific remediation (Mesa RADV/ANV versions, NVIDIA driver/capabilities, Docker device mounts). On WSL the hint explains the missing NVIDIA Vulkan ICD and points at NVENC rather than a render node.
 

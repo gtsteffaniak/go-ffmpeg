@@ -45,16 +45,22 @@ func ClassifyHWProbeFailure(stderr string, ctxErr error, encoderKind string) (HW
 		return HWProbeCodecUnsupported, HintForProbeCode(HWProbeCodecUnsupported)
 	case strings.Contains(lower, "cannot load libcuda") || strings.Contains(lower, "libnvidia-encode.so") && strings.Contains(lower, "cannot open shared object"):
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
+	case encoderKind == "nvenc" && (strings.Contains(lower, "nvenc api version") ||
+		strings.Contains(lower, "driver does not support the required nvenc") ||
+		(strings.Contains(lower, "minimum required") && strings.Contains(lower, "driver"))):
+		return HWProbeNVENCDriverTooOld, HintForProbeCode(HWProbeNVENCDriverTooOld)
+	case strings.Contains(lower, "nvencodeapi64.dll") && strings.Contains(lower, "cannot") ||
+		strings.Contains(lower, "nvcuda.dll") && (strings.Contains(lower, "cannot find") || strings.Contains(lower, "failed to load")):
+		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
 	case strings.Contains(lower, "openencodesessionex failed") && strings.Contains(lower, "unsupported device"):
 		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
 	// A GPU without an NVENC unit for the codec (for example AV1 on Ampere)
 	// reports "Codec not supported" plus "No capable devices found". This is a
 	// hardware capability limit, not a missing driver, so it must not be
 	// promoted to gpu_present_driver_missing by [ApplyHostRemediation].
-	case strings.Contains(lower, "no capable devices found") ||
-		(strings.Contains(lower, "codec not supported") && encoderKind == "nvenc"):
+	case encoderKind == "nvenc" && strings.Contains(lower, "codec not supported") && strings.Contains(lower, "no capable devices found"):
 		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
-	case strings.Contains(lower, "no nvenc capable devices") || strings.Contains(lower, "nvenc api version"):
+	case strings.Contains(lower, "no nvenc capable devices"):
 		return HWProbeNVENCUnsupported, HintForProbeCode(HWProbeNVENCUnsupported)
 	case strings.Contains(lower, "too many concurrent sessions") || strings.Contains(lower, "encoder sessions") && strings.Contains(lower, "exceeded"):
 		return HWProbeNVENCSessionLimit, HintForProbeCode(HWProbeNVENCSessionLimit)

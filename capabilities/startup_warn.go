@@ -80,7 +80,7 @@ func (c *Capabilities) startupWarnLines() []startupWarnLine {
 			continue
 		}
 		switch probe.Code {
-		case HWProbeGPUPresentDriverMissing:
+		case HWProbeGPUPresentDriverMissing, HWProbeNVENCDriverTooOld:
 			add(warnKindGPUPresent, "hardware probe: "+probe.Encoder+": "+probe.Hint)
 		}
 		// Capability limits (NVENC unsupported, hw_codec_unsupported) are not

@@ -41,6 +41,11 @@ const (
 	// Fix: install the NVIDIA driver stack; in containers use --gpus all and the NVIDIA toolkit.
 	HWProbeNvidiaLibsMissing HWProbeCode = "nvidia_libs_missing"
 
+	// HWProbeNVENCDriverTooOld means the NVIDIA driver is present but its NVENC API
+	// is below what this FFmpeg build requires. Fix: update the driver or use an
+	// FFmpeg build matched to the installed driver.
+	HWProbeNVENCDriverTooOld HWProbeCode = "nvenc_driver_too_old"
+
 	// HWProbeNVENCUnsupported means this GPU generation has no NVENC unit for the
 	// codec (for example AV1 on Ampere). It is a hardware capability limit, not a
 	// driver problem, so it is never promoted to [HWProbeGPUPresentDriverMissing].
@@ -135,6 +140,8 @@ func HintForProbeCode(code HWProbeCode) string {
 		return "VA driver failed to initialize (often error -12): verify driver matches GPU, render node access, and non-static ffmpeg"
 	case HWProbeNvidiaLibsMissing:
 		return "install NVIDIA driver userspace libraries (libcuda.so.1, libnvidia-encode.so.1); in containers use --gpus all with NVIDIA Container Toolkit"
+	case HWProbeNVENCDriverTooOld:
+		return "this FFmpeg build needs a newer NVIDIA driver (or use an FFmpeg build whose NVENC API matches the installed driver); the GPU supports NVENC"
 	case HWProbeNVENCUnsupported:
 		return "this GPU does not support NVENC for this codec (hardware generation limit, not a driver update); use another hardware codec or the software encoder"
 	case HWProbeCodecUnsupported:

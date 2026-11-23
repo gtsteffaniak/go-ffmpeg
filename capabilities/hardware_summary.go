@@ -76,7 +76,7 @@ func (c *Capabilities) HardwareSupportSummary() (line string, warn bool) {
 		switch {
 		case probe.Code == HWProbeCodecUnsupported || probe.Code == HWProbeNVENCUnsupported:
 			limited = appendUnique(limited, string(encoderCodecFamily(probe.Encoder)))
-		case probe.Code == HWProbeGPUPresentDriverMissing:
+		case probe.Code == HWProbeGPUPresentDriverMissing, probe.Code == HWProbeNVENCDriverTooOld:
 			label := vendorBackendLabel(probe.Accel)
 			if !driverBackends[label] {
 				driverBackends[label] = true

@@ -52,7 +52,9 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		// can list what the machine could do and switch devices at runtime.
 		opts.EncoderHierarchy = []AccelType{AccelNone}
 	}
-	gpuScoped := gpuChoice.Enabled && !gpuChoice.SoftwareOnly
+	// Functional probes stay unscoped: every compiled backend is smoke-tested
+	// regardless of device selection. Device chain and hierarchy steer preference only.
+	gpuScoped := false
 	hardwarePlat := platform.Detect()
 	caps.Platform = hardwarePlat
 	caps.HardwarePlatform = hardwarePlat
@@ -105,6 +107,10 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	PopulateDecoders(ctx, caps, runner, opts.SkipHWTests, hardwarePlat, hierarchy, gpuScoped)
 	PopulateFilters(ctx, caps, runner)
 	PopulateProtocols(ctx, caps, runner)
+
+	hierarchy = AppendWorkingVulkan(hierarchy, opts.EncoderHierarchy, opts.VulkanEncoder, caps)
+	caps.VulkanEncoderRequested = hierarchyIncludesAccel(hierarchy, AccelVulkan)
+	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
 	caps.BuildProfile = InferBuildProfile(caps.BuildConfig, caps.Encoders)
 	BuildCodecMatrix(caps, hierarchy)

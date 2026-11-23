@@ -13,8 +13,9 @@ var ffmpegLogPrefix = regexp.MustCompile(`^\[[^\]]*@ 0x[0-9a-fA-F]+\]\s*(\[[^\]]
 var tagSummaryLine = regexp.MustCompile(`^\[(hardware|driver|runtime|permission|compile)\]\s`)
 
 var probeDetailKeywords = []string{
-	"error", "fail", "unsupported", "not supported", "no usable", "cannot", "unable",
+	"error", "fail", "unsupported", "not supported", "does not support", "no usable", "cannot", "unable",
 	"permission denied", "no capable", "not found", "no such", "impossible to convert",
+	"api version", "openencodesession", "nvenc",
 }
 
 var probeDetailNoise = []string{
@@ -58,12 +59,38 @@ func compactProbeDetail(raw string, max int) string {
 		picked = summaries
 	}
 	if len(picked) == 0 {
-		for _, line := range strings.Split(raw, "\n") {
-			line = strings.TrimSpace(ffmpegLogPrefix.ReplaceAllString(strings.TrimSpace(line), ""))
-			if line != "" {
+		lines := strings.Split(raw, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(ffmpegLogPrefix.ReplaceAllString(strings.TrimSpace(lines[i]), ""))
+			if line == "" {
+				continue
+			}
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "input #") && strings.Contains(lower, "lavfi") {
+				continue
+			}
+			if containsAny(lower, probeDetailKeywords) && !containsAny(lower, probeDetailNoise) {
 				picked = append(picked, line)
 				break
 			}
+		}
+	}
+	if len(picked) == 0 {
+		lines := strings.Split(raw, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(ffmpegLogPrefix.ReplaceAllString(strings.TrimSpace(lines[i]), ""))
+			if line == "" {
+				continue
+			}
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "input #") && strings.Contains(lower, "lavfi") {
+				continue
+			}
+			if containsAny(lower, probeDetailNoise) {
+				continue
+			}
+			picked = append(picked, line)
+			break
 		}
 	}
 	return cutAtWord(strings.Join(picked, "; "), max)
