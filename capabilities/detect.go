@@ -46,6 +46,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	caps.FFprobeVersion = ParseFFprobeVersion(probeVerRes.Stdout)
 
 	gpuChoice := opts.GPU
+	explicitHierarchy := append([]AccelType(nil), opts.EncoderHierarchy...)
 	if gpuChoice.SoftwareOnly && len(opts.EncoderHierarchy) == 0 {
 		// Software selection only steers which encoder is preferred. Hardware
 		// backends are still smoke-tested (unless SkipHWTests is set) so hosts
@@ -98,7 +99,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 		hierarchyGPU = platform.GPUChoice{AutoSelect: true}
 	}
 	hierarchy := ResolveEncoderHierarchy(opts.EncoderHierarchy, opts.EncoderPreference, hierarchyGPU, hardwarePlat)
-	hierarchy = MergeVulkanHierarchy(hierarchy, opts.EncoderHierarchy, opts.VulkanEncoder)
+	hierarchy = MergeVulkanHierarchy(hierarchy, explicitHierarchy, opts.VulkanEncoder)
 	caps.VulkanEncoderRequested = hierarchyIncludesAccel(hierarchy, AccelVulkan)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
@@ -108,7 +109,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	PopulateFilters(ctx, caps, runner)
 	PopulateProtocols(ctx, caps, runner)
 
-	hierarchy = AppendWorkingVulkan(hierarchy, opts.EncoderHierarchy, opts.VulkanEncoder, caps)
+	hierarchy = AppendWorkingVulkan(hierarchy, explicitHierarchy, opts.VulkanEncoder, caps)
 	caps.VulkanEncoderRequested = hierarchyIncludesAccel(hierarchy, AccelVulkan)
 	caps.EncoderHierarchy = append([]AccelType(nil), hierarchy...)
 
@@ -118,7 +119,7 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	if err := ApplyDeviceSelection(caps, hierarchy, opts.DeviceChain, gpuChoice); err != nil {
 		return nil, err
 	}
-	if len(opts.EncoderHierarchy) == 0 {
+	if len(explicitHierarchy) == 0 {
 		// The resolved (non-explicit) hierarchy reports what this hardware can
 		// actually run; selection already gates on availability so this only
 		// scopes the stored/displayed order.

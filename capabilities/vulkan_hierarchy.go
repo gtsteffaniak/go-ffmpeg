@@ -12,7 +12,7 @@ const (
 	// VulkanEncoderOff disables Vulkan in the encoder hierarchy (explicit opt-out).
 	VulkanEncoderOff VulkanEncoderMode = "off"
 	// VulkanEncoderAuto (empty config) appends Vulkan after detection when an encode probe passed.
-	VulkanEncoderAuto VulkanEncoderMode = ""
+	VulkanEncoderAuto     VulkanEncoderMode = ""
 	VulkanEncoderFallback VulkanEncoderMode = "fallback"
 )
 
@@ -69,9 +69,31 @@ func AppendWorkingVulkan(hierarchy []AccelType, explicit []AccelType, mode Vulka
 			continue
 		}
 		if enc, ok := caps.Encoders[known.Name]; ok && enc.Available {
-			out := append([]AccelType(nil), hierarchy...)
-			return append(out, AccelVulkan)
+			return insertVulkanBeforeAccelNone(hierarchy)
 		}
 	}
 	return hierarchy
+}
+
+// insertVulkanBeforeAccelNone appends Vulkan after vendor backends and before software.
+func insertVulkanBeforeAccelNone(hierarchy []AccelType) []AccelType {
+	for _, a := range hierarchy {
+		if a == AccelVulkan {
+			return hierarchy
+		}
+	}
+	out := make([]AccelType, 0, len(hierarchy)+1)
+	for _, a := range hierarchy {
+		if a == AccelNone {
+			out = append(out, AccelVulkan)
+		}
+		if a == AccelVulkan {
+			continue
+		}
+		out = append(out, a)
+	}
+	if len(out) == len(hierarchy) {
+		out = append(out, AccelVulkan)
+	}
+	return out
 }

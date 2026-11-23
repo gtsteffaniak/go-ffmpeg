@@ -65,21 +65,24 @@ func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []
 	var attempts []DeviceCodecAttempt
 	for _, dev := range devices {
 		if dev.SoftwareOnly {
-			if sel, att := tryVulkanEncode(caps, codec, deviceLabel(dev), globalHierarchy); sel.Encoder != "" {
+			sel, att := tryVulkanEncode(caps, codec, deviceLabel(dev), globalHierarchy)
+			if att.Encoder != "" {
 				attempts = append(attempts, att)
+			}
+			if sel.Encoder != "" {
 				return sel, attempts
 			}
-			att := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
+			swAtt := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
 			for _, sw := range SoftwareFallback(codec) {
 				if caps.EncoderAvailable(sw) {
-					att.Encoder = sw
-					att.Selected = true
-					attempts = append(attempts, att)
+					swAtt.Encoder = sw
+					swAtt.Selected = true
+					attempts = append(attempts, swAtt)
 					return EncoderSelection{Encoder: sw, Accel: AccelNone, Kind: encoderKind(sw)}, attempts
 				}
 			}
-			att.Reason = "no software encoder available"
-			attempts = append(attempts, att)
+			swAtt.Reason = "no software encoder available"
+			attempts = append(attempts, swAtt)
 			continue
 		}
 		h := HierarchyForGPU(dev.Vendor, caps.HardwarePlatform)
@@ -117,8 +120,11 @@ func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []
 			Reason: fmt.Sprintf("no working encoder for %s on device", codec),
 		})
 	}
-	if sel, att := tryVulkanEncode(caps, codec, "Vulkan", globalHierarchy); sel.Encoder != "" {
+	sel, att := tryVulkanEncode(caps, codec, "Vulkan", globalHierarchy)
+	if att.Encoder != "" {
 		attempts = append(attempts, att)
+	}
+	if sel.Encoder != "" {
 		return sel, attempts
 	}
 	return EncoderSelection{}, attempts
