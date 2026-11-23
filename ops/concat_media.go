@@ -202,15 +202,15 @@ func ConcatMedia(ctx context.Context, runner *ffexec.Runner, caps *capabilities.
 		}
 		absInputs = append(absInputs, abs)
 	}
+	listContent, err := BuildConcatList(absInputs)
+	if err != nil {
+		return plan, err
+	}
 	list, err := os.CreateTemp(filepath.Dir(opts.OutputPath), ".concat-*.txt")
 	if err != nil {
 		return plan, fmt.Errorf("concat media: create list: %w", err)
 	}
 	defer os.Remove(list.Name())
-	listContent, err := BuildConcatList(absInputs)
-	if err != nil {
-		return plan, err
-	}
 	if _, err := list.WriteString(listContent); err != nil {
 		list.Close()
 		return plan, fmt.Errorf("concat media: write list: %w", err)
