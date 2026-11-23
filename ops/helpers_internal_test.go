@@ -14,6 +14,19 @@ func TestBitDepthFromPixFmt(t *testing.T) {
 	}
 }
 
+func TestValidateConcatListPath(t *testing.T) {
+	t.Parallel()
+	if err := validateConcatListPath("/var/data/clip.mp4"); err != nil {
+		t.Fatalf("normal path: %v", err)
+	}
+	if err := validateConcatListPath("/data/it'\\''s fine.mp4"); err != nil {
+		t.Fatalf("quoted-safe path: %v", err)
+	}
+	if err := validateConcatListPath("bad\nline"); err == nil {
+		t.Fatal("expected newline to be rejected")
+	}
+}
+
 func TestValidateConcatOptions(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

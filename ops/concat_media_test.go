@@ -58,10 +58,34 @@ func TestDecideConcatPlan(t *testing.T) {
 
 func TestBuildConcatListEscapesQuotes(t *testing.T) {
 	t.Parallel()
-	got := ops.BuildConcatList([]string{"/data/a.mp4", "/data/it's here.mp4"})
+	got, err := ops.BuildConcatList([]string{"/data/a.mp4", "/data/it's here.mp4"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "file '/data/a.mp4'\nfile '/data/it'\\''s here.mp4'\n"
 	if got != want {
 		t.Fatalf("list = %q, want %q", got, want)
+	}
+}
+
+func TestBuildConcatListRejectsControlCharacters(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"newline", "/data/evil\ninjected.mp4"},
+		{"carriage return", "/data/evil\rinjected.mp4"},
+		{"null", "/data/evil\x00injected.mp4"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ops.BuildConcatList([]string{tc.path})
+			if err == nil {
+				t.Fatal("expected error for control character in path")
+			}
+		})
 	}
 }
 
