@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- NVENC failures from an FFmpeg build that requires a newer driver API classify as `nvenc_driver_too_old` (not `nvenc_unsupported_gpu`); probe detail prefers the NVENC API mismatch line over the lavfi testsrc banner.
+- Detection smoke tests stay unscoped: all hardware backends are probed regardless of GPU selector; failed probes keep their real codes instead of `skipped: outside selected device`.
+- When any Vulkan encode probe passes, Vulkan is appended to the encoder hierarchy (before software) unless `VulkanEncoder: off`. Device selection tries Vulkan before software on the chain.
+- Empty `VulkanEncoder` config means auto-include working Vulkan; only `off` opts out.
+
 ### Added
 
 - `SegmentRecord` intent API: `SegmentRecordOptions.Mode` (`RecordAuto`, `RecordCopy`, `RecordTranscode`; zero value stays `RecordTranscode`), `AlignSegmentsToClock` (wall-clock segment boundaries, duration must divide 24h), `Fragmented` (playable in-progress segments), `AudioCodec` (`""`, `aac`, `copy`), `AudioBitrate`, `HardwareDecode`, and `OnPlan` callback receiving a `SegmentPlan` that explains each copy/transcode decision. `Profile.Codec = encode.CodecCopy` still requests a video copy. `ExtraInputArgs` and `ExtraOutputArgs` remain as escape hatches.

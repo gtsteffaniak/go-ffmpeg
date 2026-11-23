@@ -9,6 +9,22 @@ import (
 
 // AV1 on Ampere (and any codec without an NVENC unit) must not be promoted to
 // gpu_present_driver_missing, even though an NVIDIA GPU is present on WSL.
+func TestClassifyNVENCDriverTooOldNotPromoted(t *testing.T) {
+	stderr := "Driver does not support the required nvenc API version. Required: 13.0 Found: 12.0"
+	code, hint := ClassifyHWProbeFailure(stderr, nil, "nvenc")
+	if code != HWProbeNVENCDriverTooOld {
+		t.Fatalf("code=%s want %s", code, HWProbeNVENCDriverTooOld)
+	}
+	host := DetectionHost{Presence: platform.GPUPresence{NVIDIA: true}}
+	finalCode, finalHint := ApplyHostRemediation(host, "nvenc", FFmpegBinaryInfo{Kind: FFmpegLinkDynamic}, code, hint)
+	if finalCode != HWProbeNVENCDriverTooOld {
+		t.Fatalf("final code=%s want %s", finalCode, HWProbeNVENCDriverTooOld)
+	}
+	if finalHint != hint {
+		t.Fatalf("hint changed")
+	}
+}
+
 func TestClassifyAndRemediateAV1UnsupportedNotPromoted(t *testing.T) {
 	code, hint := ClassifyHWProbeFailure("Codec not supported\nNo capable devices found", nil, "nvenc")
 	if code != HWProbeNVENCUnsupported {
@@ -63,6 +79,12 @@ func TestClassifyHWProbeFailure(t *testing.T) {
 			stderr: "OpenEncodeSessionEx failed: unsupported device (2)",
 			kind:   "nvenc",
 			want:   HWProbeNVENCUnsupported,
+		},
+		{
+			name:   "nvenc api too new for driver",
+			stderr: "Driver does not support the required nvenc API version. Required: 13.0 Found: 12.0",
+			kind:   "nvenc",
+			want:   HWProbeNVENCDriverTooOld,
 		},
 		{
 			name:   "nvenc sessions",

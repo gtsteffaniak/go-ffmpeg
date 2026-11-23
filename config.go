@@ -49,8 +49,8 @@ type Config struct {
 	EncoderPreference string
 
 	// VulkanEncoder controls Vulkan video encode in the default hierarchy.
-	// Empty or "off": Vulkan is only used when listed in EncoderHierarchy.
-	// "fallback": append Vulkan after vendor backends (lowest HW priority).
+	// Empty (default): append Vulkan after vendor backends when an encode probe passed.
+	// "off": do not use Vulkan encoders. "fallback": pre-append Vulkan before probes (legacy).
 	VulkanEncoder string
 
 	// GPUSelector selects a single GPU when set to GPUIntegrated, GPUDiscrete, GPUDevice, etc.

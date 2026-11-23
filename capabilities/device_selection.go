@@ -65,17 +65,24 @@ func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []
 	var attempts []DeviceCodecAttempt
 	for _, dev := range devices {
 		if dev.SoftwareOnly {
-			att := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
+			sel, att := tryVulkanEncode(caps, codec, deviceLabel(dev), globalHierarchy)
+			if att.Encoder != "" {
+				attempts = append(attempts, att)
+			}
+			if sel.Encoder != "" {
+				return sel, attempts
+			}
+			swAtt := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
 			for _, sw := range SoftwareFallback(codec) {
 				if caps.EncoderAvailable(sw) {
-					att.Encoder = sw
-					att.Selected = true
-					attempts = append(attempts, att)
+					swAtt.Encoder = sw
+					swAtt.Selected = true
+					attempts = append(attempts, swAtt)
 					return EncoderSelection{Encoder: sw, Accel: AccelNone, Kind: encoderKind(sw)}, attempts
 				}
 			}
-			att.Reason = "no software encoder available"
-			attempts = append(attempts, att)
+			swAtt.Reason = "no software encoder available"
+			attempts = append(attempts, swAtt)
 			continue
 		}
 		h := HierarchyForGPU(dev.Vendor, caps.HardwarePlatform)
@@ -113,7 +120,39 @@ func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []
 			Reason: fmt.Sprintf("no working encoder for %s on device", codec),
 		})
 	}
+	sel, att := tryVulkanEncode(caps, codec, "Vulkan", globalHierarchy)
+	if att.Encoder != "" {
+		attempts = append(attempts, att)
+	}
+	if sel.Encoder != "" {
+		return sel, attempts
+	}
 	return EncoderSelection{}, attempts
+}
+
+func tryVulkanEncode(caps *Capabilities, codec VideoCodec, device string, hierarchy []AccelType) (EncoderSelection, DeviceCodecAttempt) {
+	if !hierarchyIncludesAccel(hierarchy, AccelVulkan) {
+		return EncoderSelection{}, DeviceCodecAttempt{}
+	}
+	name := CodecEncoderMap(codec, AccelVulkan)
+	if name == "" {
+		return EncoderSelection{}, DeviceCodecAttempt{}
+	}
+	att := DeviceCodecAttempt{Codec: codec, Device: device, Encoder: name}
+	if !caps.EncoderAvailable(name) {
+		if enc, ok := caps.Encoders[name]; ok && enc.TestError != "" {
+			att.Reason = enc.TestError
+		} else {
+			att.Reason = "encoder unavailable"
+		}
+		return EncoderSelection{}, att
+	}
+	att.Selected = true
+	sel := EncoderSelection{Encoder: name, Accel: AccelVulkan, Kind: encoderKind(name)}
+	if fb := firstSoftwareName(caps, codec); fb != "" && caps.AllowSoftware {
+		sel.Fallback = fb
+	}
+	return sel, att
 }
 
 func deviceLabel(c platform.GPUChoice) string {
