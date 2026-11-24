@@ -9,6 +9,10 @@
 - When any Vulkan encode probe passes, Vulkan is appended to the encoder hierarchy (before software) unless `VulkanEncoder: off`. Device selection tries Vulkan before software on the chain.
 - Empty `VulkanEncoder` config means auto-include working Vulkan; only `off` opts out.
 
+### Fixed
+
+- NVENC prerequisite check no longer reports `nvidia_libs_missing` inside a container on a WSL host just because `/usr/lib/wsl/lib` is absent. The NVIDIA Container Toolkit injects the libraries into the multiarch lib dir, so they are now resolved through the loader cache instead.
+
 ### Added
 
 - `SegmentRecord` intent API: `SegmentRecordOptions.Mode` (`RecordAuto`, `RecordCopy`, `RecordTranscode`; zero value stays `RecordTranscode`), `AlignSegmentsToClock` (wall-clock segment boundaries, duration must divide 24h), `Fragmented` (playable in-progress segments), `AudioCodec` (`""`, `aac`, `copy`), `AudioBitrate`, `HardwareDecode`, and `OnPlan` callback receiving a `SegmentPlan` that explains each copy/transcode decision. `Profile.Codec = encode.CodecCopy` still requests a video copy. `ExtraInputArgs` and `ExtraOutputArgs` remain as escape hatches.

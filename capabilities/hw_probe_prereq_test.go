@@ -91,6 +91,52 @@ func TestPrereqNvidiaLibsViaLDLibraryPath(t *testing.T) {
 	}
 }
 
+// A container on a WSL host (Docker Desktop + NVIDIA Container Toolkit) sees
+// /proc/version as WSL and has /dev/dxg, but the toolkit injects the NVIDIA
+// libraries into the multiarch lib dir and /usr/lib/wsl/lib does not exist.
+func TestPrereqNvidiaLibsWSLContainerViaLdconfig(t *testing.T) {
+	deps := prereqDeps{
+		Stat: func(name string) (os.FileInfo, error) {
+			if name == "/dev/dxg" {
+				return nil, nil
+			}
+			return nil, os.ErrNotExist
+		},
+		Glob:     func(string) ([]string, error) { return nil, nil },
+		LookPath: func(string) (string, error) { return "", os.ErrNotExist },
+		Ldconfig: func() ([]byte, error) {
+			return []byte("\tlibcuda.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libcuda.so.1\n" +
+				"\tlibnvidia-encode.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1\n"), nil
+		},
+		Env: func(string) string { return "" },
+	}
+	plat := platform.Info{OS: "linux", NVIDIA: true, WSL: true}
+	code, hint := checkNVENCPrereq(plat, deps)
+	if code != HWProbeOK {
+		t.Fatalf("code=%s hint=%q want ok", code, hint)
+	}
+}
+
+func TestPrereqNvidiaLibsWSLMissingEverywhere(t *testing.T) {
+	deps := prereqDeps{
+		Stat: func(name string) (os.FileInfo, error) {
+			if name == "/dev/dxg" {
+				return nil, nil
+			}
+			return nil, os.ErrNotExist
+		},
+		Glob:     func(string) ([]string, error) { return nil, nil },
+		LookPath: func(string) (string, error) { return "", os.ErrNotExist },
+		Ldconfig: func() ([]byte, error) { return []byte(""), nil },
+		Env:      func(string) string { return "" },
+	}
+	plat := platform.Info{OS: "linux", NVIDIA: true, WSL: true}
+	code, _ := checkNVENCPrereq(plat, deps)
+	if code != HWProbeNvidiaLibsMissing {
+		t.Fatalf("code=%s want %s", code, HWProbeNvidiaLibsMissing)
+	}
+}
+
 func TestPrereqNvidiaLibsMissing(t *testing.T) {
 	deps := defaultPrereqDeps()
 	deps.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
