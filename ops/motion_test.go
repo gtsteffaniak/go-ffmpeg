@@ -1,8 +1,13 @@
 package ops
 
 import (
+	"context"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/gtsteffaniak/go-ffmpeg/capabilities"
+	"github.com/gtsteffaniak/go-ffmpeg/probe"
 )
 
 func TestBuildMotionFilterFullFrame(t *testing.T) {
@@ -105,6 +110,46 @@ func TestResolveMotionDefaultsMinDuration(t *testing.T) {
 	d = ResolveMotionDefaults(MotionDetectOptions{MinDurationSec: -1})
 	if d.MinDurationSec != 0 {
 		t.Fatalf("negative MinDurationSec should disable filtering, got %v", d.MinDurationSec)
+	}
+}
+
+func TestOffsetMotionSamplesRestoresSeekOffset(t *testing.T) {
+	samples := []MotionSample{{TimeSec: 3, Score: 9}}
+	offsetMotionSamples(samples, 60)
+	if samples[0].TimeSec != 63 {
+		t.Fatalf("sample at input time 63 should keep its timestamp, got %v", samples[0].TimeSec)
+	}
+	offsetMotionSamples(samples, 0)
+	if samples[0].TimeSec != 63 {
+		t.Fatalf("zero StartSec must leave timestamps unchanged, got %v", samples[0].TimeSec)
+	}
+}
+
+func TestDetectMotionRejectsReversedWindow(t *testing.T) {
+	opts := MotionDetectOptions{
+		Input:       InputSource{URL: "/v.mp4", StreamType: probe.StreamFile},
+		StartSec:    60,
+		EndSec:      30,
+		DurationSec: 120,
+	}
+	if _, err := DetectMotion(context.Background(), nil, nil, opts); err == nil {
+		t.Fatal("EndSec below StartSec must be rejected, not analyzed as open-ended")
+	}
+	opts.EndSec = 60
+	if _, err := DetectMotion(context.Background(), nil, nil, opts); err == nil {
+		t.Fatal("EndSec equal to StartSec must be rejected")
+	}
+}
+
+func TestDetectMotionRequiresCropForROI(t *testing.T) {
+	caps := &capabilities.Capabilities{Filters: map[string]bool{"scale": true}}
+	opts := MotionDetectOptions{
+		Input: InputSource{URL: "/v.mp4", StreamType: probe.StreamFile},
+		Crop:  MotionCrop{X: 0.1, Y: 0.1, W: 0.5, H: 0.5},
+	}
+	_, err := DetectMotion(context.Background(), nil, caps, opts)
+	if err == nil || !strings.Contains(err.Error(), "crop filter is required") {
+		t.Fatalf("ROI analysis without crop filter must fail with a missing-filter error, got %v", err)
 	}
 }
 

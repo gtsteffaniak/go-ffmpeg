@@ -296,11 +296,7 @@ func DetectMotion(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 	if len(samples) == 0 {
 		samples = parseMotionSamples(res.Stderr)
 	}
-	if opts.StartSec > 0 {
-		for i := range samples {
-			samples[i].TimeSec += opts.StartSec
-		}
-	}
+	offsetMotionSamples(samples, opts.StartSec)
 
 	result := MotionResult{
 		Samples:     len(samples),
@@ -322,6 +318,17 @@ func DetectMotion(ctx context.Context, runner *ffexec.Runner, caps *capabilities
 	}
 	result.Events = mergeMotionEvents(samples, defaults)
 	return result, nil
+}
+
+// offsetMotionSamples restores the input-seek offset. Input-side -ss rebases
+// timestamps to zero, so samples must be shifted back to input time before merging.
+func offsetMotionSamples(samples []MotionSample, startSec float64) {
+	if startSec <= 0 {
+		return
+	}
+	for i := range samples {
+		samples[i].TimeSec += startSec
+	}
 }
 
 // parseMotionSamples reads `pts_time:` / `lavfi.signalstats.YAVG=` pairs from
