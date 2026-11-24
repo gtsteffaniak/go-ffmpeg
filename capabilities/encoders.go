@@ -56,7 +56,7 @@ var KnownEncoders = []struct {
 // KnownFilters lists filters required by library operations.
 var KnownFilters = []string{
 	"scale", "scale_vt", "scale_vulkan", "scale_vaapi", "scale_cuda", "scale_qsv", "format", "hwupload", "hwdownload", "segment", "concat", "tile", "select",
-	"transpose", "hflip", "vflip", "fps", "setpts",
+	"transpose", "hflip", "vflip", "fps", "setpts", "crop", "tblend", "signalstats", "metadata",
 }
 
 // KnownProtocols lists protocols required by library operations.
