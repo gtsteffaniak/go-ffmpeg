@@ -166,9 +166,11 @@ func checkNVENCPrereq(plat platform.Info, deps prereqDeps) (HWProbeCode, string)
 		if _, err := deps.Stat("/dev/dxg"); err != nil {
 			return HWProbeNoDevice, "WSL NVIDIA encode requires /dev/dxg (wsl --update, GPU-PV enabled)"
 		}
-		if _, err := deps.Stat("/usr/lib/wsl/lib"); err != nil {
-			return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
-		}
+		// Do not require /usr/lib/wsl/lib here. On a WSL host the libraries live
+		// there and libResolvable checks that path explicitly. Inside a container
+		// on a WSL host (Docker Desktop + NVIDIA Container Toolkit) the toolkit
+		// injects them into the multiarch lib dir and updates the ld cache, and
+		// /usr/lib/wsl/lib does not exist. Resolve the libraries instead.
 	}
 	if !libResolvable(deps, "libcuda.so.1") || !libResolvable(deps, "libnvidia-encode.so.1") {
 		return HWProbeNvidiaLibsMissing, HintForProbeCode(HWProbeNvidiaLibsMissing)
