@@ -41,6 +41,28 @@ func TestParseVulkanEncoderMode(t *testing.T) {
 	if err != nil || mode != capabilities.VulkanEncoderAuto {
 		t.Fatalf("empty mode=%v err=%v want auto", mode, err)
 	}
+	mode, err = capabilities.ParseVulkanEncoderMode("on")
+	if err != nil || mode != capabilities.VulkanEncoderFallback {
+		t.Fatalf("on mode=%v err=%v want fallback", mode, err)
+	}
+	mode, err = capabilities.ParseVulkanEncoderMode("auto")
+	if err != nil || mode != capabilities.VulkanEncoderAuto {
+		t.Fatalf("auto mode=%v err=%v want auto", mode, err)
+	}
+}
+
+func TestMergeVulkanHierarchyInsertsBeforeAccelNone(t *testing.T) {
+	base := []capabilities.AccelType{capabilities.AccelNone}
+	got := capabilities.MergeVulkanHierarchy(base, nil, capabilities.VulkanEncoderFallback)
+	want := []capabilities.AccelType{capabilities.AccelVulkan, capabilities.AccelNone}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
 }
 
 func TestAppendWorkingVulkanWhenProbePassed(t *testing.T) {
@@ -56,7 +78,9 @@ func TestAppendWorkingVulkanWhenProbePassed(t *testing.T) {
 func TestAppendWorkingVulkanBeforeAccelNoneSoftwareOnly(t *testing.T) {
 	caps := capabilities.NewCapabilities()
 	caps.Encoders["h264_vulkan"] = capabilities.EncoderCapability{Name: "h264_vulkan", Kind: "vulkan", Available: true, Tested: true}
-	// Synthesized software-only preference, but no caller-supplied explicit hierarchy.
+	// Helper behavior with an empty explicit hierarchy: Auto still inserts
+	// Vulkan before software. Detect treats a software-only GPU choice as
+	// explicit in Auto, so this path is not used for "CPU (software)".
 	base := []capabilities.AccelType{capabilities.AccelNone}
 	got := capabilities.AppendWorkingVulkan(base, nil, capabilities.VulkanEncoderAuto, caps)
 	want := []capabilities.AccelType{capabilities.AccelVulkan, capabilities.AccelNone}

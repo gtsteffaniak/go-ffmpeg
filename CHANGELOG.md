@@ -6,11 +6,12 @@
 
 - NVENC failures from an FFmpeg build that requires a newer driver API classify as `nvenc_driver_too_old` (not `nvenc_unsupported_gpu`); probe detail prefers the NVENC API mismatch line over the lavfi testsrc banner.
 - Detection smoke tests stay unscoped: all hardware backends are probed regardless of GPU selector; failed probes keep their real codes instead of `skipped: outside selected device`.
-- When any Vulkan encode probe passes, Vulkan is appended to the encoder hierarchy (before software) unless `VulkanEncoder: off`. Device selection tries Vulkan before software on the chain.
-- Empty `VulkanEncoder` config means auto-include working Vulkan; only `off` opts out.
+- When any Vulkan encode probe passes, Vulkan is appended to the encoder hierarchy (before software) unless `VulkanEncoder: off` or the selected device is software-only. Device selection tries Vulkan before software on the chain when Vulkan is in the hierarchy.
+- Empty `VulkanEncoder` config means auto-include working Vulkan on GPU devices; only `off` opts out. Software-only selections stay on software encoders unless `VulkanEncoder` is explicitly `fallback` or `on`.
 
 ### Fixed
 
+- Choosing software-only ("CPU (software)") with the default `VulkanEncoder` auto mode no longer prepends Vulkan or selects `h264_vulkan`. Auto treats software-only as an explicit software choice. `VulkanEncoder: "fallback"` / `"on"` still includes Vulkan as the lowest-priority hardware backend.
 - NVENC prerequisite check no longer reports `nvidia_libs_missing` inside a container on a WSL host just because `/usr/lib/wsl/lib` is absent. The NVIDIA Container Toolkit injects the libraries into the multiarch lib dir, so they are now resolved through the loader cache instead.
 
 ### Added

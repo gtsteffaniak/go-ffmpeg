@@ -83,3 +83,31 @@ func TestBuildDetectOptionsTypedIGPU(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildDetectOptionsSoftwareOnlyLeavesHierarchyToDetect(t *testing.T) {
+	svc := &Service{cfg: Config{GPU: "software"}}
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.GPU.SoftwareOnly {
+		t.Fatalf("opts = %+v", opts)
+	}
+	if len(opts.EncoderHierarchy) != 0 {
+		t.Fatalf("software-only must not pre-set EncoderHierarchy, got %v", opts.EncoderHierarchy)
+	}
+}
+
+func TestBuildDetectOptionsKeepsExplicitSoftwareHierarchy(t *testing.T) {
+	svc := &Service{cfg: Config{
+		GPU:              "software",
+		EncoderHierarchy: []capabilities.AccelType{capabilities.AccelNone},
+	}}
+	opts, err := svc.buildDetectOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opts.EncoderHierarchy) != 1 || opts.EncoderHierarchy[0] != capabilities.AccelNone {
+		t.Fatalf("encoder hierarchy = %v, want [none]", opts.EncoderHierarchy)
+	}
+}

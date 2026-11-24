@@ -65,12 +65,17 @@ func selectEncodeForDeviceChain(caps *Capabilities, codec VideoCodec, devices []
 	var attempts []DeviceCodecAttempt
 	for _, dev := range devices {
 		if dev.SoftwareOnly {
-			sel, att := tryVulkanEncode(caps, codec, deviceLabel(dev), globalHierarchy)
-			if att.Encoder != "" {
-				attempts = append(attempts, att)
-			}
-			if sel.Encoder != "" {
-				return sel, attempts
+			// Only try Vulkan when the hierarchy actually includes it
+			// (explicit fallback/on, or Auto on a GPU chain). Auto plus a
+			// software-only selection keeps [AccelNone], so this is skipped.
+			if hierarchyIncludesAccel(globalHierarchy, AccelVulkan) {
+				sel, att := tryVulkanEncode(caps, codec, deviceLabel(dev), globalHierarchy)
+				if att.Encoder != "" {
+					attempts = append(attempts, att)
+				}
+				if sel.Encoder != "" {
+					return sel, attempts
+				}
 			}
 			swAtt := DeviceCodecAttempt{Codec: codec, Device: deviceLabel(dev)}
 			for _, sw := range SoftwareFallback(codec) {

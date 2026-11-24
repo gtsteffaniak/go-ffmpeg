@@ -48,10 +48,17 @@ func Detect(ctx context.Context, runner *ffexec.Runner, opts DetectOptions) (*Ca
 	gpuChoice := opts.GPU
 	explicitHierarchy := append([]AccelType(nil), opts.EncoderHierarchy...)
 	if gpuChoice.SoftwareOnly && len(opts.EncoderHierarchy) == 0 {
-		// Software selection only steers which encoder is preferred. Hardware
-		// backends are still smoke-tested (unless SkipHWTests is set) so hosts
-		// can list what the machine could do and switch devices at runtime.
+		// Software-only is an explicit encoder preference: keep AccelNone.
+		// Hardware backends are still smoke-tested (unless SkipHWTests is set)
+		// so hosts can list what the machine could do and switch at runtime.
 		opts.EncoderHierarchy = []AccelType{AccelNone}
+		// Auto/Off must treat this synthesized [none] as explicit, or
+		// AppendWorkingVulkan prepends Vulkan and "CPU (software)" silently
+		// encodes on the GPU. VulkanEncoder fallback/on still appends Vulkan
+		// ("fallback", "on", "enabled", and "true" all parse as Fallback).
+		if opts.VulkanEncoder != VulkanEncoderFallback {
+			explicitHierarchy = []AccelType{AccelNone}
+		}
 	}
 	// Functional probes stay unscoped: every compiled backend is smoke-tested
 	// regardless of device selection. Device chain and hierarchy steer preference only.

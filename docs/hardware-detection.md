@@ -119,7 +119,7 @@ These codes describe **startup detection**. A later transcode may still fail at 
 
 ### Vulkan selection
 
-When Vulkan encode probes pass, Vulkan is appended after vendor backends and before software (unless `VulkanEncoder: off`). Set `VulkanEncoder` to `"fallback"` to include Vulkan in the hierarchy before probes (legacy), or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
+When Vulkan encode probes pass, Vulkan is appended after vendor backends and before software, unless `VulkanEncoder: off` or the selected device is software-only. A software-only / "CPU (software)" selection keeps a software-only hierarchy in Auto mode so encode does not silently move to `h264_vulkan`. Set `VulkanEncoder` to `"fallback"` or `"on"` to include Vulkan as the lowest-priority hardware backend before probes (including with software-only), or list `capabilities.AccelVulkan` explicitly in `EncoderHierarchy` for opt-in priority.
 
 Failed Vulkan probes log a single `vulkan probe: h264_vulkan, hevc_vulkan, av1_vulkan: …` warn line (one line covering every affected encoder) with vendor-specific remediation (Mesa RADV/ANV versions, NVIDIA driver/capabilities, Docker device mounts). On WSL the hint explains the missing NVIDIA Vulkan ICD and points at NVENC rather than a render node.
 
