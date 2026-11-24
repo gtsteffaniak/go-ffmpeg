@@ -117,7 +117,7 @@ svc, _ := ffmpeg.New(ctx, ffmpeg.Config{
 
 1. **`DeviceSelection`** (primary + fallbacks) or legacy non-auto **`GPUSelector`**
 2. **`EncoderHierarchy`**
-3. **`VulkanEncoder`** (`"fallback"` appends Vulkan after vendor backends; default off)
+3. **`VulkanEncoder`** (empty/`auto`: append working Vulkan after vendor backends, not for software-only; `"fallback"`/`"on"` includes Vulkan as lowest-priority HW, including with software-only; `"off"` disables)
 4. **`DevicePreference`** / deprecated `EncoderPreference` performance
 5. Platform defaults
 

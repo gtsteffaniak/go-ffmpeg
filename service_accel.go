@@ -43,11 +43,10 @@ func (s *Service) buildDetectOptions() (capabilities.DetectOptions, error) {
 	if s.cfg.AllowSoftwareEncoderFallback != nil {
 		opts.AllowSoftware = s.cfg.AllowSoftwareEncoderFallback
 	}
-	if choice.SoftwareOnly && len(opts.EncoderHierarchy) == 0 {
-		// Software selection steers preference only. Smoke tests still run so
-		// hosts can show what the machine could do and switch at runtime.
-		opts.EncoderHierarchy = []capabilities.AccelType{capabilities.AccelNone}
-	}
+	// Software-only preference is applied in Detect so Auto leaves the
+	// hierarchy as [AccelNone] while VulkanEncoder fallback/on can still
+	// include Vulkan. Do not pre-set EncoderHierarchy here: that would look
+	// like an explicit caller hierarchy and block fallback.
 	return opts, nil
 }
 

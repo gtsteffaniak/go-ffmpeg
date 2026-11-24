@@ -11,8 +11,12 @@ type VulkanEncoderMode string
 const (
 	// VulkanEncoderOff disables Vulkan in the encoder hierarchy (explicit opt-out).
 	VulkanEncoderOff VulkanEncoderMode = "off"
-	// VulkanEncoderAuto (empty config) appends Vulkan after detection when an encode probe passed.
-	VulkanEncoderAuto     VulkanEncoderMode = ""
+	// VulkanEncoderAuto (empty config) appends working Vulkan after vendor
+	// backends. Detect does not apply this when the GPU choice is software-only.
+	VulkanEncoderAuto VulkanEncoderMode = ""
+	// VulkanEncoderFallback (also "on", "enabled", "true") includes Vulkan as
+	// the lowest-priority hardware backend even before probes, including with
+	// a software-only GPU choice.
 	VulkanEncoderFallback VulkanEncoderMode = "fallback"
 )
 
@@ -31,8 +35,9 @@ func ParseVulkanEncoderMode(raw string) (VulkanEncoderMode, error) {
 	}
 }
 
-// MergeVulkanHierarchy appends Vulkan as lowest-priority HW when mode is fallback,
-// unless the caller set an explicit hierarchy that already includes or excludes Vulkan.
+// MergeVulkanHierarchy inserts Vulkan as the lowest-priority hardware backend
+// (before software) when mode is fallback, unless the caller set an explicit
+// hierarchy that already includes or excludes Vulkan.
 func MergeVulkanHierarchy(hierarchy []AccelType, explicit []AccelType, mode VulkanEncoderMode) []AccelType {
 	if len(explicit) > 0 {
 		return hierarchy
@@ -40,14 +45,7 @@ func MergeVulkanHierarchy(hierarchy []AccelType, explicit []AccelType, mode Vulk
 	if mode != VulkanEncoderFallback {
 		return hierarchy
 	}
-	for _, a := range hierarchy {
-		if a == AccelVulkan {
-			return hierarchy
-		}
-	}
-	out := append([]AccelType(nil), hierarchy...)
-	out = append(out, AccelVulkan)
-	return out
+	return insertVulkanBeforeAccelNone(hierarchy)
 }
 
 // AppendWorkingVulkan adds AccelVulkan after vendor backends when any Vulkan
